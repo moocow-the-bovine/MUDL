@@ -127,6 +127,7 @@ use Encode;
 
 ## $enum = $enum->recodeAll($fromenc, $toenc)
 ##  + decodes all strings to $encoding
+##  + not helpful
 sub recodeAll {
   my ($enum,$from,$to) = @_;
 
@@ -140,7 +141,8 @@ sub recodeAll {
 }
 
 ## $enum = $enum->encode($dst_encoding)
-##   + wrapper for Encode::encode: convert from perl internal to $dst_encoding
+##  + wrapper for Encode::encode: convert from perl internal to $dst_encoding
+##  + helpful!
 sub encodeAll {
   my ($enum,$dst) = @_;
 
@@ -155,6 +157,7 @@ sub encodeAll {
 
 ## $enum = $enum->decodeAll($src_encoding)
 ##   + wrapper for Encode::decode: convert from $src_encoding to perl-internal
+##   + not helpful
 sub decodeAll {
   my ($enum,$src) = @_;
 

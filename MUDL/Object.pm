@@ -543,7 +543,7 @@ sub saveBinFh {
 
 ## $obj_or_undef = $obj->loadBinString($str,@args)
 sub loadBinString {
-  my $str = shift;
+  my $str = $_[1];
   return Storable::thaw($str);
 }
 

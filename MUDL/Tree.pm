@@ -621,15 +621,15 @@ sub xmlNode2HashEntry_hmm {
 
 
 ###############################################################
-# Conversion: from cluster
+# Conversion: from cluster (array: OBSOLETE)
 ###############################################################
 
-# $t = $class_or_obj->fromClusters($cluster_tree,%args)
+# $t = $class_or_obj->fromClusterArray($cluster_tree,%args)
 #   + %args:
 #      enum=>$enum,
 #      dists=>$dists,
 #      %other_tree_new_args
-sub fromClusters {
+sub fromClusterArray {
   my ($t,$ct,%args) = @_;
   $t = $t->new(%args) if (!ref($t));
   my $cdists = $t->{dists};
@@ -657,6 +657,51 @@ sub fromClusters {
 
     if (defined($cdists)) {
       $t->{dists}{$tid} = $cdists->[$ctid];
+    }
+  }
+
+  return $t;
+}
+
+###############################################################
+# Conversion: from cluster (PDL)
+###############################################################
+
+# $t = $class_or_obj->fromClusterPDL($cluster_tree_pdl,%args)
+#   + %args:
+#      enum=>$enum,
+#      dists=>$dists_pdl,
+#      %other_tree_new_args
+
+*fromClusters = \&fromClusterPDL;
+sub fromClusterPDL {
+  my ($t,$ct,%args) = @_;
+  $t = $t->new(%args) if (!ref($t));
+  my $cdists = $t->{dists};
+  $t->{dists} = {};             ##-- maps from (interior) node-ids to distance
+
+  my @queue = ($t->{root}, $ct->dim(1)-2);
+  $t->label($t->{root}, $ct->dim(1)-1);
+
+  my ($tid,$ctid, $ctn,@tdids,$i);
+  while (($tid,$ctid)=splice(@queue,0,2)) {
+    $ctn = $ct->slice(",($ctid)");
+
+    foreach $i (0,1) {
+      $tdids[$i] = $t->addDtr($tid,undef);
+
+      if ($ctn->at($i) >= 0) {
+	##-- Leaf
+	$t->label($tdids[$i], $ctn->at($i));
+      } else {
+	##-- Non-Leaf
+	$t->label($tdids[$i], -($ctn->at($i)+1));
+	push(@queue, $tdids[$i], -($ctn->at($i)+1));
+      }
+    }
+
+    if (defined($cdists)) {
+      $t->{dists}{$tid} = $cdists->at($ctid);
     }
   }
 

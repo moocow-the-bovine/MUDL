@@ -107,7 +107,8 @@ sub new {
 sub toDist {
   my ($de,$d) = @_;
   #$d = $de->MUDL::EDist::toDist($d);
-  @$d{map { $de->{enum}->symbol($_) } keys(%{$de->{nz}})} = values(%{$de->{nz}});
+  $d = MUDL::Dist::Partial->new() if (!defined($d));
+  @{$d->{nz}}{map { $de->{enum}->symbol($_) } keys(%{$de->{nz}})} = values(%{$de->{nz}});
   @$d{qw(size zmass nzero nfields)} = @$de{qw(size zmass nzero nfields)};
   return $d;
 }

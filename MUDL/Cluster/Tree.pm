@@ -7,7 +7,8 @@
 ##======================================================================
 
 package MUDL::Cluster::Tree;
-use Algorithm::Cluster qw(treecluster);
+use PDL;
+use PDL::Cluster;
 use MUDL::Object;
 use MUDL::Tk::Dendogram;
 use Carp;
@@ -20,15 +21,14 @@ our @EXPORT_OK = qw();
 
 ## $args = MUDL::Cluster::Tree->new(%args);
 ##   + %args:
-##       data     => \@data,   # 2d array ref (matrix), $n-by-$d
-##       mask     => \@mask,   # either '' or $n-by-$d boolean-valued matrix: true iff $data->[$i][$j] is missing
-##       weight   => \@wts,    # either '' or $d-ary weight vector
-##       tranpose => $bool,    # whether $data is row-primary (0,default) or column-primary (1)
+##       data     => $data,    # pdl($d,$n)
+##       mask     => $mask,    # pdl($d,$n) boolean-valued matrix: true iff $data->at($i,$j) is missing
+##       weight   => $wts,     # pdl($d) $d-ary weight vector
 ##       dist     => $metric,  # distance metric character flag (default='e')
 ##       method   => $method,  # center computation method flag (default='a')
 ##   + additional data (after running):
-##       tree     => \@tree,   # ($n-1)-by-2 array giving structure of clustering tree (see below)
-##       linkdist => \@dists,  # ($n-1)-ary array giving distances between sister nodes
+##       tree     => $ctree,   # pdl(2,$n) gives structure of clustering tree (see below) [(2,n-1) used]
+##       linkdist => $vector,  # pdl($n) array giving distances between sister nodes [(n-1) used]
 ##   + where:
 ##       $n : number of data instances (rows)
 ##       $d : number of features per datum (columns)
@@ -42,7 +42,7 @@ our @EXPORT_OK = qw();
 ##     - ($dtri < 0) refers to $node( -($dtri+1) )
 ##       ~ i.e. nonterminal nodes have negative ids, and are numbered from -1 to -($n-1)
 ##   + distance structure:
-##     - $dists[$i] is the distance between nodes merged in $tree[$i]
+##     - $dists->at($i) is the distance between nodes merged in $ctree->at($i)
 ##   + methods:
 ##       's' : single-link
 ##       'm' : maximum- (complete-) link
@@ -59,14 +59,13 @@ our @EXPORT_OK = qw();
 ##       'b' : city-block (L1) distance
 sub new {
   my $tc = $_[0]->SUPER::new(
-			     data=>[[]],
-			     mask=>'',
-			     weight=>'',
-			     transpose=>0,
+			     data=>null,
+			     mask=>undef,
+			     weight=>undef,
 			     method=>'a',
 			     dist=>'e',
 			     ##-- output data
-			     tree=>undef,
+			     ctree=>undef,
 			     linkdist=>undef,
 			     @_[1..$#_]
 			    );
@@ -76,12 +75,54 @@ sub new {
 
 
 ##======================================================================
+## $data = $tc->data()
+## $data = $tc->data($data)
+##   + get/set data -- reset related pdls on set
+sub data {
+  my $tc = shift;
+  return $tc->{data} if (!@_);
+
+  my $data = $tc->{data} = shift;
+
+  ##-- sanity checks
+  delete($tc->{mask})
+    if (defined($tc->{mask}) && ($tc->{mask}->dim(0) != $data->dim(0)
+				 ||
+				 $tc->{mask}->dim(1) != $data->dim(1)));
+
+  delete($tc->{weight})
+    if (defined($tc->{weight}) && $tc->{weight}->dim(0) != $data->dim(0));
+
+  delete($tc->{ctree})
+    if (defined($tc->{ctree}) && $tc->{ctree}->dim(1) != $data->dim(1));
+
+  delete($tc->{linkdist})
+    if (defined($tc->{linkdist}) && $tc->{linkdist}->dim(0) != $data->dim(1));
+
+  return $data;
+}
+
+
+##======================================================================
 ## $tc = $tc->cluster(%args)
 ##  + actually runs clustering algorithm
 sub cluster {
   my ($tc,%args) = @_;
   @$tc{keys(%args)} = values(%args);
-  @$tc{qw(tree linkdist)} = Algorithm::Cluster::treecluster(%$tc);
+
+  PDL::Cluster::treecluster
+    (
+     $tc->{data},
+     (defined($tc->{mask})     ? $tc->{mask}     : ($tc->{mask}=ones(long,$tc->{data}->dims))),
+     (defined($tc->{weight})   ? $tc->{weight}   : ($tc->{weight}=ones(double,$tc->{data}->dim(0)))),
+
+     (defined($tc->{ctree})    ? $tc->{ctree}    : ($tc->{ctree}=zeroes(long,2,$tc->{data}->dim(1)))),
+     (defined($tc->{linkdist}) ? $tc->{linkdist} : ($tc->{linkdist}=zeroes(double,$tc->{data}->dim(1)))),
+
+     (defined($tc->{dist})     ? $tc->{dist}     : ($tc->{dist}='e')),
+     (defined($tc->{method})   ? $tc->{method}   : ($tc->{method}='a')),
+    );
+
   return $tc;
 }
 
@@ -92,10 +133,10 @@ sub cluster {
 sub toTree {
   my $tc = shift;
   require MUDL::Tree;
-  return MUDL::Tree->fromClusters($tc->{tree},
-				  enum=>$tc->{enum},
-				  dists=>$tc->{linkdist},
-				  @_);
+  return MUDL::Tree->fromClusterPDL($tc->{ctree},
+				    enum=>$tc->{enum},
+				    dists=>$tc->{linkdist},
+				    @_);
 }
 
 ##======================================================================
@@ -114,9 +155,8 @@ sub viewTree {
 ##  + get a dendogram of the clustering results
 ##  + %args are passed to MUDL::Tk::Dendogram->new()
 sub toDendogram {
-  return MUDL::Tk::Dendogram->new(tree=>$_[0]{tree},
-				  dist=>$_[0]{linkdist},
-				  @_[1..$#_]);
+  my $tc = shift;
+  return $tc->toTree(@_)->toDendogram(@_);
 }
 
 ##======================================================================
