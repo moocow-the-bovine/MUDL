@@ -167,7 +167,7 @@ sub entropy {
   my $d = shift;
   my $total = shift||$d->total;
   my $H = 0;
-  $H += $_/$total * log($total/$_)/log(2) foreach (values(%$d));
+  $H += $_/$total * log($total/$_)/log(2) foreach (grep { $_ != 0 } values(%$d));
   return $H;
 }
 
