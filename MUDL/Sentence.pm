@@ -1,28 +1,19 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL.pm
+## File: MUDL::Sentence.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner
+##  + MUDL unsupervised dependency learner: sentences
 ##======================================================================
 
-package MUDL;
-our $VERSION = 0.01;
+package MUDL::Sentence;
+use MUDL::Object;
+use MUDL::Token;
+our @ISA = qw(MUDL::Array);
 
-##-- just load all sub-modules
-
-use MUDL::Utils;    ##-- very old, needs work
-use MUDL::FsaUtils; ##-- useful hacks: should update getArcs()
-
-use MUDL::XML;
-use MUDL::Corpus;
-use MUDL::Enum;
-use MUDL::Dist;
-use MUDL::Ranks;
-
-##-- need a-fixin'
-use MUDL::Unigrams;
-use MUDL::Bigrams;
+##======================================================================
+## Constructor , init
+##   + $s = MUDL::Sentence->new(@tokens)
 
 1;
 

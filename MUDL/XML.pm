@@ -15,7 +15,7 @@ our $VERSION = 0.01;
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
-   xpaths => [qw($s_xpath $token_xpath $text_xpath $detail_xpath)],
+   xpaths => [qw($s_xpath $token_xpath $text_xpath $tag_xpath $detail_xpath)],
    styles => [qw(stylesheet_xml2tt stylesheet_xml2norm)],
   );
 $EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
@@ -29,6 +29,7 @@ our $s_xpath = '//s';
 our $token_xpath = './token[not(@type) or @type=\'word\']';
 our $text_xpath = './text[not(@normalized) or @normalized=\'1\']';
 our $detail_xpath = './detail';
+our $tag_xpath = './tag';
 
 ##======================================================================
 ## Parser
@@ -85,6 +86,7 @@ sub stylesheet_xml2norm {
 	   token_xpath => $token_xpath,
 	   text_xpath => $text_xpath,
 	   detail_xpath => $detail_xpath,
+	   tag_xpath => $tag_xpath,
 	   %args
 	  );
   return
@@ -134,10 +136,21 @@ sub stylesheet_xml2norm {
           <xsl:value-of select="."/>
         </xsl:for-each>
       </text>
+      <xsl:for-each select="$args{tag_xpath}">
+        <xsl:call-template name="token-tag"/>
+      </xsl:for-each>
       <xsl:for-each select="$args{detail_xpath}">
         <xsl:call-template name="token-detail"/>
       </xsl:for-each>
     </token>
+  </xsl:template>
+
+  <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
+  <!-- token-tag -->
+  <xsl:template name="token-tag">
+    <tag>
+      <xsl:value-of select="text()"/>
+    </tag>
   </xsl:template>
 
   <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
@@ -163,6 +176,7 @@ sub stylesheet_xml2tt {
 	   token_xpath => $token_xpath,
 	   text_xpath => $text_xpath,
 	   detail_xpath => $detail_xpath,
+	   tag_xpath => $tag_xpath,
 	   %args
 	  );
   return
@@ -202,6 +216,9 @@ sub stylesheet_xml2tt {
     <xsl:for-each select="$args{text_xpath}">
       <xsl:call-template name="token-text"/>
     </xsl:for-each>
+    <xsl:for-each select="$args{tag_xpath}">
+      <xsl:call-template name="token-tag"/>
+    </xsl:for-each>
     <xsl:for-each select="$args{detail_xpath}">
       <xsl:call-template name="token-detail"/>
     </xsl:for-each>
@@ -212,6 +229,13 @@ sub stylesheet_xml2tt {
   <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
   <!-- text -->
   <xsl:template name="token-text">
+    <xsl:value-of select="./text()"/>
+  </xsl:template>
+
+  <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
+  <!-- tag -->
+  <xsl:template name="token-tag">
+    <xsl:text>	</xsl:text>
     <xsl:value-of select="./text()"/>
   </xsl:template>
 

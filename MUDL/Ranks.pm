@@ -6,12 +6,15 @@
 ##  + MUDL unsupervised dependency learner: ranking
 ##======================================================================
 
+########################################################################
+## class MUDL::Ranks
+########################################################################
+
 package MUDL::Ranks;
 use MUDL::Dist;
-use MUDL::XML;
+use MUDL::Object;
 use Carp;
 use IO::File;
-
 
 our $VERSION = 0.01;
 our @ISA = qw(Exporter MUDL::Dist);
@@ -85,10 +88,11 @@ sub sort_asc { return $_[0]->{$_[1]} <=> $_[0]->{$_[2]} || $_[1] cmp $_[2]; }
 sub sort_dsc { return $_[0]->{$_[2]} <=> $_[0]->{$_[1]} || $_[1] cmp $_[2]; }
 
 
-##======================================================================
-## MUDL::XRanks
+########################################################################
+## class MUDL::XRanks
 ##   + shared ranks
-##======================================================================
+########################################################################
+
 package MUDL::XRanks;
 MUDL::Ranks->import(':sort');
 our @ISA = qw(MUDL::Ranks);
@@ -115,28 +119,31 @@ sub fromDist {
 }
 
 
-##======================================================================
-## MUDL::Quanta
-##   + rank-quantization
-##======================================================================
+########################################################################
+## class MUDL::Quanta
+##   + quantized ranks
+########################################################################
+
 package MUDL::Quanta;
 MUDL::Ranks->import(':sort');
 our @ISA = qw(MUDL::Ranks);
 
-
-## $quanta = $class_or_obj->fromDist($d)
+## $quanta = $class_or_obj->fromDist($d,%args)
+##   + %args:
+##       sort => 'asc' | 'dsc'
+##       qsize => $n
 sub fromDist {
-  my ($qr,$d) = @_;
-  return $qr->fromRanks(MUDL::Ranks->new->fromDist($d));
+  my ($qr,$d) = splice(@_,0,2);
+  return $qr->fromRanks(MUDL::Ranks->new->fromDist($d),@_);
 }
 
 ## $quanta = $clas_or_obj->fromRanks($ranks)
+## $quanta = $clas_or_obj->fromRanks($ranks,$qsize)
 *fromXRanks = \&fromRanks;
 sub fromRanks {
-  my $qr = shift;
-  my $r = shift;
+  my ($qr,$r) = splice(@_,0,2);
   $qr = $qr->new() if (!ref($qr));
-  my %args = (sort=>'dsc',@_);
+  my %args = (sort=>'dsc',qsize=>1,@_);
   %$qr = %$r;
   my $maxrank = $r->maxRank;
 
@@ -152,7 +159,7 @@ sub fromRanks {
     }
   }
 
-  return $qr;
+  return $qr->quantize($args{qsize});
 }
 
 ## $quanta = $quanta->quantize($n)

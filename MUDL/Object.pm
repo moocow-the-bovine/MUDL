@@ -11,9 +11,8 @@ use MUDL::XML;
 
 use Storable;
 use IO::File;
+use IO::Scalar;
 use Carp;
-
-our $VERSION = 0.01;
 
 ##======================================================================
 ## Exports
@@ -22,6 +21,7 @@ our @EXPORT = qw();
 our %EXPORT_TAGS =
   (
    parser => [qw($XMLPARSER)],
+   utils  => [qw(newFromXMLNode dummy)],
   );
 $EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
 our @EXPORT_OK = @{$EXPORT_TAGS{all}};
@@ -43,9 +43,17 @@ sub new {
 }
 
 ##======================================================================
+## Dummy sub
+## \&dummy_sub = dummy($name)
+sub dummy {
+  my $name = shift;
+  return sub { confess( ref($_[0]) , "::${name}() not implemented"); };
+}
+
+##======================================================================
 ## Generic initializer
 ##  + object structure= hash { \%args }
-##  + calls init(\%args)
+##  + just takes over \%args
 sub init {
   my ($obj,%args) = @_;
   @$obj{keys(%args)} = values(%args);
@@ -57,14 +65,180 @@ sub init {
 *clone = \&copy;
 sub copy { return Storable::dclone(@_); }
 
+
+########################################################################
+## class MUDL::Array
+########################################################################
+package MUDL::Array;
+our @ISA = qw(MUDL::Object);
+
+##======================================================================
+## Constructor
+
+## $obj = $class_or_obj->new(@args);
+sub new {
+  my $that = shift;
+  my $self = bless [], ref($that)||$that;
+  $self->init(@_) if (@_);
+  return $self;
+}
+
+##======================================================================
+## Generic initializer
+##  + object structure= array \@args
+##  + just adopts \@args
+sub init { @{$_[0]}[1..$#_] = @_[1..$#_]; }
+
+##======================================================================
+## Accessors / Manipulators
+
+## undef = $obj->clear();
+sub clear { @{$_[0]} = qw(); return $_[0]; }
+
+
+########################################################################
+## class MUDL::Array
+########################################################################
+package MUDL::Scalar;
+our @ISA = qw(MUDL::Object);
+
+##======================================================================
+## Constructor
+
+## $obj = $class_or_obj->new(@args);
+sub new {
+  my $that = shift;
+  my $val = undef;
+  my $self = bless \$val, ref($that)||$that;
+  $self->init(@_) if (@_);
+  return $self;
+}
+
+##======================================================================
+## Generic initializer
+##  + object structure = \$scalar
+##  + just sets value to first scalar
+sub init { ${$_[0]} = $_[1]; }
+
+##======================================================================
+## Accessors / Manipulators
+
+## undef = $obj->clear();
+sub clear { ${$_[0]} = undef; }
+
+
+########################################################################
+## I/O
+########################################################################
+package MUDL::Object;
+
 ##======================================================================
 ## I/O: XML: save
 ##======================================================================
 
 ## $node = $obj->saveXMLNode(%args)
 ##  + return a new node representing the object
+##  + default implementation
+##  + hash-entries are converted with $obj->entry2XMLNode($key,$val) if present
+##  + list-entries are converted with $obj->entry2XMLNode($index,$val) if present
 sub saveXMLNode {
-  confess( ref($_[0]) , "::saveXMLNode(): dummy method called.\n");
+  #confess( ref($_[0]) , "::saveXMLNode(): dummy method called.\n");
+  my $obj = shift;
+  my $node = undef;
+  my @queue = ($obj,\$node,undef);
+  my ($src,$srcref,$noder,$mom,$nodename,$savesub, $k,$v,$enode);
+
+  while (($src,$noder,$mom)=splice(@queue,0,3)) {
+
+    ##-- nonref --> textnode
+    if (!($nodename=ref($src))) {
+      $$noder = XML::LibXML::Text->new(defined($src) ? $src : '');
+      next;
+    }
+
+    ##-- subcall
+    $savesub = UNIVERSAL::can($src,'saveXMLNode');
+    if ($savesub && $savesub ne UNIVERSAL::can( __PACKAGE__ , 'saveXMLNode')) {
+      $$noder = $src->saveXMLNode(@_);
+      next;
+    }
+
+    ##-- ref --> element
+    $nodename =~ s/::/./g;
+    $$noder = XML::LibXML::Element->new($nodename);
+
+    ##-- HASH refs
+    if (UNIVERSAL::isa($src,'HASH')) {
+      $$noder->setAttribute('MUDL.type','HASH');
+      if ($savesub=UNIVERSAL::can($src,'entry2XMLNode')) {
+	while (($k,$v)=each(%$src)) {
+	  $$noder->appendChild(&$savesub($src,$k,$v));
+	}
+      } else {
+	while (($k,$v)=each(%$src)) {
+	  my $vr = undef;
+	  $enode=XML::LibXML::Element->new('value');
+	  $enode->setAttribute('key', $k);
+	  $$noder->appendChild($enode);
+	  push(@queue, $v, \$vr, $enode);
+	}
+      }
+    }
+    ##-- ARRAY refs
+    elsif (UNIVERSAL::isa($src,'ARRAY')) {
+      $$noder->setAttribute('MUDL.type','ARRAY');
+      if ($savesub=UNIVERSAL::can($src,'entry2XMLNode')) {
+	foreach $k (0..$#$src) {
+	  next if (!exists($src->[$k]));
+	  $$noder->appendChild(&$savesub($src,$k,$src->[$k]));
+	}
+      } else {
+	foreach $k (0..$#$src) {
+	  next if (!exists($src->[$k]));
+	  my $vr = undef;
+	  $enode=XML::LibXML::Element->new('value');
+	  $enode->setAttribute('idx', $k);
+	  $$noder->appendChild($enode);
+	  push(@queue, $src->[$k], \$vr, $enode);
+	}
+      }
+    }
+    ##-- SCALAR refs
+    elsif (UNIVERSAL::isa($src,'SCALAR')) {
+      $$noder->setAttribute('MUDL.type','SCALAR');
+      next if (!defined($$src));
+      my $vr = undef;
+      push(@queue, $$src, \$vr, $$noder);
+    }
+    ##-- REF refs
+    elsif (UNIVERSAL::isa($src,'REF')) {
+      $$noder->setAttribute('MUDL.type','REF');
+      next if (!defined($$src));
+      my $vr = undef;
+      push(@queue, $$src, \$vr, $$noder);
+    }
+    else {
+      ##-- bad data
+      confess( __PACKAGE__ , "::saveXMLNode(): cannot save value '$src'!");
+      undef $mom;
+    }
+  }
+  continue {
+    $mom->appendChild($$noder) if ($mom);
+  }
+
+
+  return $node;
+}
+
+## $str = $obj->saveXMLString(%args)
+##  + returns object as XML string (NOT a doc string, just raw node)
+##  + known %args : format=>$flevel, doencoding=>$bool
+sub saveXMLString {
+  my ($obj,%args) = @_;
+  %args = (format=>0, doencoding=>0, %args);
+  my $node = $obj->saveXMLNode(%args);
+  return $node->toString($args{format}, $args{doencoding});
 }
 
 ## $doc = $obj->saveXMLDoc(%args)
@@ -78,7 +252,7 @@ sub saveXMLDoc {
   return $doc;
 }
 
-## $doc = $obj->saveXMLFile($fh)
+## $doc = $obj->saveXMLFile($file,%args)
 ##  + create XML document, save it to $file_or_fh, return document
 ##  + known %args : xmlencoding, xmlversion, compress=>$zlevel, format=>$flevel
 sub saveXMLFile {
@@ -94,7 +268,7 @@ sub saveXMLFile {
   return $doc;
 }
 
-## $doc = $obj->saveXMLFh($fh)
+## $doc = $obj->saveXMLFh($fh,%args)
 ##  + create XML document, save it to $fh, return document
 ##  + known %args : xmlencoding, xmlversion, compress=>$zlevel, format=>$flevel
 sub saveXMLFh {
@@ -107,15 +281,93 @@ sub saveXMLFh {
 }
 
 
+
 ##======================================================================
 ## I/O: XML: load
 ##======================================================================
 
 ## $obj_or_undef = $obj->loadXMLNode($node,@args)
 ##  + should load object from $node
+##  + default implementation should work basically correctly
+##  + hash entries are loaded with $obj->XMLNode2Entry($node) if present
+##  + array entries are loaded with $obj->XMLNode2Entry($node) if present
 sub loadXMLNode {
+  #my ($obj,$node) = splice(@_,0,2);
+  #confess( ref($obj) , "::loadXMLNode(): dummy method called.\n");
+
   my ($obj,$node) = splice(@_,0,2);
-  confess( ref($obj) , "::loadXMLNode(): dummy method called.\n");
+  my @queue = (\$obj,$node);
+
+  my ($objr, $loadsub, $otyp, $ntyp, $nodename, $k, $enode);
+  while (($objr,$node)=splice(@queue,0,2)) {
+
+    ##-- text node --> scalar string
+    if ($node->nodeName eq 'text') {
+      $$objr = $node->nodeValue;
+      next;
+    }
+
+    ##-- non-text node --> reference
+    $otyp = $nodename = $node->nodeName;
+    $otyp =~ s/\./::/g;
+    if (ref($$objr)) {
+      carp( __PACKAGE__ , "::loadXMLNode() expected '", ref($$objr), "' element, got '", $nodename, "'\n")
+	if (ref($$objr) ne $otyp);
+    } else {
+      $$objr = $otyp->new();
+    }
+
+    ##-- subcall
+    $loadsub = UNIVERSAL::can($$objr, 'loadXMLNode');
+    if ($loadsub && $loadsub ne UNIVERSAL::can( __PACKAGE__ , 'loadXMLNode')) {
+      $$objr = $$objr->loadXMLNode(@_);
+      next;
+    }
+
+    $ntyp = $node->getAttribute('MUDL.type');
+    $ntyp = '' if (!defined($ntyp));
+
+    ##-- HASH refs
+    if ($ntyp eq 'HASH' || UNIVERSAL::isa($$objr, 'HASH')) {
+      if ($loadsub=UNIVERSAL::can($$objr, 'XMLNode2Entry')) {
+	foreach $enode ($node->childNodes) {
+	  &$loadsub($$objr,$enode);
+	}
+      } else {
+	foreach $enode ($node->getChildrenByTagName('value')) {
+	  $k = $enode->getAttribute('key');
+	  push(@queue, \$$objr->{$k}, $enode->firstChild);  ##-- firstChild(): dangerous
+	}
+      }
+    }
+    ##-- ARRAY refs
+    elsif ($ntyp eq 'ARRAY' || UNIVERSAL::isa($$objr, 'ARRAY')) {
+      if ($loadsub=UNIVERSAL::can($$objr, 'XMLNode2Entry')) {
+	foreach $enode ($node->childNodes) {
+	  &$loadsub($$objr,$enode);
+	}
+      } else {
+	foreach $enode ($node->getChildrenByTagName('value')) {
+	  $k = $enode->getAttribute('idx');
+	  push(@queue, \$$objr->[$k], $enode->firstChild);  ##-- firstChild(): dangerous
+	}
+      }
+    }
+    ##-- SCALAR refs
+    elsif ($ntyp eq 'SCALAR' || UNIVERSAL::isa($$objr, 'SCALAR')) {
+      push(@queue, $$objr, $node->firstChild); ##-- firstChild(): dangerous
+    }
+    ##-- REF refs
+    elsif ($ntyp eq 'REF' || UNIVERSAL::isa($$objr, 'REF')) {
+      push(@queue, $$objr, $node->firstChild); ##-- firstChild(): dangerous
+    }
+    else {
+      ##-- bad data
+      confess( __PACKAGE__ , "::loadXMLNode(): cannot load data for '$$objr'!");
+    }
+  }
+
+  return $obj;
 }
 
 ## $obj_or_undef = $obj->loadXMLDoc($doc,@args)
@@ -125,7 +377,17 @@ sub loadXMLDoc {
   return $obj->loadXMLNode($doc->documentElement,@_);
 }
 
+## $obj_or_undef = $obj->loadXMLString($str,@args)
+##  + calls loadXMLDoc
+sub loadXMLString {
+  my ($obj,$str) = splice(@_,0,2);
+  my $doc = $XMLPARSER->parse_string($str)
+    or confess( __PACKAGE__ , "::loadXMLString() failed: $!");
+  return $obj->loadXMLDoc($doc,@_);
+}
+
 ## $obj_or_undef = $obj->loadXMLFile($filename,@args)
+##  + calls loadXMLDoc
 sub loadXMLFile {
   my ($obj,$file) = splice(@_,0,2);
   my $doc = $XMLPARSER->parse_file($file)
@@ -134,6 +396,7 @@ sub loadXMLFile {
 }
 
 ## $obj_or_undef = $obj->loadXMLFh($fh,@args)
+##  + calls loadXMLDoc
 sub loadXMLFh {
   my ($obj,$fh) = splice(@_,0,2);
   my $doc = $XMLPARSER->parse_fh($fh)
@@ -251,10 +514,19 @@ sub loadBinFh {
 ## I/O: Native: save
 ##======================================================================
 
-## $str = $obj->saveNativeStr(@args)
+## $str = $obj->saveNativeString(@args)
+##  + calls saveNativeFh()
 sub saveNativeString {
   my $obj = shift;
-  croak( __PACKAGE__ , "::saveNativeStr(): dummy method called.\n");
+  my $str = '';
+  my $fh = IO::Scalar->new(\$str);
+  if (!$fh) {
+    confess( __PACKAGE__ , "::saveNativeString(): open failed: $!");
+    return undef;
+  }
+  $obj->saveNativeFh($fh,@_);
+  $fh->close();
+  return $str;
 }
 
 ## $bool = $obj->saveNativeFile($file,@args)
@@ -266,30 +538,38 @@ sub saveNativeFile {
     confess( __PACKAGE__ , "::saveNativeFile(): open failed for '$file': $!");
     return undef;
   }
-  my $rc = saveNativeFile($obj,$fh,@_);
+  my $rc = $obj->saveNativeFh($fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
 }
 
 ## $bool = $obj->saveNativeFh($fh,@args)
-##  + calls saveNativeStr()
-sub saveNativeFh {
-  my ($obj,$fh) = splice(@_,0,2);
-  $fh->print($obj->saveNativeStr(@_));
-  return 1;
-}
+##  + dummy
+*saveNativeFh = MUDL::Object::dummy('saveNativeFh');
+#sub saveNativeFh {
+#  my ($obj,$fh) = splice(@_,0,2);
+#  $fh->print($obj->saveNativeStr(@_));
+#  return 1;
+#}
 
 ##======================================================================
 ## I/O: Native: load
 ##======================================================================
 
-## $obj = $obj->loadNativeStr($str,@args)
+## $obj = $obj->loadNativeString($str,@args)
 sub loadNativeString {
-  my $obj = shift;
-  croak( __PACKAGE__ , "::loadNativeStr(): dummy method called.\n");
+  my ($obj,$str) = splice(@_,0,2);
+  my $fh = IO::Scalar->new(\$str);
+  if (!$fh) {
+    confess( __PACKAGE__ , "::loadNativeString(): open failed: $!");
+    return undef;
+  }
+  my $rc = $obj->loadNativeFh($fh,@_);
+  $fh->close();
+  return $rc;
 }
 
-## $bool = $obj->loadNativeFile($file,@args)
+## $obj = $obj->loadNativeFile($file,@args)
 ##  + calls saveNativeFh()
 sub loadNativeFile {
   my ($obj,$file) = splice(@_,0,2);
@@ -298,20 +578,21 @@ sub loadNativeFile {
     confess( __PACKAGE__ , "::loadNativeFile(): open failed for '$file': $!");
     return undef;
   }
-  my $rc = loadNativeFile($obj,$fh,@_);
+  my $rc = $obj->loadNativeFh($fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
 }
 
-## $bool = $obj->loadNativeFh($fh,@args)
+## $obj = $obj->loadNativeFh($fh,@args)
 ##  + calls loadNativeStr()
-sub loadNativeFh {
-  my ($obj,$fh) = splice(@_,0,2);
-  my $rs = IO::Handle::input_record_separator();
-  IO::Handle::input_record_separator(undef);
-  my $rc = $obj->loadNativeStr($fh->getline, @_);
-  IO::Handle::input_record_separator($rs);
-}
+*loadNativeFh = MUDL::Object::dummy('loadNativeFh');
+#sub loadNativeFh {
+#  my ($obj,$fh) = splice(@_,0,2);
+#  my $rs = IO::Handle::input_record_separator();
+#  IO::Handle::input_record_separator(undef);
+#  my $rc = $obj->loadNativeStr($fh->getline, @_);
+#  IO::Handle::input_record_separator($rs);
+#}
 
 
 ##======================================================================
@@ -342,6 +623,7 @@ sub newFromFile {
 }
 
 1;
+
 
 ##======================================================================
 ## Docs

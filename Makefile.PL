@@ -11,6 +11,8 @@ WriteMakefile
 		    XML::LibXML => undef,   # for XML I/O
 		    XML::LibXSLT => undef,  # ... with implicit stylesheets
 		    PDL => undef,           # for GT smoothing, etc.
+		    Storable => undef,      # for binary storage
+		    IO::Scalar => undef,    # for string I/O
 		   },
   );
 
