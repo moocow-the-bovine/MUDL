@@ -8,12 +8,13 @@
 
 package MUDL::Corpus;
 use MUDL::XML;
+use MUDL::Object;
 use IO::File;
 use Carp;
 
 our $VERSION = 0.01;
 
-#our @ISA = qw(MUDL::XML::Object);
+our @ISA = qw(MUDL::Object);
 
 ##======================================================================
 ## Constructor
