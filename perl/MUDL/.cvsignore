@@ -1,0 +1,17 @@
+README.txt
+Makefile
+Makefile.old
+blib
+pm_to_blib
+*~
+.*~
+*.gz
+*.att
+*.bin
+utest.*
+*.freq
+*.rank
+*.xrank
+*.uni
+*.ug
+*.bg

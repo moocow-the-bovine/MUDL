@@ -1,0 +1,32 @@
+=pod
+
+README for MUDL
+
+=head1 ABSTRACT
+
+MUDL - MUDL Unsupervised Dependency Learner
+
+=head1 REQUIREMENTS
+
+...
+
+=head1 DESCRIPTION
+
+...
+
+=head1 KNOWN BUGS
+
+...
+
+=head1 AUTHOR
+
+Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2005, Bryan Jurish.  All rights reserved.
+
+This package is free software.  You may redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=cut
