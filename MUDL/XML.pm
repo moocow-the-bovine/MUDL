@@ -54,6 +54,138 @@ sub new {
 
 
 ##======================================================================
+## Document
+##======================================================================
+package MUDL::XML::Document;
+our @ISA = qw(XML::LibXML::Document);
+
+our $XML_ENCODING = 'UTF-8';
+our $XML_VERSION = '1.0';
+
+sub new {
+  my ($that,%args) = @_;
+  %args = (
+	   xmlencoding=>$XML_ENCODING,
+	   xmlversion=>$XML_VERSION,
+	   %args
+	  );
+  return bless(XML::LibXML::Document->new($args{xmlversion},$args{xmlencoding}),
+	       ref($that)||$that);
+}
+
+##======================================================================
+## XML I/O
+##======================================================================
+package MUDL::XML::Object;
+use Carp qw(confess);
+our @ISA = qw(Exporter);
+
+our %EXPORT_TAGS =
+  (
+   parser => [qw($XMLPARSER)],
+  );
+$EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
+our @EXPORT_OK = @{$EXPORT_TAGS{all}};
+our @EXPORT = qw();
+
+$XMLPARSER = MUDL::XML::Parser->new();
+
+## $node = $obj->saveXMLNode(%args)
+##  + return a new node representing the object
+sub saveXMLNode {
+  confess( ref($_[0]) , "::saveXMLNode(): dummy method called.\n");
+}
+
+
+## $doc = $obj->saveXMLDoc(%args)
+##  + return a new XML::LibXML::Document representing the object
+##  + known %args : xmlencoding, xmlversion
+sub saveXMLDoc {
+  my $o = shift;
+  my $doc = MUDL::XML::Document->new(@_);
+  my $node = $o->saveXMLNode(@_);
+  $doc->setDocumentElement($node);
+  return $doc;
+}
+
+## $doc = $obj->saveXMLFile($file_or_fh)
+##  + create XML document, save it to $file_or_fh, return document
+##  + known %args : xmlencoding, xmlversion, compress=>$zlevel, format=>$flevel
+sub saveXMLFile {
+  my ($obj,$file,%args) = @_;
+  %args = (
+	   compress=>undef,
+	   format=>0,
+	   %args
+	  );
+  my $doc = $obj->saveXMLDoc(%args);
+  $doc->setCompression($args{compress}) if (defined($args{compress}));
+  if (ref($file)) {
+    $doc->toFH($file, $args{format}) || return undef;
+  } else {
+    $doc->toFile($file, $args{format}) || return undef;
+  }
+  return $doc;
+}
+
+## $obj_or_undef = $obj->loadXMLNode($node,@args)
+##  + should load object from $node
+sub loadXMLNode {
+  my ($obj,$node) = splice(@_,0,2);
+  confess( ref($obj) , "::loadXMLNode(): dummy method called.\n");
+}
+
+## $obj_or_undef = $obj->loadXMLDoc($doc,@args)
+##  + @args are passed to loadXMLNode
+sub loadXMLDoc {
+  my ($obj,$doc) = splice(@_,0,2);
+  return $obj->loadXMLNode($doc->documentElement,@_);
+}
+
+## $obj_or_undef = $obj->loadXMLFile($file_or_fh,@args)
+sub loadXMLFile {
+  my ($obj,$file) = splice(@_,0,2);
+  my ($doc);
+  if (ref($file)) {
+    $doc = $XMLPARSER->parse_fh($file)
+      or confess( __PACKAGE__ , "::loadXMLFile() failed for '$file': $!");
+  } else {
+    $doc = $XMLPARSER->parse_file($file)
+      or confess( __PACKAGE__ , "::loadXMLFile() failed for '$file': $!");
+  }
+  return $obj->loadXMLDoc($doc,@_);
+}
+
+## $obj = $class->newFromXMLNode($node)
+sub newFromXMLNode {
+  my ($that,$node) = splice(@_,0,2);
+  (my $class = $node->nodeName) =~ s/\./::/g;
+  return $node->textContent if ($class eq 'text');
+  return $class->new()->loadXMLNode($node);
+}
+
+## $obj = $class->newFromXMLDoc($doc)
+sub newFromXMLDoc {
+  my ($that,$doc) = splice(@_,0,2);
+  return newFromXMLNode($that,$doc->documentElement,@_);
+}
+
+## $obj = $class->newFromXMLDoc($doc)
+sub newFromXMLFile {
+  my ($that,$file) = splice(@_,0,2);
+  my ($doc);
+  if (ref($file)) {
+    $doc = $XMLPARSER->parse_fh($file)
+      or confess( __PACKAGE__ , "::newfromXMLFile() failed for '$file': $!");
+  } else {
+    $doc = $XMLPARSER->parse_file($file)
+      or confess( __PACKAGE__ , "::newFromXMLFile() failed for '$file': $!");
+  }
+  return newFromXMLDoc($that,$doc,@_);
+}
+
+
+##======================================================================
 ## Stylesheets
 ##======================================================================
 package MUDL::XML;
