@@ -24,7 +24,7 @@ use XML::LibXSLT;
 ##======================================================================
 ## Constants
 ##======================================================================
-our $s_xpath = '//body//s';
+our $s_xpath = '//s';
 our $token_xpath = './token[not(@type) or @type=\'word\']';
 our $text_xpath = './text[not(@normalized) or @normalized=\'1\']';
 our $detail_xpath = './detail';
