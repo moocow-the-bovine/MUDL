@@ -124,11 +124,11 @@ sub asArray {
 sub asList { return @{$_[0]->asArray}; }
 
 ## \$packed = $sm->asPacked()
-##   + returns reference to packed string representing $sm
+##   + returns reference to packed string representing $sm (packed as 'L')
 sub asPacked {
   my $sm = shift;
   my $str = '';
-  $str .= pack('I',$sm->get($_)) foreach (0..($sm->size-1));
+  $str .= pack('L',$sm->get($_)) foreach (0..($sm->size-1));
   return \$str;
 }
 ## $string = $sm->asString()
@@ -251,7 +251,7 @@ sub bfsort {
 ## $cmp_val = lexcmp($s1,$s2)
 ##   + compares two strings according to their 'lexicographical order',
 ##     defined as in Carrasco&Oncina(99).  $s1,$s2 should be strings
-##     of packed label-ids (i.e. $s1=$s2=pack('i*',@labelids)).
+##     of packed label-ids (i.e. $s1=$s2=pack('l*',@labelids)).
 sub lexcmp {
   return (length($_[0]) < length($_[1])
 	  ? -1
@@ -264,7 +264,7 @@ sub lexcmp {
 ##    + returns a hash of the form
 ##        ( $prefixString => $stateId, ... )
 ##      representing the "kernel" (a la Carrasco&Oncina(99)) of $fsa
-##    + Each $prefixString is a packed string of label-ids ('i*') representing
+##    + Each $prefixString is a packed string of label-ids ('l*') representing
 ##      a prefix of L($fsa)
 sub kernel {
   my $fsa = shift;
@@ -281,14 +281,14 @@ sub kernel {
     vec($vec,$qi,1) = 1;
     $qp = $fsa->getState($qi);
     foreach $arc (sort { $a->{input} <=> $b->{input} } @{$fsa->getArcs($qi)}) {
-      push(@queue, $arc->{target}, $qs.pack('i',$arc->{input}));
+      push(@queue, $arc->{target}, $qs.pack('l',$arc->{input}));
     }
   }
   return \%s2q;
 }
 
 ## $str2stateId = packed2str($packedstr)
-sub packed2str { return join(',', unpack('i*',$_)); }
+sub packed2str { return join(',', unpack('l*',$_)); }
 
 ## \%str2stateId = $fsa->strKernel()
 ##  + human-readable
@@ -316,7 +316,7 @@ sub shortPrefixes {
     vec($vec,$qi,1) = 1;
     $qp = $fsa->getState($qi);
     foreach $arc (sort { $a->{input} <=> $b->{input} } @{$fsa->getArcs($qi)}) {
-      push(@queue, $arc->{target}, $qs.pack('i',$arc->{input}));
+      push(@queue, $arc->{target}, $qs.pack('l',$arc->{input}));
     }
   }
   return \%s2q;
