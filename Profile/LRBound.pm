@@ -119,6 +119,43 @@ sub toPDLi {
 }
 
 
+##======================================================================
+## Conversion: to Algorithm::Cluster data
+
+## ($data,$enum) = $lr->toAcData()
+## ($data,$enum) = $lr->toAcData($data)
+## ($data,$enum) = $lr->toAcData($data,$enum)
+##   + in scalar context returns $acdata
+sub toAcData {
+  my ($lr,$data,$en) = @_;
+
+  my ($pdl);
+  ($pdl,$en) = $lr->toPDLi(undef,$en);
+
+  ##-- data
+  @$data = qw() if ($data);
+  $data = MUDL::PDL::pdl2ary($pdl->xchg(0,1),$data);
+
+  return wantarray ? ($data,$en) : $data;
+}
+
+
+##======================================================================
+## Help
+
+## $string = $class_or_obj->helpString()
+sub helpString {
+  my $that = shift;
+  return
+    (qq(Extract left- and right-periphery profile wrt. fixed "function word" set.\n)
+     .qq(Options:\n)
+     .qq(  bounds=SET       [default=empty]\n)
+     .qq(  eos=EOS_STRING   [default='__\$']\n)
+     .qq(  bos=BOS_STRING   [default='__\$']\n)
+     .qq(  dobounds=BOOL    [default=1]\n)
+     .qq(  dononbounds=BOOL [default=1]));
+}
+
 1;
 
 ##======================================================================

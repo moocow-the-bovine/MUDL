@@ -7,6 +7,7 @@
 ##======================================================================
 
 package MUDL::Corpus::Profile;
+use Module::Pluggable search_path=>['MUDL::Corpus::Profile'], require=>1;
 use MUDL::Object qw(dummy);
 use MUDL::CorpusIO;
 use Carp;
@@ -36,6 +37,15 @@ sub addReader {
 ## undef = $profile->finish(%args)
 ##  + perform any finishing actions
 sub finish { ; }
+
+## string = $class_or_obj->helpString()
+sub helpString {
+  my $that = shift;
+  if ((ref($that) && ref($that) eq __PACKAGE__) || $that eq __PACKAGE__) {
+    return "Abstract corpus profiling plugin host class.";
+  }
+  return (ref($that)||$that)."::helpString() not implemented.";
+}
 
 1;
 

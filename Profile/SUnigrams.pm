@@ -49,6 +49,17 @@ sub finish {
 }
 
 
+##======================================================================
+## Help
+
+## $string = $class_or_obj->helpString()
+sub helpString {
+  my $that = shift;
+  return
+    (qq(Extract supervised unigrams (token,tag) pairs.\n));
+}
+
+
 1;
 
 ##======================================================================
