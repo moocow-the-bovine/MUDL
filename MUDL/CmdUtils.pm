@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::CmdUtils.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -33,9 +33,10 @@ sub loadModule {
   $args{search} =  ['',qw(MUDL::)] if (!$args{search} || !@{$args{search}});
 
   my ($fprefix,$cprefix,$fqname);
+  (my $fname = $name) =~ s/::/\//g;
   foreach $cprefix (@{$args{search}}) {
     ($fprefix = $cprefix) =~ s/::/\//g;
-    if (eval { require "${fprefix}${name}.pm"; }) {
+    if (eval { require "${fprefix}${fname}.pm"; }) {
       $fqname = $cprefix.$name;
       last;
     }

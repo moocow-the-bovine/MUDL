@@ -677,13 +677,15 @@ sub fromClusterArray {
 sub fromClusterPDL {
   my ($t,$ct,%args) = @_;
   $t = $t->new(%args) if (!ref($t));
-  my $cdists = $t->{dists};
-  $t->{dists} = {};             ##-- maps from (interior) node-ids to distance
+  my $cdists   = $t->{dists};
+  my $cgroups  = $t->{groups};
+  $t->{dists}  = {};             ##-- maps from (interior) node-ids to distance
+  $t->{groups} = {};             ##-- maps from leaf-ids to group-ids
 
   my @queue = ($t->{root}, $ct->dim(1)-2);
   $t->label($t->{root}, $ct->dim(1)-1);
 
-  my ($tid,$ctid, $ctn,@tdids,$i);
+  my ($tid,$ctid, $tlab, $ctn,@tdids,$i);
   while (($tid,$ctid)=splice(@queue,0,2)) {
     $ctn = $ct->slice(",($ctid)");
 
@@ -692,7 +694,10 @@ sub fromClusterPDL {
 
       if ($ctn->at($i) >= 0) {
 	##-- Leaf
-	$t->label($tdids[$i], $ctn->at($i));
+	$t->label($tdids[$i], ($tlab=$ctn->at($i)));
+	if (defined($cgroups)) {
+	  $t->{groups}{$tdids[$i]} = $cgroups->at($tlab);
+	}
       } else {
 	##-- Non-Leaf
 	$t->label($tdids[$i], -($ctn->at($i)+1));
@@ -716,8 +721,9 @@ sub toDendogram {
   my $t = shift;
   require MUDL::Tk::Dendogram;
   return MUDL::Tk::Dendogram->new(tree=>$t,
-				  ($t->{dists} ? (dists=>$t->{dists}) : qw()),
-				  ($t->{enum} ? (enum=>$t->{enum}) : qw()),
+				  ($t->{dists}  ? (dists=>$t->{dists}) : qw()),
+				  ($t->{enum}   ? (enum=>$t->{enum}) : qw()),
+				  ($t->{dmult}  ? (dmult=>$t->{dmult}) : qw()),
 				  @_,
 				 );
 }

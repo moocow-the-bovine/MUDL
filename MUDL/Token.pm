@@ -150,9 +150,9 @@ sub attributes { return map { $_-2=>$_[0][$_] } 0..$#{$_[0]}-2; }
 *getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
 sub attribute {
   return ($_[1] eq 'text'
-	  ? $_[0]->text($_[2])
+	  ? $_[0]->text(exists($_[2]) ? $_[2] : qw())
 	  : ($_[1] eq 'tag'
-	     ? $_[0]->tag($_[2])
+	     ? $_[0]->tag(exists($_[2]) ? $_[2] : qw())
 	     : (exists($_[2])
 		? $_[0][int($_[1])+2]=$_[2]
 		: $_[0][int($_[1])+2])));

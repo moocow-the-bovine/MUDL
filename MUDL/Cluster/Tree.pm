@@ -26,37 +26,22 @@ our @EXPORT_OK = qw();
 ##       weight   => $wts,     # pdl($d) $d-ary weight vector
 ##       dist     => $metric,  # distance metric character flag (default='e')
 ##       method   => $method,  # center computation method flag (default='a')
-##   + additional data (after running):
-##       tree     => $ctree,   # pdl(2,$n) gives structure of clustering tree (see below) [(2,n-1) used]
-##       linkdist => $vector,  # pdl($n) array giving distances between sister nodes [(n-1) used]
+##   + optional data:
+##       enum     => $enum,    # leaf-id enumerator
+##       cenum    => $enum,    # cluster-id enumerator
+##   + additional data:
+##     - post-cluster():
+##         tree     => $ctree,   # pdl(2,$n) gives structure of clustering tree (see below) [(2,n-1) used]
+##         linkdist => $vector,  # pdl($n) array giving distances between sister nodes [(n-1) used]
+##     - post-cut($k):
+##         nclusters  => $k,                # number of clusters
+##         clusterids => $rowid2clusterid,  # pdl($n) maps data rows to cluster-id (range 0..($k-1))
+##     - post-leafdistances():
+##         leafdist   => $leaf2cid2dist, # pdl($k,$n) maps (clusterid,leaf) to distance(leaf,clusterid)
 ##   + where:
 ##       $n : number of data instances (rows)
 ##       $d : number of features per datum (columns)
-##   + tree structure:
-##       [ $node(0), $node(1), ..., $node($N-1) ]
-##   + node structure:
-##       [ $dtr1, $dtr2 ]
-##     - $dtr1, $dtr2 are integers
-##     - ($dtri >= 0) refers to datum $dtri
-##       ~ i.e. leaf nodes have nonnegative ids numbered from 0..($n-1)
-##     - ($dtri < 0) refers to $node( -($dtri+1) )
-##       ~ i.e. nonterminal nodes have negative ids, and are numbered from -1 to -($n-1)
-##   + distance structure:
-##     - $dists->at($i) is the distance between nodes merged in $ctree->at($i)
-##   + methods:
-##       's' : single-link
-##       'm' : maximum- (complete-) link
-##       'a' : average-link (default)
-##       'c' : centroid-link
-##   + metrics:
-##       'c' : correlation
-##       'a' : abs(correlation)
-##       'u' : uncentered correlation
-##       'x' : abs(uncentered correlation)
-##       's' : Spearman's rank correlation
-##       'k' : Kendalls tau
-##       'e' : Euclidean distance
-##       'b' : city-block (L1) distance
+##   + methods, metrics, structures: see PDL::Cluster and cluster-3.0 documentation
 sub new {
   my $tc = $_[0]->SUPER::new(
 			     data=>null,
@@ -67,6 +52,8 @@ sub new {
 			     ##-- output data
 			     ctree=>undef,
 			     linkdist=>undef,
+			     ##-- for cut
+			     nclusters=>2,
 			     @_[1..$#_]
 			    );
 
@@ -99,6 +86,9 @@ sub data {
   delete($tc->{linkdist})
     if (defined($tc->{linkdist}) && $tc->{linkdist}->dim(0) != $data->dim(1));
 
+  delete($tc->{leafdist})
+    if (defined($tc->{leafdist}) && $tc->{leafdist}->dim(1) != $data->dim(1));
+
   return $data;
 }
 
@@ -127,6 +117,287 @@ sub cluster {
 }
 
 ##======================================================================
+## $clusterids = $tc->cut()
+## $clusterids = $tc->cut($nclusters)
+##   + cut tree, returns vector clusterids($n)
+sub cut {
+  my ($tc,$nclusters) = @_;
+  $tc->{nclusters} = $nclusters if (defined($nclusters));
+  $tc->{nclusters} = 2 if (!defined($tc->{nclusters}));
+
+  if (!defined($tc->{clusterids}) || $tc->{clusterids}->dim(0) != $tc->{ctree}->dim(1)) {
+    $tc->{clusterids} = zeroes(long, $tc->{ctree}->dim(1));
+  }
+
+  PDL::Cluster::cuttree($tc->{ctree},
+			$tc->{nclusters},
+			$tc->{clusterids});
+
+  return $tc->{clusterids};
+}
+
+##======================================================================
+## $pdl = $tc->leafdistances()
+## $pdl = $tc->leafdistances($pdl)
+##   + populates returns a $k-by-$n pdl representing distances
+##     between each (cluster,leaf) pair.
+sub leafdistances {
+  my ($tc,$pdl) = @_;
+
+  $tc->cluster() if (!defined($tc->{ctree}) || !defined($tc->{linkdist}));
+  $tc->cut() if (!defined($tc->{clusterids}));
+
+  my $cids = $tc->{clusterids};
+  my $k = $tc->{nclusters};
+  my $n = $tc->{data}->dim(1);
+
+  $pdl = $tc->{leafdist} if (!defined($pdl));
+  $pdl = zeroes(double,1,1) if (!defined($pdl));
+  $pdl->reshape($k, $n) if ($pdl->dim(0) != $k || $pdl->dim(1) != $n);
+
+  my $rowids=sequence(long,$n);
+  foreach $cid (0..($k-1)) {
+    rowdistances($tc->{data},
+		 $tc->{mask},
+		 $tc->{weight},
+		 $rowids,
+		 which($cids==$cid),
+		 $pdl->slice("($cid)"),
+		 $tc->{dist},
+		 $tc->{method});
+  }
+
+  return $tc->{leafdist}=$pdl;
+}
+
+
+########################################################################
+## Conversion
+########################################################################
+
+##======================================================================
+## ($leafEnum,$clusterEnum) = $tc->toEnums(%args)
+##  + returns enums representing the clustering solution
+sub toEnums {
+  require MUDL::Enum;
+  my ($tc,%args) = @_;
+  return ($tc->leafEnum(%args), $tc->clusterEnum(%args));
+}
+
+## $leafEnum = $tc->leafEnum()
+##  + returns enums representing the leaves
+sub leafEnum {
+  require MUDL::Enum;
+  my ($tc,%args) = @_;
+  my $n = $tc->{data}->dim(1);
+
+  ##-- generate enums
+  my ($lenum);
+  if (!defined($lenum=$tc->{enum})) {
+    $lenum = MUDL::Enum->new(%args);
+    $lenum->addIndexedSymbol('x'.$_, $_) foreach (0..($n-1));
+  }
+
+  return $lenum;
+}
+
+## $clusterEnum = $tc->clusterEnum()
+##  + returns enums representing the clusters
+sub clusterEnum {
+  require MUDL::Enum;
+  my ($tc,%args) = @_;
+  my $k = $tc->{nclusters};
+
+  ##-- generate enums
+  my ($cenum);
+  if (!defined($cenum=$tc->{cenum})) {
+    $cenum = MUDL::Enum->new(%args);
+    $cenum->addIndexedSymbol('c'.$_, $_) foreach (0..($k-1));
+  }
+
+  return $cenum;
+}
+
+## $clusterEnum = $tc->clusterEnumFull()
+##  + returns enum representing the clusters
+sub clusterEnumFull {
+  require MUDL::Enum;
+  my ($tc,%args) = @_;
+  my $k = $tc->{nclusters};
+  my $n = $tc->{data}->dim(1);
+
+  ##-- generate enum
+  my $lenum = $tc->leafEnum(%args);
+  my ($cenum,$cid);
+  if (!defined($cenum=$tc->{cenum})) {
+    $cenum = MUDL::Enum->new(%args);
+
+    ##-- add cluster ids
+    foreach (0..($k-1)) {
+      $cenum->{id2sym}[$_] = 'c'.$_.':';
+    }
+
+    ##-- add all old leaf labels
+    foreach (0..($n-1)) {
+      $cenum->{id2sym}[$tc->{clusterids}->at($_)] .= '_'.$lenum->symbol($_);
+    }
+
+    ##-- build reverse index
+    foreach (0..$#{$cenum->{id2sym}}) {
+      $cenum->{sym2id}{$cenum->{id2sym}[$_]} = $_;
+    }
+  }
+
+  return $cenum;
+}
+
+
+##======================================================================
+## $pdist = $tc->toJointPdlDist(%args)
+##  + returns a MUDL::PdlDist representing the clusters
+##  + returned dist has dimensions ($d,$n): $pdist->at($cid,$wid) = p($cid,$wid)
+##  + %args are passed to MUDL::PdlDist->new()
+*toPdlDist = \&toJointPdlDist;
+sub toJointPdlDist {
+  my $tc = shift;
+  require MUDL::PdlDist;
+
+  my ($k,$n) = ($tc->{nclusters}, $tc->{data}->dim(1));
+  my ($lenum,$cenum) = $tc->toEnums();
+
+  ##-- get (cluster,leaf) distance matrix
+  my ($ld);
+  $ld    = $tc->leafdistances() if (!defined($ld=$tc->{leafdist}));
+
+  ##-- gnerate PdlDist
+  my $pd  = $ld->max - $ld; #(+1 ?) (+ $ld->where($ld!=0)->min ???);
+  $pd    /= $pd->sum;
+
+  return MUDL::PdlDist->new(pdl=>$pd,
+			    enum=>MUDL::Enum::Nary->new(enums=>[$cenum,$lenum]));
+}
+
+##======================================================================
+## $edist = $tc->toJointEDist(%args)
+##  + returns a MUDL::EDist::Nary representing the clusters
+##  + returned dist has entries of the form "${target}${sep}${cluster}"=>f($target,$cluster)
+##  + %args are passed to MUDL::EDist::Nary->new()
+##  + returned dist structure:
+##      ($datum_id, $clusterid) = $edist->split($event)
+sub toJointEDist {
+  my $tc = shift;
+  require MUDL::Dist::Nary;
+
+  my ($k,$n) = ($tc->{nclusters}, $tc->{data}->dim(1));
+  my ($lenum,$cenum) = $tc->toEnums();
+
+  ##-- get (cluster,leaf) distance matrix
+  my ($ld,$ldmax);
+  $ld    = $tc->leafdistances() if (!defined($ld=$tc->{leafdist}));
+  $ldmax = $ld->max;
+
+  ##-- gnerate edist
+  my $edist = MUDL::EDist::Nary->new(enum=>MUDL::Enum::Nary->new(enums=>[$lenum,$cenum],nfields=>2),
+				     nfields=>2,
+				     @_);
+  foreach $eid (0..($n-1)) {
+    foreach $cid (0..($k-1)) {
+      $edist->{nz}{$eid.$edist->{sep}.$cid} = $ldmax - $ld->at($cid,$eid)
+	if ($ldmax - $ld->at($cid,$eid) > 0);
+    }
+  }
+
+  return $edist;
+}
+
+
+##======================================================================
+## $edist = $tc->toConditionalEDist(%args)
+## $edist = $tc->toEDist(%args)
+##  + returns a MUDL::EDist::Nary representing the clusters
+##  + returned dist has entries of the form "${target}${sep}${cluster}"=>p($cluster|$target)
+##  + %args are passed to MUDL::EDist::Nary->new()
+##  + returned dist structure:
+##      ($datum_id, $clusterid) = $edist->split($event)
+*toEDist = \&toConditionalEDist;
+sub toConditionalEDist {
+  my $tc = shift;
+  my $ed = $tc->toJointEDist(@_);
+  return $ed->conditionalize([1]);
+}
+
+
+##======================================================================
+## $lex = $tc->toLex(%args)
+##  + returns a MUDL::Lex representing the clusters
+##  + %args are passed to MUDL::EDist::Nary->new()
+sub toLex {
+  my $tc = shift;
+  return $tc->toJointEDist(@_)->toDist->toLex();
+}
+
+##======================================================================
+## $lex = $tc->toSupLex(%args)
+##  + returns a MUDL::SupLex representing the clusters
+##  + %args are passed to MUDL::Corpus::Profile::SupLex->new()
+sub toSupLex {
+  require MUDL::Corpus::Profile::SupLex;
+  my $tc = shift;
+  return MUDL::Corpus::Profile::SupLex->new(nz=>$tc->toJointEDist(@_)->{nz},
+					    @_);
+}
+
+##======================================================================
+## $map = $tc->toMap(%args)
+##  + returns a MUDL::Map representing the clustering solution
+##  + %args are passed to MUDL::Map->new()
+sub toMap {
+  require MUDL::Map;
+  my $tc = shift;
+
+  my ($k,$n) = ($tc->{nclusters}, $tc->{data}->dim(1));
+  my ($lenum,$cenum) = $tc->toEnums();
+  my $cids = $tc->{clusterids};
+
+  ##-- generate map
+  my $map = MUDL::Map->new(@_);
+  foreach $i (0..($n-1)) {
+    $map->{$lenum->symbol($i)} = $cenum->symbol($cids->at($i));
+  }
+
+  return $map;
+}
+
+##======================================================================
+## $map = $tc->toMetaMap(%args)
+##  + returns a MUDL::Map representing the clustering solution,
+##    retaining all leaf labels on each cluster label
+##  + %args are passed to MUDL::Map->new()
+sub toMetaMap {
+  require MUDL::Map;
+  my $tc = shift;
+
+  my ($k,$n) = ($tc->{nclusters}, $tc->{data}->dim(1));
+  my $lenum  = $tc->leafEnum;
+  my $cenum  = $tc->clusterEnumFull;
+  my $cids   = $tc->{clusterids};
+
+  ##-- generate map
+  my $map = MUDL::Map->new(@_);
+  foreach $i (0..($n-1)) {
+    $map->{$lenum->symbol($i)} = $cenum->symbol($cids->at($i));
+  }
+
+  return $map;
+}
+
+
+
+########################################################################
+## Viewing
+########################################################################
+
+##======================================================================
 ## $tree = $tc->toTree(%args)
 ##  + returns a MUDL::Tree representing the clusters
 ##  + %args are passed to MUDL::Tree->toTree(), fromClusters()
@@ -136,6 +407,8 @@ sub toTree {
   return MUDL::Tree->fromClusterPDL($tc->{ctree},
 				    enum=>$tc->{enum},
 				    dists=>$tc->{linkdist},
+				    groups=>$tc->{clusterids},
+				    #dmult=>100,
 				    @_);
 }
 

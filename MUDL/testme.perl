@@ -5,6 +5,7 @@ use MUDL;
 use MUDL::PDL;
 use MUDL::Cluster::KMeans;
 use MUDL::Cluster::Tree;
+use MUDL::CmdUtils;
 use PDL;
 use Chart::Graph::Gnuplot qw(gnuplot);
 

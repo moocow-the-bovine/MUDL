@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::CorpusIO.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -695,7 +695,7 @@ sub putSentence {
 
 ##-- aliases
 package MUDL::CorpusReader::Corpus;  our @ISA=qw(MUDL::CorpusIO::Corpus);
-package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusWriter::Corpus);
+package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusIO::Corpus);
 
 1;
 

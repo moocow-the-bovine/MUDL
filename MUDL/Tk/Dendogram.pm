@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::Tk::Dendogram.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -9,6 +9,7 @@
 package MUDL::Tk::Dendogram;
 use MUDL::Object;
 use Tk;
+use Tk::ROText;
 
 our @ISA = qw(MUDL::Object);
 
@@ -24,6 +25,8 @@ our @ISA = qw(MUDL::Object);
 ##      xpad=>$pixels
 ##      ypad=>$pixels
 ##      dmult=>$distance_multiplier # default: 1
+##      gcolor=>$groupHlColor,
+##      gdepth=>$groupDepth,
 ##   + Assumptions:
 ##     - interior nodes of $tree are integer-labelled
 ##     - $tree may have {dists} member: used for computing distances
@@ -47,6 +50,11 @@ sub new {
 			       canvasWidth=>800,
 			       canvasHeight=>600,
 
+			       gcolor=>'blue',
+			       gdepth=>50,
+			       gxpad=>2,
+			       gypad=>2,
+
 			       ##-- User options
 			       @_,
 			      );
@@ -67,7 +75,7 @@ sub view {
   #--------------------------------------
   # Main Window
   my $w = $dg->{main} = Tk::MainWindow->new();
-  $w->title('MUDL::Tk::Dendogram');
+  $w->title(ref($dg));
 
   #--------------------------------------
   # Menus
@@ -120,18 +128,35 @@ sub view {
 		  -command=>sub {$w->destroy});
 
   #--------------------
-  # Menus: Window
-  my $mbw = $dg->{menu}{window}  = $mb->Menubutton(-text=>'Window', Name=>'window', -underline=>0);
-  $mbw->pack(-side=>'left');
+  # Menus: Options
+  my $mbo = $dg->{menu}{options}  = $mb->Menubutton(-text=>'Options', Name=>'options', -underline=>0);
+  $mbo->pack(-side=>'left');
 
-  $mbw->menu->add('checkbutton',
-		  -label=>'Info',
-		  -accelerator=>'Ctrl+i',
-		  -variable=>\$dg->{info}{state},
-		  -command=>sub{$dg->ddg_menu_showinfo},
+  #$mbo->menu->add('checkbutton',
+	#	  -label=>'Show Node Details',
+	#	  -accelerator=>'Ctrl+i',
+	#	  -variable=>\$dg->{info}{state},
+	#	  -command=>sub{$dg->ddg_menu_showinfo},
+	#	 );
+
+  $mbo->menu->add('checkbutton',
+		  -label=>'Show Leaf Groups',
+		  -accelerator=>'Ctrl+g',
+		  -variable=>\$dg->{info}{gstate},
+		  -command=>sub{$dg->ddg_menu_showgroups},
 		 );
-  $w->bind('all', '<Control-KeyPress-i>', sub { $dg->ddg_menu_showinfo });
 
+  $mbo->menu->add('checkbutton',
+		  -label=>'Regex Search Mode',
+		  -accelerator=>'Ctrl+r',
+		  -variable=>\$dg->{info}{searchregex},
+		 );
+
+
+  $w->bind('all', '<Control-KeyPress-g>',
+	   sub { $dg->{info}{gstate} = !$dg->{info}{gstate}; $dg->ddg_menu_showgroups });
+  $w->bind('all', '<Control-KeyPress-r>',
+	   sub { $dg->{info}{searchregex} = !$dg->{info}{searchregex} });
 
   #--------------------
   # Menus: Top, Bindings
@@ -140,32 +165,68 @@ sub view {
 
 
   #--------------------------------------
-  # Info Frame
-  my $iw = $dg->{info}{top} = $w->Toplevel(Name=>'infobox');
-  $iw->title('MUDL::Tk::Dendogram Info');
+  # Info Panel / info frame
+  my $iw = $dg->{info}{top} = $w->Frame(Name=>'infobox',relief=>'groove',-bd=>2);
 
   ##-- infopair($label,\$variable)
   my $iwrow = 0;
-  my $iwlf = $iw->Frame();
+  my $iwcf = $iw->Frame(-relief=>'groove',-bd=>2);
   my $iwpair = sub {
-    my ($label,$varref) = @_;
-    my $pl = $iwlf->Label(-text=>$label,-font=>$dg->{ilfont}, -justify=>'right', -anchor=>'e');
-    my $pv = $iwlf->Label(-textvariable=>$varref,-font=>$dg->{ivfont}, -justify=>'left', -anchor=>'w');
+    my ($parent,$label,$varref,$width) = @_;
+    $width = 20 if (!defined($width));
+    my $pl = $parent->Label(-text=>$label,-font=>$dg->{ilfont}, -justify=>'right', -anchor=>'ne');
+    my $pv = $parent->Label(-textvariable=>$varref,-font=>$dg->{ivfont}, -justify=>'left', -anchor=>'nw',-width=>$width);
     $pl->grid(-row=>$iwrow,-column=>0,-sticky=>'nsew');
     $pv->grid(-row=>$iwrow,-column=>1,-sticky=>'nsew');
     ++$iwrow;
   };
-  $iwpair->('Node Id:', \$dg->{info}{nodeid});
-  $iwpair->('Node Distance:', \$dg->{info}{nodedist});
-  $iwpair->('Log Distance:', \$dg->{info}{logdist});
+  $iwpair->($iwcf, 'Max Group Size:', \$dg->{info}{maxgsize},5);
+  $iwpair->($iwcf, 'Avg Group Size (NS):', \$dg->{info}{avggsize},5);
+
+  $iwrow = 0;
+  my $iwlf = $iw->Frame(-relief=>'groove',-bd=>2);
+  $iwpair->($iwlf, 'Node Id:', \$dg->{info}{nodeid});
+  $iwpair->($iwlf, 'Group Id:', \$dg->{info}{groupid});
+  $iwpair->($iwlf, 'Node Distance:', \$dg->{info}{nodedist});
+  $iwpair->($iwlf, 'Log Distance:', \$dg->{info}{logdist});
+  $iwpair->($iwlf, 'Node Size:', \$dg->{info}{nodesize});
+
+  ##-- search-entry for leaves
+  my $iwsf = $iw->Frame(-relief=>'groove',-bd=>2,-height=>'10p');
+  my $pl = $iwsf->Label(-text=>'Search:',-font=>$dg->{ilfont}, -justify=>'right', -anchor=>'ne');
+  my $st = $dg->{info}{searchentry} = $iwsf->Entry(-font=>$dg->{ivfont},-width=>20,
+						   -textvariable=>\$dg->{info}{searchtext});
+  $st->bind("<KeyPress-Return>", sub { $dg->ddg_search });
+  $st->bindtags([grep { $_ ne 'all' } $st->bindtags]);
+  $pl->pack(-side=>'left');
+  $st->pack(-side=>'right',-fill=>'x',-expand=>1);
+
+  my $iwtf = $iw->Frame(-bd=>2);
+  my $istpair = sub {
+    my ($label,$tref,$width,$height) = @_;
+    $width = 20 if (!defined($width));
+    $height = 5 if (!defined($height));
+    my $pf = $iwtf->Frame(-relief=>'groove',-bd=>2);
+    my $pl = $pf->Label(-text=>$label,-font=>$dg->{ilfont}, -justify=>'center', -anchor=>'c');
+    my $pv = $pf->Scrolled('Text', -font=>$dg->{ivfont}, -wrap=>'word', -width=>$width,-height=>$height);
+    $pl->pack(-side=>'top',-fill=>'x');
+    $pv->pack(-side=>'top',-fill=>'both',-expand=>1);
+    $$tref = $pv;
+    return $pf;
+  };
+  $istpair->('Node Tags:', \$dg->{info}{tagstext},20,5)->pack(-side=>'top',-fill=>'x'); #\$dg->{info}{nodetags}
+  $istpair->('Leaves:', \$dg->{info}{leavestext}, 20,10)->pack(-side=>'top',-fill=>'both',-expand=>1);
 
 
-  my $iwdismiss = $iw->Button(Name=>'dismiss',-text=>'Dismiss',-command=>[sub { $iw->withdraw(); }]);
-  $iwlf->pack(-side=>'top',-fill=>'both',-expand=>1);
-  $iwdismiss->pack(-side=>'bottom',fill=>'x');
-  #$iwdismiss->grid(-row=>$iwrow,-column=>0,-columnspan=>2,-sticky=>'nsew');
-
-  $iw->withdraw();
+  #my $iwdismiss = $iw->Button(Name=>'dismiss',
+	#		      -text=>'Dismiss',
+	#		      -command=>[sub { $iw->withdraw();$dg->{info}{state}=0; }]);
+  $iwcf->pack(-side=>'top',-fill=>'x',-expand=>0);
+  $iwlf->pack(-side=>'top',-fill=>'x',-expand=>0);
+  $iwsf->pack(-side=>'top',-fill=>'both',-expand=>0);
+  $iwtf->pack(-side=>'top',-fill=>'both',-expand=>1);
+  #$iwdismiss->pack(-side=>'bottom',fill=>'x');
+  #$iw->withdraw();
 
   #--------------------------------------
   # Canvas
@@ -178,7 +239,8 @@ sub view {
 				       -width=>$dg->{canvasWidth},
 				       -height=>$dg->{canvasHeight},
 				      );
-  $c->pack(qw(-fill both expand 1));
+  $iw->pack(-side=>'left',-fill=>'y',-expand=>0,ipadx=>5,ipady=>5);
+  $c->pack(-side=>'left',-fill=>'both',expand=>1,ipadx=>5,ipady=>5);
 
   #--------------------------------------
   # Bindings
@@ -197,18 +259,18 @@ sub view {
 		  }
 		 ]);
 
-  $c->CanvasBind("<ButtonPress-1>", [\&ddg_canvas_select,
-				     $dg,
-				     Ev('x'), Ev('y'),
-				    ]);
+  $c->CanvasBind("<ButtonPress-1>", sub { $dg->ddg_canvas_select('current') });
+				     #$dg,
+				     #'current'
+				     #Ev('x'), Ev('y'),
+				    #]);
 
-  $c->CanvasBind("<ButtonPress-3>", [\&ddg_show_info,
+  $c->CanvasBind("<ButtonPress-3>", [\&ddg_display_info,
 				     $dg,
 				     Ev('x'), Ev('y'),
 				    ]);
 
   #$c->CanvasBind("<Button-1>", [\&ddg_canvas_center, Ev('x'), Ev('y')] );
-
 
   #--------------------------------------
   # Guts
@@ -225,6 +287,8 @@ sub toCanvas {
   my ($dg,$c,%args) = @_;
 
   $dg->{cid2nid} = {}; ##-- maps canvas to node-ids
+  $dg->{tree}{groups}  = { map { $_=>0 } ($dg->{tree}->leaves) }
+    if (!defined($dg->{tree}{groups}) || !%{$dg->{tree}{groups}});
   $dg->{tree}->traverse({dg=>$dg,
 			 canvas=>$c,
 			 sub=>\&_ddg_do_node,
@@ -234,6 +298,10 @@ sub toCanvas {
 			 ancestors=>[],
 			 tags=>[],
 			});
+
+  ##-- groups?
+  $dg->ddg_menu_showgroups if ($dg->{info}{gstate});
+  $dg->ddg_menu_showinfo if ($dg->{info}{state});
 
   ##-- recenter
   my @bbox = $c->bbox('all');
@@ -275,9 +343,10 @@ sub _ddg_draw_node {
     #print STDERR "    : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";
 
     $cid = $canvas->createText(0, $args->{texty},
-			       -tags => ['node',
-					 ($tree->isLeafNode($node) ? 'leaf' : qw()),
+			       -tags => ['node', 'leaf',
 					 ('n'.$keystr),
+					 ('al'.$keystr),
+					 'g'.$tree->{groups}{$keystr},
 					 @{$args->{ancestors}},
 					 @{$args->{tags}},
 					],
@@ -288,6 +357,13 @@ sub _ddg_draw_node {
 			      );
     $args->{texty} = $dg->{ypad} + ($canvas->bbox($cid))[3];
     $args->{dg}{cid2nid}{$cid} = $node;
+
+    ##-- add 'leaves' nodeinfo
+    my ($ancid);
+    foreach (@{$args->{ancestors}}) {
+      (my $ancid=$_) =~ s/^dn//;
+      push(@{$args->{nodeinfo}{$ancid}{leaves}}, ('al'.$keystr));
+    }
   }
   else {
     ##--------------------------
@@ -326,6 +402,7 @@ sub _ddg_draw_node {
 			       -tags=>['node',
 				       ('n'.$keystr),
 				       @{$args->{ancestors}},
+				       @{$args->{nodeinfo}{$keystr}{leaves}},
 				       @{$args->{tags}}]);
     $args->{dg}{cid2nid}{$cid} = $node;
 
@@ -337,6 +414,7 @@ sub _ddg_draw_node {
 			       -tags=>['line',
 				       ('n'.$keystr),
 				       @{$args->{ancestors}},
+				       @{$args->{nodeinfo}{$keystr}{leaves}},
 				       @{$args->{tags}}]);
     $args->{dg}{cid2nid}{$cid} = $node;
   }
@@ -366,23 +444,57 @@ sub ddg_canvas_center {
 
 
 ##======================================================================
+## Search
+sub ddg_search {
+  my $dg = shift;
+  my $canvas = $dg->{canvas};
+  my $stxt = $dg->{info}{searchtext};
+
+  $canvas->dtag('search');
+  my ($txt);
+  foreach (
+	   grep {
+	     $txt=$canvas->itemcget($_,'-text');
+	     $dg->{info}{searchregex} ? ($txt =~ $stxt) : $txt eq $stxt
+	   } $canvas->find(withtag=>'node'))
+    {
+      print STDERR "--- search($stxt): found cid=$_ ---\n";
+      $dg->{canvas}->addtag('search', withtag=>$_);
+    }
+  $dg->ddg_canvas_select('search');
+}
+
+
+##======================================================================
 ## Selection
 sub ddg_canvas_select {
-  my ($canvas,$dg,$sx,$sy) = @_;
-  my ($cx,$cy) = ($canvas->canvasx($sx), $canvas->canvasy($sy));
+  my ($dg,$stag) = @_;
+  my $canvas = $dg->{canvas};
+
+  #my ($canvas,$dg,$sx,$sy) = @_;
+  #my ($cx,$cy) = ($canvas->canvasx($sx), $canvas->canvasy($sy));
   #print "select: canvas=$canvas ; args=@_\n";
 
-  my @current = $canvas->find(withtag=>'current');
+  my @current = $canvas->find(withtag=>$stag);
   #print "current=@current\n";
 
   ##-- delete old selection
   $canvas->itemconfigure('selected', -fill=>'black');
+  $canvas->itemconfigure('selected&&goutline', -fill=>'white');
   $canvas->delete('selbox');
   $canvas->dtag('selected');
+
+  ##-- delete old group
+  $canvas->itemconfigure('gselected', -fill=>'black');
+  $canvas->itemconfigure('gselected&&goutline', -fill=>'white');
+  $canvas->dtag('gselected');
 
   ##-- add new selection
   #print "selected=", join(' ', $canvas->find(withtag=>'selected')), "\n";
   foreach (@current) {
+    ##-- ignore non-nodes
+    next if (!defined($dg->{cid2nid}{$_}));
+
     #print
     #  ("current=$_ ; tags=", join(' ', $canvas->itemcget($_, '-tags')),
     #   "; id=", $dg->{tree}->key2str($dg->{cid2nid}{$_}), "\n");
@@ -390,29 +502,82 @@ sub ddg_canvas_select {
   }
   $canvas->addtag('selected',withtag=>'current');
 
-  ##-- highlight in blue
-  #$canvas->itemconfigure('selected', -fill=>'blue');
+  ##-- info variables: defaults
+  $dg->{info}{nodeid} =
+    $dg->{info}{nodedist} =
+      $dg->{info}{logdist} =
+	$dg->{info}{nodesize} =
+	  $dg->{info}{groupid} = '(undef)';
 
-  ##-- box it
+
+  ##-- info variables
+  my ($cid,$nodeid);
+  if (defined($cid=$current[0])) {
+    ##-- node tags
+    my @tags = $canvas->gettags($cid);
+    $dg->{info}{tagstext}->delete('0.0','end');
+    $dg->{info}{tagstext}->insert('end', join(' ', @tags));
+
+    my ($gid,$distr);
+    if (defined($dg->{cid2gid}) && defined($gid=$dg->{info}{groupid}=$dg->{cid2gid}{$cid})) {
+      ##-- info variables: group
+      $canvas->addtag('selected', withtag=>"g$gid");
+
+      my @gleaves = map { $dg->{cid2nid}{$_} } $canvas->find(withtag=>"g$gid&&leaf");
+      $cid = (sort { $a <=> $b }
+	      $canvas->find(withtag=>join("&&", map { 'al'.$_ } @gleaves)))[0];
+
+      $canvas->addtag('selected', withtag=>"n$dg->{cid2nid}{$cid}||dn$dg->{cid2nid}{$cid}");
+    }
+
+
+    if (defined($cid) && defined($nodeid=$dg->{info}{nodeid}=$dg->{cid2nid}{$cid})) {
+      ##-- set info variables: node
+
+      ##-- distance
+      $distr = \$dg->{info}{nodedist};
+      $$distr = $dg->{tree}{dists}{$nodeid};
+      if (defined($$distr)) {
+	$dg->{info}{logdist} = sprintf("%11.4e", log($$distr));
+	$$distr = sprintf("%11.4e", $$distr);
+      } else {
+	$dg->{info}{nodedist} = $dg->{info}{logdist} = '(undef)';
+      }
+
+      ##-- group-id from leaf
+      if ($dg->{tree}->isLeafNode($nodeid) && defined($dg->{tree}{groups})) {
+	if (defined($gid=$dg->{info}{groupid}=$dg->{tree}{groups}{$nodeid})) {
+	  ##-- highlight group members
+	  $canvas->addtag('gselected', withtag=>("g$gid"));
+	  $canvas->itemconfigure('gselected', -fill=>$dg->{gcolor});
+	}
+
+      }
+      $dg->{info}{groupid} = '(none)' if (!defined($dg->{info}{groupid}));
+
+      ##-- node size, leaves
+      my @leaves = $canvas->find(withtag=>"leaf&&dn$nodeid");
+      $dg->{info}{nodesize} = scalar(@leaves);
+      $dg->{info}{leavestext}->delete('0.0','end');
+      $dg->{info}{leavestext}->insert('end',
+				      join(' ',
+					   "g$dg->{info}{groupid}:",
+					   map {
+					     $canvas->itemcget($_,'-text')
+					   } @leaves));
+      $dg->{info}{leavestext}->tagAdd('sel', '0.0','end');
+    }
+  }
+
+
+  ##-- selection: fill in blue
+  $canvas->itemconfigure('selected', -fill=>'blue');
+
+  ##-- selection: box
   my @bbox = $canvas->bbox('selected');
   if (@bbox) {
     #print "bbox=@bbox\n";
     $canvas->createRectangle(@bbox, -outline=>'blue', -tags=>['selbox']);
-  }
-
-  ##-- set info variables
-  my ($cid,$nodeid);
-  if (defined($cid=$current[0])) {
-    $nodeid = $dg->{info}{nodeid} = $dg->{cid2nid}{$cid};
-
-    my $distr = \$dg->{info}{nodedist};
-    $$distr = $dg->{tree}{dists}{$nodeid};
-    if (defined($$distr)) {
-      $dg->{info}{logdist} = log($$distr);
-      $$distr = sprintf("%e", $$distr);
-    } else {
-      $dg->{info}{nodedist} = $dg->{info}{logdist} = '(undef)';
-    }
   }
 
   return;
@@ -420,7 +585,7 @@ sub ddg_canvas_select {
 
 ##======================================================================
 ## Selection
-sub ddg_show_info {
+sub ddg_display_info {
   my ($canvas,$dg,$sx,$sy) = @_;
   ddg_canvas_select(@_);
 
@@ -471,6 +636,8 @@ sub loadTreeFile {
     $dg->{canvas}->delete('all');
     $dg->toCanvas($dg->{canvas})
   }
+
+  $dg->{main}->title(ref($dg)." - ".$file);
 }
 
 
@@ -512,6 +679,77 @@ sub ddg_menu_showinfo {
   } else {
     $dg->{info}{top}->withdraw();
   }
+};
+
+##======================================================================
+## Tk: show groups
+sub ddg_menu_showgroups {
+  my $dg = shift;
+  my $canvas = $dg->{canvas};
+  my $tree = $dg->{tree};
+
+  my $groups = $dg->{tree}{groups};
+  my $cid2gid = $dg->{cid2gid} = {};
+  %$groups = { map { ($_=>0) } $tree->leaves } if (!$groups || !%$groups);
+
+  ##-- delete old groups
+  $dg->{canvas}->delete('group');
+
+  if ($dg->{info}{gstate}) {
+    $dg->{gdepth} = 50 if (!defined($dg->{gdepth}));
+
+    my @lbbox = $canvas->bbox('leaf');
+    my $gxLo  = $lbbox[2] + $dg->{gxpad};
+    my $gxHi  = $gxLo + $dg->{gdepth} + $dg->{gxpad};
+    my ($gy,@gbbox,$cid);
+
+    my %gids = qw();
+    foreach (keys(%$groups)) {
+      $gids{$groups->{$_}}++;
+    }
+
+    my $maxgsize=0;
+    my $totalgsize=0;
+    foreach (values(%gids)) {
+      $totalgsize += $_ if ($_ > 1);
+      $maxgsize = $_ if ($_ > $maxgsize);
+    }
+
+    my $ngroups = scalar(keys(%gids));
+    foreach $gid (keys(%gids)) {
+      ##-- draw
+      @gbbox = $canvas->bbox("g$gid");
+      $gy = ($gbbox[1]+$gbbox[3])/2;
+
+      $cid = $canvas->createText($gxHi, $gy,
+				 -anchor=>'w',
+				 -justify=>'l',
+				 -text=>$gid,
+				 -tags=>['group', 'glabel', "g$gid"],
+				);
+      $cid2gid->{$cid} = $gid;
+
+      $cid = $canvas->createPolygon($gxHi-$dg->{gxpad}, $gy,
+				    $gxLo, $gbbox[1]+$dg->{gypad},
+				    $gxLo, $gbbox[3]-$dg->{gypad},
+				    -outline=>'black',
+				    -fill=>'white',
+				    -tags=>['group', 'goutline', "g$gid"],
+				   );
+      $cid2gid->{$cid} = $gid;
+    }
+
+    $dg->{info}{avggsize} = sprintf("%.2f", $totalgsize/$ngroups);
+    $dg->{info}{maxgsize} = $maxgsize;
+  }
+
+  my @cbbox = $canvas->bbox('all');
+  $canvas->configure(-scrollregion => [
+				       $cbbox[0]-$dg->{xpad},
+				       $cbbox[1]-$dg->{ypad},
+				       $cbbox[2]+$dg->{xpad},
+				       $cbbox[3]+$dg->{ypad},
+				      ]);
 };
 
 ##======================================================================

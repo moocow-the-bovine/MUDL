@@ -664,68 +664,300 @@ sub loadNativeFile {
 #  IO::Handle::input_record_separator($rs);
 #}
 
+##======================================================================
+## I/O: Generic: Modes
+##======================================================================
+
+## \%ioModes = $class_or_obj->ioModes()
+##   + %ioModes = { $modeString => \%modeInfo, ... , 'DEFAULT'=>\%defaultModeInfo }
+##   + %modeInfo = { loadFh=>$loadFh_coderef_or_name, saveFh=>$saveFh_coderef_or_name }
+##   + subclasses may redefine this, but use of 'registerIOMode()' is reccommended
+sub ioModes {
+  return {
+	  'native'  => __PACKAGE__->ioModeHash('Native'),
+	  'xml'     => __PACKAGE__->ioModeHash('XML'),
+	  'bin'     => __PACKAGE__->ioModeHash('Bin'),
+	  ##--
+	  'DEFAULT' => __PACKAGE__->ioModeHash('Native'),
+	 };
+
+}
+
+## \%modeHash = $class_or_obj->ioModeHash($filenameInfix)
+##  + populates a mode hash for $filenameInfix:
+##    (load|save)${filenameInfix}(String|File|Fh)
+sub ioModeHash {
+  my $infix = $_[1];
+  return
+    {
+     loadFh=>"load${infix}Fh",
+     saveFh=>"save${infix}Fh",
+     loadString=>"load${infix}String",
+     saveString=>"save${infix}String",
+     loadFile=>"load${infix}File",
+     saveFile=>"save${infix}File",
+    };
+}
+
+## undef = $class_or_obj->registerIOMode($modeString,\%modeInfo)
+##  + redefines 'sub ${class}::ioModes() {...}'
+sub registerIOMode {
+  my ($that,$modeString,$modeInfo) = @_;
+  my $modes = {};
+  %$modes = %{$that->ioModes()} if (UNIVERSAL::can($that,'ioModes'));
+  $modes->{$modeString} = $modeInfo;
+  *{(ref($that)||$that)."::ioModes"} = sub { return $modes; }
+}
+
+
+## \@fileSuffixModes = $class_or_obj->fileSuffixModes()
+##   + @fileSuffixModes = ( {regex=>$fileRegex, mode=>$ioModeStr}, ... )
+##   + subclasses *may* redefine this method directly, but use of
+##     'registerFileSuffix()' is highly reccommended
+sub fileSuffixModes {
+  return [
+	  {regex=>qr/\.bin$/i,    mode=>'bin'},
+	  {regex=>qr/\.xml$/i,    mode=>'xml'},
+	  {regex=>qr/\.native$/i, mode=>'native'},
+	 ];
+}
+
+## undef = $class_or_obj->registerFileSuffix($suffix,$modeString)
+##  + redefines 'sub ${class}::fileSuffixModes() {...}'
+sub registerFileSuffix {
+  my ($that,$suffix,$modeString) = @_;
+  my $suffixes = [];
+  @$suffixes = @{$that->fileSuffixModes()} if (UNIVERSAL::can($that,'fileSuffixModes'));
+  unshift(@$suffixes, {regex=>qr/${suffix}$/i, mode=>$modeString});
+  *{(ref($that)||$that)."::fileSuffixModes"} = sub { return $suffixes; }
+}
+
 
 ##======================================================================
 ## I/O: Generic: Load
 ##======================================================================
 
-## $class_or_obj->newFromFile($filename,%args)
-##  + creates a new object, loads a file
-##  + known args:
-##     mode => 'xml' | 'bin' | 'native'
-sub loadFile {
-  my ($obj,$file,%args) = @_; 
-  #$obj = $obj->new(%args) if (!ref($obj));
-  my $mode = defined($args{mode}) ? $args{mode} : '';
-  if ($mode eq 'xml' || $file =~ /\.xml$/) {
-    return $obj->loadXMLFile($file,%args)
-      or confess( __PACKAGE__ , "::newFromFile() failed for XML file '$file': $!");
+## $obj = $obj->loadGenericString($str,%args)
+*loadString = \&loadGenericString;
+sub loadGenericString {
+  my ($that,$str,%args) = @_;
+
+  my $mode = (defined($args{mode}) ? $args{mode} : 'DEFAULT');
+  delete($args{mode});
+
+  ##-- first try string method directly
+  if (defined($sub=$that->ioModes->{$mode}{loadString})
+      &&
+      (ref($sub) || defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      return $sub->($that,$str,%args);
+    }
+
+  ##-- fallback to Fh method
+  if (!defined($sub=$that->ioModes->{$mode}{loadFh})
+      ||
+      (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      confess((ref($that)||$that), "::loadGenericString(): could not find load sub for mode '$mode': $!");
+      return undef;
+    }
+
+  my $fh = IO::Scalar->new(\$str);
+  if (!$fh) {
+    confess((ref($that)||$that) , "::loadGenericString(): open failed for string: $!");
+    return undef;
   }
-  elsif ($mode eq 'bin' || $file =~ /(?:\.bin|\.sto)$/) {
-    return $obj->loadBinFile($file,%args)
-      or confess( __PACKAGE__ , "::newFromFile() failed for bin file '$file': $!");
-  }
-  else {
-    return $obj->loadNativeFile($file,%args)
-      or confess( __PACKAGE__ , "::newFromFile() failed for native file '$file': $!");
-  }
+  my $rc = $sub->($that, $fh, %args);
+  $fh->close();
+  return $rc;
 }
+
+## $obj = $obj->loadGenericFile($filename,@args)
+*loadFile = \&loadGenericFile;
+sub loadGenericFile {
+  my ($that,$filename,%args) = @_;
+  my $mode = $args{mode};
+  delete($args{mode});
+
+  ##-- guess mode from filename suffix
+  if (!defined($mode)) {
+    my $suffs = $that->fileSuffixModes();
+    foreach $suffSpec (@$suffs) {
+      if ($filename =~ $suffSpec->{regex}) {
+	$mode = $suffSpec->{mode};
+	last;
+      }
+    }
+  }
+  $mode = 'DEFAULT' if (!defined($mode));
+
+  ##-- first try file method directly
+  if (defined($sub=$that->ioModes->{$mode}{loadFile})
+      &&
+      (ref($sub) || defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      return $sub->($that,$filename,%args);
+    }
+
+  ##-- get load sub: fallback to fh method
+  if (!defined($sub=$that->ioModes->{$mode}{loadFh})
+      ||
+      (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      confess((ref($that)||$that), "::loadGenericFile(): could not find load sub for mode '$mode': $!");
+      return undef;
+    }
+
+  ##-- get fh
+  my $fh = IO::File->new("<$filename");
+  if (!$fh) {
+    confess((ref($that)||$that) , "::loadGenericFile(): open failed for '$filename': $!");
+    return undef;
+  }
+  binmode($fh,':utf8');
+
+  my $rc = $sub->($that, $fh, %args);
+  $fh->close();
+  return $rc;
+}
+
+
+## $obj = $obj->loadGenericFh($fh,%args)
+*loadFh = \&loadGenericFh;
+sub loadGenericFh {
+  my ($that,$fh,%args) = @_;
+  my $mode = defined($args{mode}) ? $args{mode} : 'DEFAULT';
+  delete($args{mode});
+
+  ##-- get load sub: fh method only
+  if (!defined($sub=$that->ioModes->{$mode}{loadFh})
+      ||
+      (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      confess((ref($that)||$that), "::loadGenericFh(): could not find load sub for mode '$mode': $!");
+      return undef;
+    }
+
+  my $rc = $sub->($that, $fh, %args);
+  $fh->close();
+  return $rc;
+}
+
+
 
 
 ##======================================================================
 ## I/O: Generic: Save
 ##======================================================================
 
-## $class_or_obj->saveFile($filename,%args)
-##  + creates a new object, loads a file
-##  + known args:
-##     mode => 'xml' | 'bin' | 'native'
-sub saveFile {
-  my ($obj,$file,%args) = @_;
+## $string = $obj->saveGenericString(%args)
+*saveString = \&saveGenericString;
+sub saveGenericString {
+  my ($that,%args) = @_;
 
-  my $mode = $args{mode};
-  if ($file =~ /^([^:]+):(.*)/) {
-    $file = $2;
-    $mode = $1;
-  }
-  elsif (!defined($mode)) {
-    $mode = '';
-  }
+  my $mode = (defined($args{mode}) ? $args{mode} : 'DEFAULT');
+  delete($args{mode});
 
-  if ($mode eq 'xml' || $file =~ /\.xml$/) {
-    return $obj->saveXMLFile($file,%args)
-      or confess( __PACKAGE__ , "::saveFile() failed for XML file '$file': $!");
+  ##-- first try string method directly
+  if (defined($sub=$that->ioModes->{$mode}{saveString})
+      &&
+      (ref($sub) || defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      return $sub->($that,%args);
+    }
+
+  ##-- get save sub: fallback to Fh method
+  if (!defined($sub=$that->ioModes->{$mode}{saveFh})
+      ||
+      (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      confess((ref($that)||$that), "::saveGenericString(): could not find save sub for mode '$mode': $!");
+      return undef;
+    }
+
+  my $str = '';
+  my $fh = IO::Scalar->new(\$str);
+  if (!$fh) {
+    confess((ref($that)||$that) , "::saveGenericString(): open failed for string: $!");
+    return undef;
   }
-  elsif ($mode eq 'bin' || $file =~ /(?:\.bin|\.sto)$/) {
-    return $obj->saveBinFile($file,%args)
-      or confess( __PACKAGE__ , "::saveFile() failed for binary file '$file': $!");
-  }
-  else {
-    return $obj->saveNativeFile($file,%args)
-      or confess( __PACKAGE__ , "::saveFile() failed for native file '$file': $!");
-  }
-  return $obj;
+  my $rc = $sub->($that, $fh, %args);
+  $fh->close();
+  return $str;
 }
+
+## $bool = $obj->saveGenericFile($filename,%args)
+*saveFile = \&saveGenericFile;
+sub saveGenericFile {
+  my ($that,$filename,%args) = @_;
+  my $mode = $args{mode};
+  delete($args{mode});
+
+  ##-- guess mode from filename suffix
+  if (!defined($mode)) {
+    my $suffs = $that->fileSuffixModes();
+    foreach $suffSpec (@$suffs) {
+      if ($filename =~ $suffSpec->{regex}) {
+	$mode = $suffSpec->{mode};
+	last;
+      }
+    }
+  }
+  $mode = 'DEFAULT' if (!defined($mode));
+
+  ##-- get save sub: first try file method directly
+  if (defined($sub=$that->ioModes->{$mode}{saveFile})
+      &&
+      (ref($sub) || defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      return $sub->($that,$filename,%args);
+    }
+
+
+  ##-- get save sub: fallback to fh method
+  if (!defined($sub=$that->ioModes->{$mode}{saveFh})
+      ||
+      (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      confess((ref($that)||$that), "::saveGenericFile(): could not find load sub for mode '$mode': $!");
+      return undef;
+    }
+
+  ##-- get fh
+  my $fh = IO::File->new(">$filename");
+  if (!$fh) {
+    confess((ref($that)||$that) , "::saveGenericFile(): open failed for '$filename': $!");
+    return undef;
+  }
+  binmode($fh,':utf8');
+
+  my $rc = $sub->($that, $fh, %args);
+  $fh->close();
+  return $rc;
+}
+
+
+## $obj = $obj->saveGenericFh($fh,%args)
+*saveFh = \&saveGenericFh;
+sub saveGenericFh {
+  my ($that,$fh,%args) = @_;
+  my $mode = defined($args{mode}) ? $args{mode} : 'DEFAULT';
+  delete($args{mode});
+
+  ##-- get load sub
+  if (!defined($sub=$that->ioModes->{$mode}{saveFh})
+      ||
+      (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
+    {
+      confess((ref($that)||$that), "::saveGenericFh(): could not find save sub for mode '$mode': $!");
+      return undef;
+    }
+
+  my $rc = $sub->($that, $fh, %args);
+  $fh->close();
+  return $rc;
+}
+
 
 1;
 

@@ -173,6 +173,47 @@ sub getSize {
 
 
 ##======================================================================
+## Metrics etc.
+##======================================================================
+
+## $I = $d->mutualInformation(\@xfields,\@yfields,%args)
+##   + get mutual information
+##   + %args:
+##      px=>$dist_x,
+##      py=>$dist_y,
+##      xtotal=>$total_x,
+##      ytotal=>$total_y,
+*I = *mi = \&mutualInformation;
+sub mutualInformation {
+  my ($d,$xfields,$yfields,%args) = @_;
+
+  my $Px = $args{px} ? $args{px} : $d->projectN(@$xfields);
+  my $Py = $args{py} ? $args{py} : $d->projectN(@$yfields);
+  my $xtotal = $args{xtotal} ? $args{xtotal} : $Px->total;
+  my $ytotal = $args{ytotal} ? $args{ytotal} : $Py->total;
+
+  my $mi = 0;
+  my $total = $d->total;
+  my ($event,$x,$y,$pxy,$px,$py,@fields);
+  while (($event,$pxy)=each(%{$d->{nz}})) {
+    next if ($pxy==0);
+
+    @fields = $d->split($event);
+    $x = join($Px->{sep}, @fields[@$xfields]);
+    $y = join($Py->{sep}, @fields[@$yfields]);
+
+    $px = $Px->{nz}{$x} / $xtotal;
+    $py = $Py->{nz}{$y} / $ytotal;
+    next if ($px==0 || $py==0);
+
+    $mi += ($pxy/$total) * -log(($pxy/$total)/$px*$py)/log(2);
+  }
+
+  return $mi;
+}
+
+
+##======================================================================
 ## Pruning
 ##======================================================================
 
@@ -272,6 +313,45 @@ sub toBestMap {
   }
   return $map;
 }
+
+##======================================================================
+## Conversion: Lex
+##======================================================================
+
+## $lex = $d->toLex()
+## $lex = $d->toLex($lex)
+sub toLex {
+  require MUDL::Lex;
+  my ($d,$lex) = splice(@_,0,2);
+  $lex = MUDL::Lex->new(@_) if (!ref($lex));
+  my ($event,$f,$w,$t);
+  while (($event,$f)=each(%{$d->{nz}})) {
+    ($w,$t) = $d->split($event);
+    $lex->{counts}{$w}{$t} += $f;
+    $lex->{counts}{$w}{''} += $f;
+    $lex->{counts}{''}     += $f;
+  }
+  return $lex;
+}
+
+##======================================================================
+## I/O: Lex
+##======================================================================
+
+## $obj = $class_or_obj->loadLexFh($fh,%args)
+sub loadLexFh {
+  require MUDL::Lex;
+  return MUDL::Lex->loadNativeFh($_[1],@_[2..$#_])->toDist($_[0],@_[2..$#_]);
+}
+
+## $bool = $class_or_obj->saveLexFh($fh,%args)
+sub saveLexFh {
+  require MUDL::Lex;
+  return $_[0]->toLex(@_[2..$#_])->saveNativeFh($_[1],@_[2..$#_]);
+}
+
+__PACKAGE__->registerIOMode('lex',{loadFh=>'loadLexFh',saveFh=>'saveLexFh'});
+__PACKAGE__->registerFileSuffix(qr/\.lex$/, 'lex');
 
 1;
 
