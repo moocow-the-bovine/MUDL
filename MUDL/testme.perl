@@ -9,6 +9,8 @@ use MUDL::CmdUtils;
 use PDL;
 use Chart::Graph::Gnuplot qw(gnuplot);
 
+use MUDL::Bigrams;
+
 BEGIN { $, = ' '; }
 
 ##----------------------------------------------------------------------
@@ -415,6 +417,54 @@ sub dgprep {
 ##----------------------------------------------------------------------
 use MUDL::Tree;
 use MUDL::Tk::Tree;
+
+##----------------------------------------------------------------------
+## BIGRAM TESTS
+##----------------------------------------------------------------------
+
+sub loadbg0 {
+  $bg  = load('bgs.bin');
+  $bgo = $bg->copy;
+
+  $ug   = $bg->project1(0);
+  $ug->pruneByValue(min=>10);
+
+  $enp  = $ug->toEnum(MUDL::Enum->new);
+  $ennp = MUDL::Enum::Nary->new(nfields=>2,enums=>[$enp,$enp]);
+
+  $bg->pruneByEnum(enum=>$ennp);
+
+  $bge = $bg->toEDist($ennp);
+  $uge = $ug->toEDist($uge);
+}
+
+use MUDL::PdlDist;
+use PDL::Graphics::PGPLOT;
+use PDL::Graphics::PGPLOT::Window;
+
+*loadbg = \&loadbg1;
+sub loadbg1 {
+  $bgo = load('bgs.bin');
+  $bge = load('bge.bin');
+
+  $uge = load('uge.bin');
+  $ugen = MUDL::EDist::Nary->new(nfields=>1, nz=>$uge->{nz}, enum=>$uge->{enum});
+
+  $enp = load('enp.bin');
+  $ennp = load('ennp.bin');
+
+  $h0g1 = $bge->entropyOver([0]);
+  $h1g0 = $bge->entropyOver([1]);
+
+  $ugp = $uge->toPDL;
+  $h0g1p = $h0g1->toPDL;
+  $h1g0p = $h1g0->toPDL;
+
+  $xwin = PDL::Graphics::PGPLOT::Window->new(device=>'/XWINDOW');
+  $xwin->autolog(1);
+  $win = $xwin;
+}
+
 
 ##----------------------------------------------------------------------
 ## Dummy

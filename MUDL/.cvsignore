@@ -4,3 +4,5 @@
 *.indices
 *.ps
 *.xml
+plots
+avg

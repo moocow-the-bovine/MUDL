@@ -11,6 +11,7 @@ use MUDL::EDist;
 use IO::File;
 use PDL;
 use PDL::Fit::Linfit;
+use PDL::IO::Storable; ##-- very tricky
 use Carp;
 
 our @ISA = qw(MUDL::Object);
@@ -177,7 +178,7 @@ sub entropy {
 
 ## $I = $d->mutualInformation()
 ##   + get mutual information
-##   + $d should be a 2d square joint probability or frequency matrix for
+##   + $d should be a 2d square joint probability matrix for
 ##     this method to produce meaningful results
 ##   + TODO: check the definition on this one...
 *I = \&mutualInformation;
@@ -188,7 +189,8 @@ sub mutualInformation {
     confess(ref($d), "::mutualInformation(): PDL matrix is not square!");
   }
 
-  my $pxy = $p;
+  my $total = shift||$d->total;
+  my $pxy = $p / $total;
   my $py  = $pxy->sumover;
   my $px  = $pxy->xchg(0,1)->sumover->transpose;
 

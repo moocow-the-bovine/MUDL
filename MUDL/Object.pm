@@ -8,10 +8,9 @@
 
 package MUDL::Object;
 use MUDL::XML;
-
-use Storable;
 use IO::File;
 use IO::Scalar;
+use Storable;
 use Carp;
 
 ##======================================================================

@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::EDist.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -12,8 +12,8 @@
 package MUDL::EDist;
 use MUDL::Dist;
 use MUDL::Enum;
-use MUDL::PDL;
 use PDL;
+use MUDL::PdlDist;
 our @ISA = qw(MUDL::Dist::Partial);
 
 ##======================================================================
@@ -73,7 +73,7 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  my $pdl = MUDL::PDL->new(zeroes( pdl([keys %{$de->{nz}}])->max + 1));
+  my $pdl = zeroes(double, max(pdl([keys %{$de->{nz}}]))+1);
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
 }
@@ -138,8 +138,7 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  #my $pdl = zeroes( pdl([keys %$de])->max + 1 );
-  my $pdl = MUDL::PDL->new(zeroes scalar(@{$de->{enum}{id2sym}}));
+  my $pdl = zeroes(double, scalar(@{$de->{enum}{id2sym}}));
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
 }
@@ -220,7 +219,7 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  my $pdl = MUDL::PDL->new(zeroes( map { scalar(@{$_->{id2sym}}) } @{$de->{enum}{enums}} ));
+  my $pdl = zeroes(double, map { scalar(@{$_->{id2sym}}) } @{$de->{enum}{enums}} );
   $de->{nfields} = $pdl->ndims;
   foreach (keys(%{$de->{nz}})) {
     $pdl->set($de->split($_), $de->{nz}{$_});

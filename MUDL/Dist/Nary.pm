@@ -187,6 +187,9 @@ sub getSize {
 sub mutualInformation {
   my ($d,$xfields,$yfields,%args) = @_;
 
+  $xfields=[0] if (!$xfields || !@$xfields);
+  $yfields=[1] if (!$yfields || !@$yfields);
+
   my $Px = $args{px} ? $args{px} : $d->projectN(@$xfields);
   my $Py = $args{py} ? $args{py} : $d->projectN(@$yfields);
   my $xtotal = $args{xtotal} ? $args{xtotal} : $Px->total;
@@ -206,10 +209,41 @@ sub mutualInformation {
     $py = $Py->{nz}{$y} / $ytotal;
     next if ($px==0 || $py==0);
 
-    $mi += ($pxy/$total) * -log(($pxy/$total)/$px*$py)/log(2);
+    $mi += ($pxy/$total) * log(($pxy/$total)/($px*$py))/log(2);
   }
 
   return $mi;
+}
+
+
+## $Hdist = $d->entropyOver(\@keyFields)
+##   + returns a dist from key fields to conditional entropy for those fields
+*HOver = \&entropyOver;
+sub entropyOver {
+  my ($d,$keyfields,%args) = @_;
+  $keyfields = [0] if (!$keyfields || !@$keyfields);
+
+  my $totals = $d->projectN(@$keyfields);
+  my $H      = ref($d)->new(sep=>$d->{sep},
+			    nfields=>($d->{nfields}-@$keyfields),
+			    ##-- catch enumerated dists
+			    (defined($d->{enum}) && defined($d->{enum}{enums})
+			     ? (enum=>MUDL::Enum::Nary->new(nfields=>($d->{enum}{nfields}-@$keyfields),
+							    enums=>[@{$d->{enum}{enums}}[@$keyfields]]))
+			     : qw()),
+			   );
+
+  my ($event,$f,@fields, $key,$pke);
+  while (($event,$f)=each(%{$d->{nz}})) {
+    next if ($f <= 0);
+    @fields = $d->split($event);
+
+    $key = join($d->{sep}, @fields[@$keyfields]);
+    $pke = $f/$totals->{nz}{$key};
+
+    $H->{nz}{$key} += -$pke * log($pke)/log(2);
+  }
+  return $H;
 }
 
 
@@ -243,7 +277,6 @@ sub conditionalize {
   my $gd = $d->projectN(@$gf);
   my ($k,$gk);
   foreach $k (keys(%{$d->{nz}})) {
-    #@fields = split(/(?:\Q$d->{sep}\E)+/, $k);
     @fields = $d->split($k);
     $gk = join($d->{sep}, @fields[@$gf]);
     $d->{nz}{$k} /= $gd->{nz}{$gk};

@@ -105,7 +105,7 @@ sub updateStatic {
 sub total {
   my $d = shift;
   my $nztotal = $d->{nz}->total;
-  return $nztotal + $nztotal*$d->{zmass};
+  return $nztotal + $nztotal*($d->{zmass} ? $d->{zmass} : 0);
 }
 
 ## $zmass = $d->missingMass()

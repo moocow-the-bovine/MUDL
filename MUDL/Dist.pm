@@ -107,8 +107,8 @@ sub smear {
 ##      $newval = $coeffs[0] + $coeffs[1]*$key
 sub linfit {
   my $d = shift;
-  my $xdata = pdl([keys   %$d])->inplace->float;
-  my $ydata = pdl([values %$d])->inplace->float;
+  my $xdata = pdl([keys   %$d])->inplace->double;
+  my $ydata = pdl([values %$d])->inplace->double;
   my ($yfit,$coeffs) = linfit1d($ydata, cat(ones($ydata->nelem), $xdata));
   undef $yfit;
   return wantarray ? ($coeffs->at(0),$coeffs->at(1)) : $coeffs;
@@ -120,8 +120,8 @@ sub linfit {
 ##      $newval = $coeffs[0] * $key**$coeffs[1]
 sub loglinfit {
   my $d = shift;
-  my $xdata = pdl([keys   %$d])->inplace->float->inplace->log;
-  my $ydata = pdl([values %$d])->inplace->float->inplace->log;
+  my $xdata = pdl([keys   %$d])->inplace->double->inplace->log;
+  my $ydata = pdl([values %$d])->inplace->double->inplace->log;
   my ($yfit,$coeffs) = linfit1d($ydata, cat(ones($ydata->nelem), $xdata));
   undef $yfit;
   return wantarray ? (exp($coeffs->at(0)),$coeffs->at(1)) : $coeffs;
