@@ -1,22 +1,29 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
-## File: MUDL::Corpus::Profile::LRBound.pm
+## File: MUDL::Corpus::Profile::LRBigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R boundaries
+##  + MUDL unsupervised dependency learner: corpus profile: L-R bigrams
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRBound;
+package MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Corpus::Profile::LR;
+use MUDL::Object;
 use PDL;
 use Carp;
 our @ISA = qw(MUDL::Corpus::Profile::LR);
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
-##   + %args: (see MUDL::Corpus::Profile::LR)
+##   + %args:
+##       eos => $eos_str,
+##       bos => $bos_str,
+##       bounds => $bounds_enum,
+##       targets => $targets_enum,
+##       left=>$left_bigrams,       ## ($target,$lneighbor)
+##       right=>$right_bigrams,     ## ($target,$rneighbor)
 sub new {
-  my ($that,%args) = @_;
+  my ($that,%args) = @_; 
   return $that->SUPER::new(nfields=>1,donorm=>1,%args);
   return $self;
 }
@@ -36,6 +43,7 @@ sub addSentence {
     $pr->{bounds}->addSymbol($pr->{eos});
   }
 
+
   ##------ temporary sentence index profiles
 
   ##-- @st: sentence text
@@ -47,37 +55,21 @@ sub addSentence {
   my @tids = map { $pr->{targets}{sym2id}{$_} } @st;
   my @bids = map { $pr->{bounds}{sym2id}{$_}  } @st;
 
-  ##-- @bi: bound indices
-  my @bi = ((defined($pr->{bos}) ? 0 : qw()),
-	    (grep { defined($bids[$_]) } (1..$#bids)),
-	    (defined($pr->{eos}) ? $#bids : qw()));
+  my $lbg = $pr->{left};
+  my $rbg = $pr->{right};
 
-  #my ($bii,$sti);
-  my ($tid);
-  foreach $bii (0..$#bi) {
+  my ($i);
+  for ($i=0; $i <= $#st; $i++) {
+    next if (!defined($tid=$tids[$i]));
 
-    ##-- add bound's own context, if it is also a target
-    if (defined($tid=$tids[$bi[$bii]])) {
-      ##-- left context
-      ++$pr->{left}{nz}{$tid.$pr->{left}{sep}.$bids[$bi[$bii-1]]}
-	if ($bii > 0);
-
-      ##-- right context
-      ++$pr->{right}{nz}{$tid.$pr->{right}{sep}.$bids[$bi[$bii+1]]}
-	if ($bii < $#bi);
+    ##-- left
+    if ($i > 0 && defined($bid=$bids[$i-1])) {
+      ++$lbg->{nz}{$tid.$lbg->{sep}.$bid};
     }
 
-    ##-- add interior context
-    if ($bii > 0) {
-      foreach $sti ($bi[$bii-1]+1..$bi[$bii]-1) {
-	next if (!defined($tid=$tids[$sti]));
-
-	##-- left context
-	++$pr->{left}{nz}{$tid.$pr->{left}{sep}.$bids[$bi[$bii-1]]};
-
-	##-- right context
-	++$pr->{right}{nz}{$tid.$pr->{right}{sep}.$bids[$bi[$bii]]};
-      }
+    ##-- right
+    if ($i < $#st && defined($bid=$bids[$i+1])) {
+      ++$rbg->{nz}{$tid.$rbg->{sep}.$bid};
     }
   }
 
@@ -88,7 +80,7 @@ sub addSentence {
 
 
 ##======================================================================
-## Conversion: to independent PDL
+## Conversion: to PDL
 
 ##-- inherited from MUDL:::Corpus::Profile::LR
 
@@ -100,7 +92,7 @@ sub addSentence {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract left- and right-periphery profile wrt. fixed boundary set.\n)
+    (qq(Extract left- and right-bigram profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
@@ -109,6 +101,20 @@ sub helpString {
      .qq(  donorm=BOOL      [default=1]\n)
     );
 }
+
+##======================================================================
+## I/O: Native
+## - (output only!)
+
+## $bool = $obj->saveNativeFh($fh,%args)
+sub saveNativeFh {
+  my ($obj,$fh) = @_;
+  $obj->{left}->toDist->saveNativeFh($fh,@_);
+  $fh->print("\n\n\n");
+  $obj->{right}->toDist->saveNativeFh($fh,@_);
+  return $obj;
+}
+
 
 1;
 

@@ -1,9 +1,9 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL::Corpus::Profile::LRBound.pm
+## File: MUDL::Corpus::Profile::MapEval.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R boundaries
+##  + MUDL unsupervised dependency learner: corpus profile: map evaluation
 ##======================================================================
 
 package MUDL::Corpus::Profile::MapEval;
@@ -62,17 +62,17 @@ sub evaluateUg {
     $total += $f;
 
     if ($mk eq $g2mmap->{$gk}) {
-      ##-- +g->m
+      ##-- +(g->m)
       if ($gk eq $m2gmap->{$mk}) {
-	##-- +g->m, +m->g
+	##-- +(g->m), +(m->g)
 	++$tp
       } else {
-	##-- +g->m, -m->g
+	##-- +(g->m), -(m->g)
 	++$fp;
       }
     }
     elsif ($gk eq $m2gmap->{$mk}) {
-      ##-- -g->m, +m->g
+      ##-- -(g->m), +(m->g)
       ++$fn;
     }
   }
