@@ -1,23 +1,33 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
-## File: MUDL::Corpus::Profile::LRBound.pm
+## File: MUDL::Corpus::Profile::LRBigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R boundaries
+##  + MUDL unsupervised dependency learner: corpus profile: L-R bigrams
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRBound;
-use MUDL::Corpus::Profile::LR;
+package MUDL::Corpus::Profile::LRNgrams;
+use MUDL::Corpus::Profile::LRN;
+use MUDL::Object;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::Corpus::Profile::LR);
+our @ISA = qw(MUDL::Corpus::Profile::LRN);
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
-##   + %args: (see MUDL::Corpus::Profile::LR)
+##   + %args:
+##       eos => $eos_str,
+##       bos => $bos_str,
+##       bounds => $bounds_enum,
+##       targets => $targets_enum,
+##       left=>\@left_dists,       ## ($target,$lneighbor)
+##       right=>\@right_dists,     ## ($target,$rneighbor)
+##       width=>$ndists,
 sub new {
-  my ($that,%args) = @_;
-  return $that->SUPER::new(nfields=>1,donorm=>1,%args);
+  my ($that,%args) = @_; 
+  my $width = $args{width} ? $args{width} : ($args{ndists} ? $args{ndists} : 2);
+  delete(@args{qw(width ndists)});
+  return $that->SUPER::new(ndists=>$width,donorm=>1,%args);
   return $self;
 }
 
@@ -27,6 +37,7 @@ sub new {
 ## undef = $profile->addSentence(\@sentence)
 sub addSentence {
   my ($pr,$s) = @_;
+  my $len = $pr->{ndists};
 
   ##-- sanity checks: bos/eos
   if (defined($pr->{bos})) {
@@ -36,48 +47,38 @@ sub addSentence {
     $pr->{bounds}->addSymbol($pr->{eos});
   }
 
+
   ##------ temporary sentence index profiles
 
   ##-- @st: sentence text
-  my @st = ((defined($pr->{bos}) ? $pr->{bos} : qw()),
-	    (map { $_->text } @$s),
-	    (defined($pr->{eos}) ? $pr->{eos} : qw()));
+  my @st = ((map { $pr->{bos} } (1..$len)),
+	    (map { $_->text }   @$s),
+	    (map { $pr->{eos} } (1..$len)));
 
   ##-- @tids, @bids: sentence target (bound) ids
   my @tids = map { $pr->{targets}{sym2id}{$_} } @st;
   my @bids = map { $pr->{bounds}{sym2id}{$_}  } @st;
 
-  ##-- @bi: bound indices
-  my @bi = ((defined($pr->{bos}) ? 0 : qw()),
-	    (grep { defined($bids[$_]) } (1..$#bids)),
-	    (defined($pr->{eos}) ? $#bids : qw()));
+  my $lbgs = $pr->{left};
+  my $rbgs = $pr->{right};
 
-  #my ($bii,$sti);
-  my ($tid);
-  foreach $bii (0..$#bi) {
+  my ($i,$j);
+  for ($i=0; $i <= $#st; $i++) {
+    next if (!defined($tid=$tids[$i]));
 
-    ##-- add bound's own context, if it is also a target
-    if (defined($tid=$tids[$bi[$bii]])) {
+    ##-- window loop
+    for ($j=1; $j <= $len; $j++) {
+
       ##-- left context
-      ++$pr->{left}{nz}{$tid.$pr->{left}{sep}.$bids[$bi[$bii-1]]}
-	if ($bii > 0);
+      if ($i-$j >= 0 && defined($bid=$bids[$i-$j])) {
+	++$lbgs->[$j-1]{nz}{$tid.$lbgs->[$j-1]{sep}.$bid};
+      }
 
       ##-- right context
-      ++$pr->{right}{nz}{$tid.$pr->{right}{sep}.$bids[$bi[$bii+1]]}
-	if ($bii < $#bi);
-    }
-
-    ##-- add interior context
-    if ($bii > 0) {
-      foreach $sti ($bi[$bii-1]+1..$bi[$bii]-1) {
-	next if (!defined($tid=$tids[$sti]));
-
-	##-- left context
-	++$pr->{left}{nz}{$tid.$pr->{left}{sep}.$bids[$bi[$bii-1]]};
-
-	##-- right context
-	++$pr->{right}{nz}{$tid.$pr->{right}{sep}.$bids[$bi[$bii]]};
+      if ($i+$j <= $#st && defined($bid=$bids[$i+$j])) {
+	++$rbgs->[$j-1]{nz}{$tid.$rbgs->[$j-1]{sep}.$bid};
       }
+
     }
   }
 
@@ -88,9 +89,9 @@ sub addSentence {
 
 
 ##======================================================================
-## Conversion: to independent PDL
+## Conversion: to PDL
 
-##-- inherited from MUDL:::Corpus::Profile::LR
+##-- inherited from MUDL:::Corpus::Profile::LRN
 
 
 ##======================================================================
@@ -100,15 +101,44 @@ sub addSentence {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract left- and right-periphery profile wrt. fixed boundary set.\n)
+    (qq(Extract left- and right-N-gram profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
      .qq(  eos=EOS_STRING   [default='__\$']\n)
      .qq(  bos=BOS_STRING   [default='__\$']\n)
      .qq(  donorm=BOOL      [default=1]\n)
+     .qq(  width=N          [default=2]\n)
     );
 }
+
+##======================================================================
+## I/O: Native
+## - (output only!)
+
+## $bool = $obj->saveNativeFh($fh,%args)
+sub saveNativeFh {
+  my ($obj,$fh) = @_;
+
+  foreach $i (0..($obj->{ndists}-1)) {
+    $fh->print("\n",
+	       "%%", ('-' x 72), "\n",
+	       "%% Left (-$i)\n",
+	       "%%", ('-' x 72), "\n");
+    $obj->{left}[$i]->toDist->saveNativeFh($fh,@_);
+  }
+
+  foreach $i (0..($obj->{ndists}-1)) {
+    $fh->print("\n",
+	       "%%", ('-' x 72), "\n",
+	       "%% Right (+$i)\n",
+	       "%%", ('-' x 72), "\n");
+    $obj->{right}[$i]->toDist->saveNativeFh($fh,@_);
+  }
+
+  return $obj;
+}
+
 
 1;
 
