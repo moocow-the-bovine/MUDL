@@ -249,7 +249,7 @@ sub saveXMLNode {
 sub saveXMLString {
   my ($obj,%args) = @_;
   %args = (format=>0, doencoding=>0, %args);
-  my $node = $obj->saveXMLNode(%args);
+  my $node = ref($obj) ? $obj->saveXMLNode(%args) : saveXMLNode($obj,%args);
   return $node->toString($args{format}, $args{doencoding});
 }
 
@@ -259,7 +259,7 @@ sub saveXMLString {
 sub saveXMLDoc {
   my $o = shift;
   my $doc = MUDL::XML::Document->new(@_);
-  my $node = $o->saveXMLNode(@_);
+  my $node = ref($o) ? $o->saveXMLNode(@_) : saveXMLNode($o,@_);
   $doc->setDocumentElement($node);
   return $doc;
 }
