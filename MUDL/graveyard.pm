@@ -63,3 +63,129 @@ sub conditionalEntropy0 {
   return $H;
 }
 
+
+
+#########################################################################
+# from: Tk::Dendogram.pm
+#########################################################################
+
+##-- OLD
+sub view0 {
+  my $dg = shift;
+  my $w = Tk::MainWindow->new();
+  $w->title('MUDL::Tk::Dendogram');
+  $w->bind("<KeyPress-q>", sub { $w->destroy });
+
+  my $c = $w->Scrolled('Canvas',
+		       -background => 'white',
+		       -cursor => 'target',
+		       -borderwidth => 2,
+		       -scrollbars => 'se',
+		       -confine=>1
+		      );
+  $c->pack(qw(-fill both expand 1));
+  $c->CanvasBind("<Button-2>",        [$c, 'scan', 'mark',   Ev('x'), Ev('y')] );
+  $c->CanvasBind("<Button2-Motion>", [$c, 'scan', 'dragto', Ev('x'), Ev('y')] );
+  $c->CanvasBind("<Button-1>", [\&dendogram_canvas_center, Ev('x'), Ev('y')] );
+
+
+  ##-- common arguments: text
+  my @txtargs =
+    (qw(-anchor w -justify left),
+     (defined($c->{font}) ? ('-font',$c->{font}) : qw()),
+    );
+
+  ##-- common arguments: nodes (hide these eventually)
+  my ($wd,$ht) = ($dg->{xpad}/2, $dg->{ypad}/2);
+
+  my ($tmom, $d0, $d1, $d, $d0txt,$d1txt);
+
+  my ($x,$y, $x0,$y0,$x1,$y1);
+  my ($textx,$texty) = (0,0);
+  my $nodeid = 1;
+
+  foreach $i (0..$#{$dg->{tree}}) {
+    $tmom = $dg->{tree}[$i];
+    $dist = $dg->{dist}[$i];
+    $dist = 0 if (!defined($dist));
+
+    ##-----------------------
+    ## first daughter
+    if (($d0=$tmom->[0]) >= 0) {
+      ##-- first daughter is a leaf
+      ($x0,$y0) = (0, $texty);
+      $d0txt = defined($dg->{enum}) ? $dg->{enum}->symbol($d0) : $d0;
+      $d0txt = $d0 if (!defined($d0txt));
+      $d = $c->createText($x0, $y0,
+			  -text=>$d0txt,
+			  @txtargs,
+			  -tags=>['node',
+				  'leaf',
+				  "l$d0"],
+			 );
+      $texty = $dg->{ypad} + ($c->bbox($d))[3];
+    }
+    else {
+      ##-- first daughter is a non-leaf
+      ($x0,$y0) = $c->coords('n'.(-$d0));
+    }
+
+    ##-----------------------
+    ## second daughter
+    if (($d1=$tmom->[1]) >= 0) {
+      ##-- first daughter is a leaf
+      ($x1,$y1) = (0, $texty);
+
+      $d1txt = defined($dg->{enum}) ? $dg->{enum}->symbol($d1) : $d1;
+      $d1txt = $d1 if (!defined($d1txt));
+
+      $d = $c->createText($x1, $y1,
+			  -text=>$d1txt,
+			  -tags=>['node',
+				  'leaf',
+				  "l$d1"],
+			  @txtargs);
+
+      $texty = $dg->{ypad} + ($c->bbox($d))[3];
+    }
+    else {
+      ##-- 2nd daughter is a non-leaf
+      ($x1,$y1) = $c->coords('n'.(-$d1));
+    }
+
+    ##-----------------------
+    ## new node
+    $y  = ($y0 + $y1) / 2;
+    $x  = ($x0 < $x1 ? $x0 : $x1) - $dg->{xpad} - ($dg->{dmult}*$dist);
+    #c->createRectangle(($x-$wd/2), ($y-$ht/2),
+	#		($x+$wd/2), ($y+$ht/2),
+	#		tags=>['node', "n$nodeid"]);
+    $c->createText($x, $y,
+		   -text=>"n$nodeid",
+		   -state=>'hidden',
+		   -tags=>['node', "n$nodeid"]);
+
+    $c->createLine($x0, $y0,
+		   $x,  $y0,
+		   #$x,  $y,
+		   $x,  $y1,
+		   $x1, $y1,
+		   -tags=>['line']);
+
+    $nodeid++;
+  }
+
+  ##---------------------------------------------------------
+  ## recenter
+  ##---------------------------------------------------------
+  my @bbox = $c->bbox('node','line');
+  $c->configure(-scrollregion => [
+				  $bbox[0]-$dg->{xpad},
+				  $bbox[1]-$dg->{ypad},
+				  $bbox[2]+$dg->{xpad},
+				  $bbox[3]+$dg->{ypad},
+				 ]);
+
+  Tk::MainLoop();
+  return;
+}

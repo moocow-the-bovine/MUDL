@@ -4,6 +4,7 @@ use lib qw(..);
 use MUDL;
 use MUDL::PDL;
 use MUDL::Cluster::KMeans;
+use MUDL::Cluster::Tree;
 use PDL;
 use Chart::Graph::Gnuplot qw(gnuplot);
 
@@ -169,27 +170,6 @@ sub smalltest {
 }
 
 
-##----------------------------------------------------------------------
-## Plots: Aliases
-##----------------------------------------------------------------------
-sub plotmc {
-  plotdata({title=>"K-Means Iter #$iter"}, [$mat, title=>'mat'], [$centers, title=>'centers']);
-}
-
-sub plotcl {
-  plotdata({title=>"K-Means Iter #$iter"},
-	   #[$mat, title=>'mat'],
-	   [$centers, title=>'centers'],
-	   map {
-	     my $which = (which $indices == $_);
-	     ($which->isempty
-	      ? qw()
-	      : [$m->dice($which), title=>"cluster $_"])
-	   } (0..$k-1)
-	  );
-}
-
-
 
 ##----------------------------------------------------------------------
 ## Plots: guts
@@ -211,11 +191,14 @@ BEGIN {
   smalltest();
 }
 
-##-- plotm([$pdl,%options],...)
+##-- plotdata(\%global_opts, [$pdl,%options],...)
 sub plotdata {
+  gnuplot(plotargs_pdl(@_));
+}
+sub plotargs_pdl {
   my $global_args = shift;
-  $m = $mat if (!defined($m));
-  gnuplot({
+  return (
+	  {
 	   %plotm_global_options,
 	   ($global_args ? %$global_args : qw()),
 	  },
@@ -229,21 +212,136 @@ sub plotdata {
 	     },
 	     (map { [$_->list] } $_->[0]->dog)
 	    ]
+	  } @_)
+	 );
+}
+
+
+##-- plotadata(\%global_opts, [\@matrix,%options],...)
+##    + plots a perl matrix
+sub plotadata {
+  gnuplot(plotargs_ary(@_));
+}
+sub plotargs_ary {
+  my $global_args = shift;
+  return ({
+	   %plotm_global_options,
+	   title=>'array',
+	   ($global_args ? %$global_args : qw()),
+	  },
+
+	  (map {
+	    [
+	     {
+	      %plotm_matrix_options,
+	      @$_[1..$#$_],
+	      type=>'matrix',
+	     },
+	     $_->[0]
+	    ]
 	  } @_));
 }
+
+##----------------------------------------------------------------------
+## Plots: Aliases
+##----------------------------------------------------------------------
+sub plotmc {
+  plotdata({title=>"K-Means Iter #$iter"}, [$mat, title=>'mat'], [$centers, title=>'centers']);
+}
+
+sub plotcl {
+  plotdata({title=>"K-Means Iter #$iter"},
+	   #[$mat, title=>'mat'],
+	   [$centers, title=>'centers'],
+	   map {
+	     my $which = (which $indices == $_);
+	     ($which->isempty
+	      ? qw()
+	      : [$m->dice($which), title=>"cluster $_"])
+	   } (0..$k-1)
+	  );
+}
+
+
+sub plotacdata {
+  plotadata({title=>"Algorithm::Cluster Iter #$iter"}, [$adata, title=>'data']);
+}
+sub plotacl {
+  my @pdata = map { [
+		     [],
+		     title=>"Cluster #$_",
+		     type=>'matrix'
+		    ]
+		  } (0..($k-1));
+  foreach $ni (0..($n-1)) {
+    push(@{$pdata[$aclusters->[$ni]][0]}, $adata->[$ni]);
+  }
+
+  plotadata({title=>"Algorithm::Cluster Iter #$iter"}, @pdata);
+}
+
 
 ##----------------------------------------------------------------------
 ## Algorithm::Cluster
 ##----------------------------------------------------------------------
 use Algorithm::Cluster qw(kcluster);
 
+
 ##----------------------------------------------------------------------
 ## Dataset conversion
 ##----------------------------------------------------------------------
+
+## $ary = pdl2ary($pdl)
 sub pdl2ary {
   my $pdl = shift;
-  my $ary = [];
-  return $ary;
+  my $data = undef;
+  my @queue = ($pdl,\$data);
+  my ($ref);
+  while (($pdl,$ref) = splice(@queue,0,2)) {
+    if ($pdl->ndims == 0) {
+      $$ref = $pdl->sclr;
+      next;
+    }
+    $$ref = [];
+    push(@queue, $_, \$$ref->[@$$ref]) foreach ($pdl->dog);
+  }
+  return $data;
+}
+
+sub akprep {
+  ##-- prepare Algorithm::Cluster params
+  $amat = $adata = pdl2ary($mat->xchg(0,1));
+  $amask = '';
+  $aweight = '';
+  $atranspose = 0;
+  $anpass = 1 if (!defined($anpass));
+  $amethod = 'a' if (!defined($amethod));
+  $adist = 'e' if (!defined($adist));
+  #$ainitialid = undef;
+
+  return 1;
+}
+
+sub akmeans {
+  return
+    ($aclusters,$aerror,$anfound) =
+      Algorithm::Cluster::kcluster( %{akparams(@_)} );
+}
+
+sub akparams {
+  return
+    $aparam = {
+	       nclusters=>$k,
+	       data=>$adata,
+	       mask=>$amask,
+	       weight=>$aweight,
+	       transpose=>$atranspose,
+	       npass=>$anpass,
+	       method=>$amethod,
+	       dist=>$adist,
+	       #initialid=>$ainitialid,
+	       @_,
+	      };
 }
 
 sub akmiter {
@@ -257,12 +355,58 @@ sub akmiterN {
 }
 
 
+##----------------------------------------------------------------------
+## tree clustering (hierarchical)
+##----------------------------------------------------------------------
+
+sub atcprep {
+  ##-- prepare Algorithm::Cluster params
+  akprep();
+
+  ##-- method:
+  # s : single-link
+  # m : (maximum) complete-link
+  # a : average-link
+  # c : centroid-link
+  $atcmethod = 'm';
+
+  return 1;
+}
+
+##-- single iter
+sub atreecluster {
+  return
+    ($atcresult, $atcdists) =
+      Algorithm::Cluster::treecluster( %{atcparams(@_)} );
+}
+
+sub atcparams {
+  return
+    $aparam = {
+	       data=>$adata,
+	       mask=>$amask,
+	       weight=>$aweight,
+	       transpose=>$atranspose,
+	       method=>$atcmethod,
+	       dist=>$adist,
+	       @_,
+	      };
+}
 
 
+##----------------------------------------------------------------------
+## Tree Clustering: dendograms
+##----------------------------------------------------------------------
+use MUDL::Tk::Dendogram;
 
 ##----------------------------------------------------------------------
 ## Dummy
 ##----------------------------------------------------------------------
+
+atcprep; ($tr,$td)=atreecluster();
+$dg = MUDL::Tk::Dendogram->new(tree=>$tr,dists=>$td,xpad=>10,ypad=>5,dmult=>5);
+$dg->view;
+
 foreach $i (0..100) {
   print "--dummy[$i]--\n";
 }

@@ -1,44 +1,53 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL::Cluster::Kmeans.pm
+## File: MUDL::Cluster::Tree.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner
+##  + MUDL unsupervised dependency learner: hierarchical clustering
 ##======================================================================
 
-package MUDL::Cluster::KMeans;
-use Algorithm::Cluster qw(kcluster);
+package MUDL::Cluster::Tree;
+use Algorithm::Cluster qw(treecluster);
 use MUDL::Object;
+use MUDL::Tk::Dendogram;
 use Carp;
 
 our @ISA = qw(MUDL::Object);
 our @EXPORT_OK = qw();
 
 ##======================================================================
-## K-Means clustering: Constructor
+## Hierartchical clustering: Constructor
 
-## $args = KMeans->new(%args);
+## $args = MUDL::Cluster::Tree->new(%args);
 ##   + %args:
 ##       data     => \@data,   # 2d array ref (matrix), $n-by-$d
-##       nclusters=> $k,       # number of desired clusters (default=2)
-##       npass    => $npasses, # number of full k-means passes (default=1)
-##       initialid=> \@vector, # initial cluster ids ($n-ary vector, values in [0..($k-1)])
-##                             # - if given, implies npass=>1
 ##       mask     => \@mask,   # either '' or $n-by-$d boolean-valued matrix: true iff $data->[$i][$j] is missing
 ##       weight   => \@wts,    # either '' or $d-ary weight vector
 ##       tranpose => $bool,    # whether $data is row-primary (0,default) or column-primary (1)
 ##       dist     => $metric,  # distance metric character flag (default='e')
 ##       method   => $method,  # center computation method flag (default='a')
 ##   + additional data (after running):
-##       clusters => \@clstrs, # $n-ary array, values in [0..($k-1)], gives cluster assignment
-##       error    => $error,   # within-cluster sum of distances of the "optimal" solution found
-##       nfound   => $nfound,  # number of times the "optimal" solution was found
+##       tree     => \@tree,   # ($n-1)-by-2 array giving structure of clustering tree (see below)
+##       linkdist => \@dists,  # ($n-1)-ary array giving distances between sister nodes
 ##   + where:
 ##       $n : number of data instances (rows)
 ##       $d : number of features per datum (columns)
+##   + tree structure:
+##       [ $node(0), $node(1), ..., $node($N-1) ]
+##   + node structure:
+##       [ $dtr1, $dtr2 ]
+##     - $dtr1, $dtr2 are integers
+##     - ($dtri >= 0) refers to datum $dtri
+##       ~ i.e. leaf nodes have nonnegative ids numbered from 0..($n-1)
+##     - ($dtri < 0) refers to $node( -($dtri+1) )
+##       ~ i.e. nonterminal nodes have negative ids, and are numbered from -1 to -($n-1)
+##   + distance structure:
+##     - $dists[$i] is the distance between nodes merged in $tree[$i]
 ##   + methods:
-##       'a' : arithmetic mean (default)
-##       'm' : median
+##       's' : single-link
+##       'm' : maximum- (complete-) link
+##       'a' : average-link (default)
+##       'c' : centroid-link
 ##   + metrics:
 ##       'c' : correlation
 ##       'a' : abs(correlation)
@@ -49,37 +58,51 @@ our @EXPORT_OK = qw();
 ##       'e' : Euclidean distance
 ##       'b' : city-block (L1) distance
 sub new {
-  my $km = $_[0]->SUPER::new(
+  my $tc = $_[0]->SUPER::new(
 			     data=>[[]],
-			     nclusters => 2,
-			     npass=>1,
-			     #initialid=>undef,
 			     mask=>'',
 			     weight=>'',
 			     transpose=>0,
-			     dist=>'e',
 			     method=>'a',
+			     dist=>'e',
 			     ##-- output data
-			     clusters=>undef,
-			     error=>undef,
-			     nfound=>0,
+			     tree=>undef,
+			     linkdist=>undef,
 			     @_[1..$#_]
 			    );
 
-  return $km;
+  return $tc;
 }
 
 
 ##======================================================================
-## $km = $km->cluster(%args)
-##  + actually runs clustering alg
+## $tc = $tc->cluster(%args)
+##  + actually runs clustering algorithm
 sub cluster {
-  my ($km,%args) = @_;
-  @$km{keys(%args)} = values(%args);
-  @$km{qw(clusters error nfound)} = Algorithm::Cluster::kcluster(%$km);
-  return $km;
+  my ($tc,%args) = @_;
+  @$tc{keys(%args)} = values(%args);
+  @$tc{qw(tree linkdist)} = Algorithm::Cluster::treecluster(%$tc);
+  return $tc;
 }
 
+
+##======================================================================
+## $dg = $tc->toDendogram(%args)
+##  + get a dendogram of the clustering results
+##  + %args are passed to MUDL::Tk::Dendogram->new()
+sub toDendogram {
+  return MUDL::Tk::Dendogram->new(tree=>$_[0]{tree},
+				  dist=>$_[0]{linkdist},
+				  @_[1..$#_]);
+}
+
+##======================================================================
+## undef = $tc->view(%args)
+##  + view a dendogram of the clustering results
+##  + %args are passed to MUDL::Tk::Dendogram->new()
+sub view {
+  $_[0]->toDendogram(@_[1..$#_])->view;
+}
 
 
 1;
