@@ -1,41 +1,53 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL::Corpus::Profile.pm
+## File: MUDL::Corpus::Profile::SUnigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profiles
+##  + MUDL unsupervised dependency learner: corpus profile: supervised unigram tagger
 ##======================================================================
 
-package MUDL::Corpus::Profile;
-use MUDL::Object qw(dummy);
-use MUDL::CorpusIO;
+package MUDL::Corpus::Profile::SUnigrams;
+use MUDL::Corpus::Profile;
+use MUDL::Dist::Nary;
+use MUDL::Map;
+use MUDL::Object;
+use MUDL::Set;
+use PDL;
 use Carp;
-our @ISA = qw(MUDL::Object);
+our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile);
 
 ##======================================================================
-## Corpus::Profile: Abstract Methods
-
-## undef = $profile->addCorpus($Corpus,@args)
-##  + calls addReader()
-sub addCorpus {
-  return $_[0]->addReader(MUDL::CorpusReader::Corpus->new(corpus=>$_[1]),@_[2..$#_]);
+## new
+sub new {
+  my ($that,%args) = @_;
+  my $self = $that->SUPER::new('ugmap'=>MUDL::Map->new(),
+			       nfields=>2,
+			       %args);
+  return $self;
 }
 
-## undef = $profile->addReader($CorpusReader,@args)
-##  + calls addSentence($s) for every sentence
-sub addReader {
-  my ($pr,$cr) = splice(@_,0,2);
-  my ($s);
-  $pr->addSentence($s,@_) while (defined($s=$cr->getSentence));
-}
+##======================================================================
+## Profiling
 
 ## undef = $profile->addSentence(\@sentence)
-##  + dummy
-*addSentence = dummy('addSentence');
+sub addSentence {
+  my ($pr,$s) = @_;
+  foreach my $tok (@$s) {
+    ++$pr->{nz}{join($pr->{sep}, $tok->text, $tok->tag)};
+  }
+  return $pr;
+}
 
-## undef = $profile->finish(%args)
-##  + perform any finishing actions
-sub finish { ; }
+##======================================================================
+## Evaluation: Unigram modelling
+
+## undef = $pr->finish()
+sub finish {
+  my $pr = shift;
+  $pr->{ugmap} = $pr->toBestMap([0],[1]);
+  return $pr;
+}
+
 
 1;
 
