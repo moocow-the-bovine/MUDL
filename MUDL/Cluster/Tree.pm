@@ -85,6 +85,29 @@ sub cluster {
   return $tc;
 }
 
+##======================================================================
+## $tree = $tc->toTree(%args)
+##  + returns a MUDL::Tree representing the clusters
+##  + %args are passed to MUDL::Tree->toTree(), fromClusters()
+sub toTree {
+  my $tc = shift;
+  require MUDL::Tree;
+  return MUDL::Tree->fromClusters($tc->{tree},
+				  enum=>$tc->{enum},
+				  dists=>$tc->{linkdist},
+				  @_);
+}
+
+##======================================================================
+## $tree = $tc->viewTree(%args)
+##  + view a tree
+##  + %args are passed to MUDL::Tree->toTree(), fromClusters()
+sub viewTree {
+  my $tc = shift;
+  my $t = $tc->toTree(@_)->view(@_);
+  return $t;
+}
+
 
 ##======================================================================
 ## $dg = $tc->toDendogram(%args)
