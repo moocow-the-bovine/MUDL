@@ -8,6 +8,7 @@
 
 package MUDL::Tree;
 use MUDL::Object;
+use Storable;
 use Carp;
 use Exporter;
 
@@ -24,27 +25,22 @@ sub VERSION {
   return $self->{VERSION} ? $self->{VERSION} : $VERSION;
 }
 
-our $Tk_SkipX = 15;
-our $Tk_SkipY = 35;
-our $Tk_LinePad = 2;
-our $Tk_Font = 'helvetica -12 bold';
-our $Tk_BoxActive = 1;
-
 ###############################################################
 # Constructor
 #   + $t = MUDL::Tree->new(%args)
 #   + structural %args:
-#      moms=>{$key=>$momkey,...},       # mothers
-#      dtrs =>{$key=>\@daughters,...},  # daughters
-#      labels=>{$key=>$label,...},      # node labels
-#      epsilon=>$epsilon,               # default=''
-#      packfmt=>$pack_id_format,        # for key-generation
+#      labels=>{$id=>$label,...},         # node labels
+#      root  =>$current_root_id,          # current root node
+#      dtrs  =>{$id=>\@dtr_ids,...}       # daughter nodes
+#      moms  =>{$id=>$momid,...}          # mother node
+#      _ctr  =>$id,                       # id-counter for key-allocation
 #   + extra args:
-#      key => $root_key,
+#      root  => $root_key,
 #      label => $root_label,
-#      mom => $mom_key,
+#      mom   => $root_momid,
 #   + current node identification
-#      key => $current_key
+#      root  => $current_key,
+#      label => $current_label,
 #      #index => {$key=>$index,...},
 #      #dindex => {$key=>$index},
 #      #current=>$node,
@@ -52,22 +48,20 @@ our $Tk_BoxActive = 1;
 sub new {
   my $that = shift;
   my %args = @_;
-  my ($key,$label,$mom) = @args{qw(key label mom)};
-  delete @args{qw(key label mom)};
-  $key = '' if (!defined($key));
-  $label = '' if (!defined($label));
-  $mom = undef if (!defined($mom));
-  return $that->SUPER::new(
-			   key => $key,
-			   labels => {$key=>$label},
-			   moms => {$key=>$mom},
-			   dtrs => {},
-			   epsilon => '',
-			   packfmt => 'C',
-			   #dindex => {},
-			   #index => {},
-			   @_
-			  );
+  my ($root,$label,$mom) = @args{qw(root label mom)};
+  delete @args{qw(root label mom)};
+
+  $root = 0 if (!defined($root));
+  my $t = $that->SUPER::new(
+			    root => $root,
+			    labels => {},
+			    dtrs=>{},
+			    moms=>{$root=>$mom},
+			    _ctr=>1,
+			    @_
+			   );
+  $t->{labels}{$root} = $label if (defined($label) && !defined($t->{labels}{$root}));
+  return $t;
 }
 
 # ???
@@ -78,18 +72,36 @@ sub DESTROY {
   %$self = ();
 }
 
-
-
 ## $t = $t->clear()
-*clear = \&cleartree;
-sub cleartree {
+*cleartree = \&clear;
+sub clear {
   my $t = shift;
-  $t->{key} = '.' if (!defined($t->{key}));
-  %{$t->{labels}} = ($t->{key}=>'');
-  %{$t->{moms}} = ($t->{key}=>undef);
-  %{$t->{dtrs}} = ();
-  %{$t->{dindex}} = ();
+  my $root = 0;
+  $t->{root} = $root;
+  %{$t->{labels}} = ($root=>'');
+  %{$t->{labels}} = ($root=>'');
+  %{$t->{moms}}   = ($root=>undef);
+  %{$t->{dtrs}}   = ();
   return $t;
+}
+
+###############################################################
+# Low-level accessors
+###############################################################
+
+## $key = $tree->nodeId($node);
+##   + gets tree-domain key, returns '' for undefined nodes
+##   + probably obsolete
+*getKey = *get_key = *key = *id = *nodeid = *nodeKey = \&nodeId;
+sub nodeId {
+  return defined($_[1]) ? $_[1] : '';
+}
+
+## $noderef = $t->nodeDefault($node_or_ref)
+##   + destructively alters $node_or_ref to $t->{root} if undefined
+sub nodeDefault {
+  return
+    (defined($_[1]) ? $_[1] : ($_[1]=$_[0]->{root}));
 }
 
 ###############################################################
@@ -98,213 +110,175 @@ sub cleartree {
 
 # $node = $t->rootNode()
 *root = \&rootNode;
-sub rootNode {
-  my $t = shift;
-  return $t->{key};
-}
-
-# $lab = $t->rootLabel()
-# $lab = $t->rootLabel($lab)
-sub rootLabel {
-  my $t = shift;
-  my $k = $t->root_node();
-  $t->{labels}{$k} = shift(@_) if (@_);
-  return $t->{labels}{$k};
-}
+sub rootNode { return $_[0]->{root}; }
 
 # $lab = $t->label($node)
 # $lab = $t->label($node,$lab)
 sub label {
   my ($t,$n) = (shift,shift);
+  $t->nodeDefault($n);
   $t->{labels}{$n} = shift(@_) if (@_);
   return $t->{labels}{$n};
 }
 
-# @nodes = $t->daughters($node)
-*dtrs = *children = \&daughters;
-sub daughters {
-  my ($t,$n) = (shift,shift);
-  return @{$t->{dtrs}{$n}} if (defined($t->{dtrs}{$n}));
-  return qw();
+# @nodes = $t->nodes()
+#  + returns list of all nodes, unordered
+#  + in scalar context returns array-ref
+sub nodes {
+  return wantarray ? keys(%{$_[0]{moms}}) : [keys(%{$_[0]{moms}})];
 }
 
-
-## $key = $tree->key($node);
-##   + gets tree-domain key, returns '' for undefined nodes
-*getKey = *get_key = \&key;
-sub key {
-  my ($tree,$node) = @_;
-  return defined($node) ? $node : '';
-}
-
-## $str = $tree->key2str($key)
-##   + returns human-readable tree-domain key-string
-sub key2str {
-  return join('.',unpack($_[0]{packfmt}.'*', $_[1]));
-}
-
-## $str = $tree->str2key($str)
-##   + converts human-readable tree-domain key-string to packed version
-sub str2key {
-  return pack($_[0]{packfmt}.'*', CORE::split(/\.+/, $_[1]));
-}
-
-## $str = $tree->keyString($node)
-##   + returns human-readable tree-domain key-string
-sub keyString {
-  return $_[0]->key2str($_[0]->key($_[1]));
-}
-
+# $size = $t->size()
+sub size { return scalar(keys(%{$_[0]{moms}})); }
 
 ###############################################################
-# $bool = $tree->isLeafNode($node)
-#   + returns true if $node has no children
-#   + allows non-method invocation (can call without $self
-#     argument)
+# Structural Manipulators
 ###############################################################
-sub isLeafNode {
-  my ($tree,$node) = @_;
-  $node = $tree->{key} if (!defined($node));
-  return !defined($tree->{dtrs}{$node}) || $#{$tree->{dtrs}{$node}} < 0;
-}
 
-###############################################################
-# $bool = $tree->isRootNode($node)
-#   + returns true if $node's depth is 0
-#   + allows non-method invocation (can call without $tree
-#     argument)
-###############################################################
-sub isRootNode {
-  my ($tree,$node) = @_;
-  $node = $tree->{key} if (!defined($node));
-  return !defined($tree->{moms}{$node});
-}
-
-###############################################################
-# $tree->isCurrentNode($node)
-#   + returns true if $handle's key is eq to the key of
-#     $self->{handle}
-#   + allows method-invocation only!
-###############################################################
-sub isCurrentNode {
-  my ($t,$n) = @_;
-  $n = $t->{key} if (!$n);
-  return 1 unless (defined($n));
-  return defined($t->{current}) && $t->{current} eq $h;
-}
-
-###############################################################
-# $dtrkey = $tree->addDaughter($label,$mom);
-#   + add a new child node under $mom
-###############################################################
+## $dtr = $tree->addDaughter($mom,$label);
+##   + add a new child node under $mom
 *addChild = *addChildNode = *addDtr = \&addDaughter;
 sub addDaughter {
-  my ($t,$lab,$mom) = @_;
-  $mom = $t->{key} if (!$mom);
-  $t->{dtrs}{$mom} = [] if (!$t->{dtrs}{$mom});
-  my $i = @{$t->{dtrs}{$mom}};
-  my $k = $mom . pack($t->{packfmt}, $i);
-  push(@{$t->{dtrs}{$mom}}, $k);
-  $t->{labels}{$k} = $lab;
-  $t->{moms}{$k} = $mom;
-  return $k;
+  my ($t,$mom,$lab) = @_;
+  return undef if (!defined($t->nodeDefault($mom)));
+  my $did = $t->{_ctr}++;
+  push(@{$t->{dtrs}{$mom}}, $did);
+  $t->{moms}{$did} = $mom;
+  $t->{labels}{$did} = $lab if (defined($lab));
+  return $did;
+}
+
+## @dtrs = $t->addDaughters($mom,@labels)
+##   + in scalar context returns array-ref
+*addDtrs = *addChildNodes = *addChildren = \&addDaughters;
+sub addDaughters {
+  return
+    (wantarray
+     ? (map { $_[0]->addDaughter($_[1],$_) } @_[2..$#_])
+     : [(map { $_[0]->addDaughter($_[1],$_) } @_[2..$#_])]);
+}
+
+
+###############################################################
+# Structural Accessors: Daughters
+###############################################################
+
+# $ndtrs = $t->nDaughters($node)
+#  + get number of daughters
+*nDtrs = *ndtrs = *nChildren = *nchildren = *nChildNodes = \&nDaughters;
+sub nDaughters {
+  my ($t,$mom) = @_;
+  $t->nodeDefault($mom);
+  my $dtrs = $t->{dtrs}{$mom};
+  return defined($dtrs) ? scalar(@$dtrs) : 0;
+}
+
+# $nth_dtr = $t->nthDaughter($mom,$n)
+*daughter = *dtr = *child = *childNode = *nthChild = *nthChildNode = *nthDtr = \&nthDaughter;
+sub nthDaughter {
+  my ($t,$mom,$n) = @_;
+  return undef if (!defined($t->nodeDefault($mom)));
+  my $dtrs = $t->{dtrs}{$mom};
+  return defined($dtrs) ? $dtrs->[$n] : undef;
+}
+
+# @nodes = $t->daughters($mom)
+*dtrs = *children = \&daughters;
+sub daughters {
+  my ($t,$mom) = @_;
+  my ($dtrs);
+  return qw() if (!defined($t->nodeDefault($mom)) || !defined($dtrs=$t->{dtrs}{$mom}));
+  return @$dtrs;
 }
 
 ###############################################################
-# $t = $t->addDaughters(\@labels,$mom)
+# Structural Accessors: Mother
 ###############################################################
-*addDtrs = *addChildNodes = *addChildren = \&addDaughters;
-sub addDaughters {
-  my ($t,$labs,$mom) = @_;
-  $mom = $t->{key} if (!$mom);
-  foreach (@$labs) { $t->addDaughter($_,$mom); }
+
+# $mom = $t->mother($node);
+*mom = *mother = *parentNode = *parent = \&mother;
+sub mother { return $_[0]{moms}{$_[1]}; }
+
+
+###############################################################
+# Readability / Node-key stringification
+#  + OBSOLETE
+###############################################################
+
+## $str = $tree->key2str($id)
+##   + returns human-readable tree-domain key-string
+sub key2str { return $_[1]; }
+
+## $id = $tree->str2key($str)
+##   + converts human-readable tree-domain key-string to packed key
+sub str2key { return $_[1]; }
+
+## $str = $tree->keyString($id)
+##   + returns human-readable tree-domain key-string
+sub keyString { return $_[1]; }
+
+
+###############################################################
+# Debugging
+###############################################################
+
+# $t = $class_or_tree->random($nnodes,%args)
+sub random {
+  my ($that,$nnodes,%args) = @_;
+  my $t = $that->new(label=>'root',%args);
+  my @nodes = ($that->root);
+  my ($mom,$dtr);
+  foreach $i (2..$nnodes) {
+    $mom = $nodes[rand(@nodes)];
+    push(@nodes, $t->addDtr($mom,''));
+  }
   return $t;
 }
 
 
 ###############################################################
-# $next = $t->nextTopDown($node)
-#   + returns the next (top-down, depth-first) node
-#   + first checks node's next daughter position; if
-#     that fails, there are no more child positions
-#     available under $node.
-#   + otherwise, checks mother instead -- if undef is
-#     returned, $node is the root of the tree, and we
-#     can return undef ourselves.
-#   + otherwise, the last 2 steps are repeated until some
-#     defined next-daughter is found
-#     - An exception is the case where the next defined
-#       child node's value is $self->{epsilon} -- this causes
-#       resumption of the loop just as if no more children
-#       were available.
-#   + If some defined daughter is found, she is returned.
+# Predicates
 ###############################################################
-sub nextTopDown {
-  my ($t,$node) = @_;
-  $node = $t->{key} if (!$node);
-  my ($pos,$next);
- FINDKID: {
-    do {
-      # try getting next daughter
-      $pos = $t->{dindex}{$node}++;
-      if (defined($pos)
-	  && defined($t->{dtrs}{$node})
-	  && defined($next = $t->{dtrs}{$node}[$pos])) {
-	# found an open child...
-	$node = $next;
-	if ($t->{labels}{$next} eq $t->{epsilon}) {
-	  # ...bummer, it's epsilon.
-	  ;
-	} else {
-	  # ...it's good
-	  last FINDKID;
-	}
-      }
-      # no more children: look at mother-node, if we have one
-      return undef unless($node = $t->{moms}{$node});
-    } while (1);
-  }
-  return $node;
+
+## $bool = $tree->isLeafNode($node)
+##   + returns true if $node has no children
+*isLeaf = \&isLeafNode;
+sub isLeafNode {
+  return $_[0]->ndtrs($_[1]) == 0;
+}
+
+## $bool = $tree->isRootNode($node)
+##   + returns true if $node's depth is 0
+*isRoot = \&isRootNode;
+sub isRootNode {
+  return !defined($_[0]->mother($_[1]));
+}
+
+## $bool = $tree->isInteriorNode($node)
+##   + returns true if $node has no children
+*isInterior = *isNonterm = *isNonterminal = *isNonterminalNode = \&isInteriorNode;
+sub isInteriorNode {
+  return $_[0]->ndtrs($_[1]) > 0;
+}
+
+
+## $bool = $tree->isCurrent($node)
+#   + returns true if $node key is eq to the key of
+*isCurrent = \&isCurrentNode;
+sub isCurrentNode {
+  my ($t,$n) = @_;
+  return undef if (!defined($t->nodeDefault($n)));
+  return defined($t->{current}) && $t->{current} eq $n;
 }
 
 ###############################################################
-# $next = $tree->expand(\@labels,$node)
-#   + adds children in @$values and calls next_topdown($node)
+# Traversal
 ###############################################################
-sub expand {
-  my ($t,$labels,$node) = @_;
-  $node = $tree->{key} if (!$node);
-  $t->add_children($labels,$node);
-  return $t->next_topdown($node);
-}
 
-###############################################################
-# \@leaves = $tree->leaves($node)
-# \@leaves = $tree->leaves()
-#   + returns a listref of leaves dominated by $node,
-#     which defaults to $tree.
-###############################################################
-sub leaves {
-  my ($t,$node) = @_;
-  $node = $t->{key} if (!defined($node));
-  my $ll = [];
-  $t->traverse(node => $node,
-	       sub => \&_leaf_list_node,
-	       leaflist => $ll);
-  return $ll;
-}
-sub _leaf_list_node {
-  my (%args) = @_;
-  if ($args{tree}->is_leaf_node($args{node})) {
-    push(@{$args{leaflist}}, $args{tree}{labels}{$args{node}});
-  }
-}
-
-###############################################################
-# $tree->traverse(%args)
+# $tree->traverse(\%args)
 #    + abstract method for tree traversal, based on the example
 #      code in the documentation of the Tree::MultiNode module.
-#    + %args is a hash which may have the following keys:
+#    + \%args is a hashref which may have the following keys:
 #        tree    => $tree (caller)
 #        sub     => \&sub,
 #        after   => \&sub_after
@@ -312,132 +286,209 @@ sub _leaf_list_node {
 #        depth   => $depth,
 #        first   => \&first,
 #        last    => \&last,
-#        butlast => \&butlast
+#        butlast => \&butlast,
+#        order   => 'bfs'  | 'dfs',  # traversal order
 #   + recursively descends the tree from $node (default is
-#     $tree, calling &$sub(%args) for each
-#     node.
-#   + $sub_after(%args) is called after processing all children
-#   + &first(%args) is called (if specified) for the first of 
-#     a node's children, before calling traverse(%args) for that
+#     $tree, calling $sub->(\%args) for each node.
+#   + $sub_after->(\%args) is called after processing all children
+#   + &first(\%args) is called (if specified) for the first of 
+#     a node's children, before calling traverse(\%args) for that
 #     child.
-#   + &last(%args) is called (if specified) for the last of a 
-#     node's children, after having called traverse(%args) for
+#   + &last(\%args) is called (if specified) for the last of a 
+#     node's children, after having called traverse(\%args) for
 #     that child
-#   + &butlast(%args) is called (if specified) for all but the
+#   + &butlast(\%args) is called (if specified) for all but the
 #     last of a node's children, after having called
-#     traverse(%args) for that child.
+#     traverse(\%args) for that child.
 #   + The values returned by each call of any of the code
 #     references \&sub, \&first, \&last, and \&butlast are.
 #     gathered into a list which is returned by traverse
-###############################################################
+#   + in scalar context, returns array-ref
 sub traverse {
-  my ($tree,%args) = @_;
-  # initialization
-  $args{node} = $tree->{key} if (!defined($args{node}));
-  $args{depth} = -1 if (!defined($args{depth}));
-  $args{tree} = $tree if (!defined($args{tree}));
-  ++$args{depth};
-  my $node = $args{node};
-  my (@list,$nkids,$i);
+  my $tree = shift;
+  my $args = ref($_[0]) && ref($_[0]) eq 'HASH' ? shift : {@_};
 
-  # current node
-  @list = &{$args{sub}}(%args) if (defined($args{sub}));
-  $nkids = defined($tree->{dtrs}{$node}) ? $#{$tree->{dtrs}{$node}} : -1;
-  for ($i = 0; $i <= $nkids; $i++) {
-    # recursive transversal
-    $args{node} = $tree->{dtrs}{$node}[$i];
-    push(@list,
-	 ($i == 0 && defined($args{first}) ? &{$args{first}}(%args) : qw()),
-	 ($tree->traverse(%args)),
-	 ($i != $nkids && defined($args{butlast}) ? &{$args{butlast}}(%args) : qw()),
-	 ($i == $nkids && defined($args{last}) ? &{$args{last}}(%args) : qw()),
-	);
+  ##-- initialization
+  $tree->nodeDefault($args->{node});
+  $args->{tree} = $tree if (!defined($args->{tree}));
+  $args->{order} = 'dfs' if (!defined($args->{order}));
+  my (@output,$ndtrs,$i,$node,$act,$dtr,$depth,@dqueue);
+
+  my @queue = ($args->{sub},$args->{node},0);
+  while (($act,$node,$depth)=splice(@queue,0,3)) {
+
+    #print STDERR "act=$act ; node=$node ; depth=$depth\n";
+
+    ##-- current node
+    @$args{qw(node depth)} = ($node,$depth);
+    push(@output, $act->($args)) if (defined($act));
+    next if ($act ne $args->{sub});
+
+    ##-- enqueue daughters
+    $ndtrs = $tree->ndtrs($node)-1;
+
+    if ($args->{order} eq 'bfs') {
+      ##-- breadth-first
+      for ($i=0; $i <= $ndtrs; $i++) {
+	$dtr = $args->{node} = $tree->{dtrs}{$node}[$i];
+	push(@queue,
+	     ($i==0 && defined($args->{first}) ? ($args->{first},$dtr,$depth+1) : qw()),
+	     ($args->{sub},$dtr,$depth+1),
+	     ($i != $ndtrs && defined($args->{butlast}) ? ($args->{butlast},$dtr,$depth+1) : qw()),
+	     ($i == $ndtrs && defined($args->{last})    ? ($args->{last},$dtr,$depth+1)    : qw()),
+	    );
+      }
+      $args->{depth} = $depth;
+      $args->{node} = $node;
+      # post-processing
+      push(@queue, $args->{after},$node,$depth) if (defined($args->{after}));
+    }
+    else {
+      ##-- depth-first
+      @dqueue = qw();
+      for ($i=0; $i <= $ndtrs; $i++) {
+	$dtr = $args->{node} = $tree->{dtrs}{$node}[$i];
+	push(@dqueue,
+	     ($i==0 && defined($args->{first}) ? ($args->{first},$dtr,$depth+1) : qw()),
+	     ($args->{sub},$dtr,$depth+1),
+	     ($i != $ndtrs && defined($args->{butlast}) ? ($args->{butlast},$dtr,$depth+1) : qw()),
+	     ($i == $ndtrs && defined($args->{last})    ? ($args->{last},$dtr,$depth+1)    : qw()),
+	    );
+      }
+      $args->{depth} = $depth;
+      $args->{node} = $node;
+      # post-processing
+      push(@dqueue, $args->{after},$node,$depth) if (defined($args->{after}));
+      unshift(@queue, @dqueue);
+    }
   }
-  --$args{depth};
-  $args{node} = $node;
-  # post-processing
-  push(@list, &{$args{after}}(%args)) if (defined($args{after}));
-  return @list;
+  return wantarray ? @output : \@output;
 }
 
 ###############################################################
-# $tree->dumpTree();
-# $tree->dumpTree($filehandle);
-# $tree->dumpTree($filehandle,$node);
-#   + top-level decomposed version of the example code in the
-#     docs for Tree::MultiNode
-#   + $node defaults to $tree
+# Search
 ###############################################################
-sub dumpTree { 
-  my ($tree,$fh,$node) = @_;
-  $fh = STDOUT if (!defined($fh));
-  $node = $tree->{key} if (!$node);
-  $fh->print($tree->dumpTreeList($node));
+
+# @nodes = $t->descendants($root,\%args)
+#  + gets all nodes dominated by $root, in default traversal order
+#  + returned value should always include $root itself.
+#  + in scalar context, returns array \@nodes
+sub descendants {
+  my ($t,$n) = (shift,shift);
+  $t->nodeDefault($n);
+  my @nodes = $t->traverse(node=>$n, sub=>sub { $_[0]{node}; },@_);
+  return wantarray ? @nodes : \@nodes;
 }
 
+# @nodes = $t->ancestors($node)
+#  + gets all nodes properly dominating $node, in frontier-to-root order
+#  + in scalar context, returns array \@nodes
+sub ancestors {
+  my ($t,$n) = @_;
+  $t->nodeDefault($n);
+  my @nodes = qw();
+  my $mom = $n;
+  while (defined($mom=$t->mother($mom))) {
+    push(@nodes, $mom);
+  }
+  return wantarray ? @nodes : \@nodes;
+}
+
+## @leafnodes = $tree->leaves($node)
+## @leafnodes = $tree->leaves()
+##   + returns a list leaves dominated by $node,
+##   + retuzrns array-ref in scalar context
+*leafNodes = \&leaves;
+sub leaves {
+  my ($t,$node) = (shift,shift);
+  $t->nodeDefault($node);
+  my @ll = $t->traverse(sub=>sub {
+			  return $t->isLeafNode($_[0]{node}) ? $_[0]{node} : qw()
+			},
+			node=>$node,
+			@_);
+  return wantarray ? @ll : \@ll;
+}
+
+## @leaflabs = $tree->leafLabels($node)
+## @leaflabs = $tree->leafLabels()
+##   + returns a list leaves dominated by $node,
+##   + returns array-ref in scalar context
+sub leafLabels {
+  my ($t,$node) = (shift,shift);
+  $t->nodeDefault($node);
+  my @ll =
+    (grep { defined($_) && $_ ne '' }
+     $t->traverse(
+		  sub=>sub {
+		         $t->isLeafNode($_[0]{node}) ? $t->label($_[0]{node}) : qw()
+		       },
+		  node=>$node,
+		  @_));
+  return wantarray ? @ll : \@ll;
+}
+
+
+
 ###############################################################
-# $tree->dumpTreeList($node)
-# $node->dumpTreeList()
+# $str = $tree->dump($node)
 #   + decomposed version of the example code in the
 #     docs for Tree::MultiNode (depth-passing, undef checking)
 #   + returns a list of strings which can be passed to "print"
-#   + $node defaults to $tree
-###############################################################
-sub dumpTreeList {
+sub dump {
   my ($tree,$node) = @_;
-  $node = $tree->{key} if (!$node);
-  return $tree->traverse(sub => \&dump_tree_node,
-			 node => $node,
-			 depth => -1);
+  $tree->nodeDefault($node);
+  return join('',
+	      $tree->traverse(sub => \&dump_tree_node,
+			      node => $node,
+			      depth => 0));
 }
 sub dump_tree_node {
-  my (%args) = @_;
-  my $lead = ' ' x ($args{depth}*2);
-  my $label = $args{tree}{labels}{$args{node}};
-  #my ($key,$val) = $args{handle}->get_data();
+  my $args = shift;
+  my $lead = ' ' x ($args->{depth}*2);
+  my $label = $args->{tree}{labels}{$args->{node}};
+  #my ($key,$val) = $args->{handle}->get_data();
   my @l = ($lead, "label:   ", defined($label) ? $label : "undef", "\n",
 	   #$lead, "key:   ", defined($key) ? $key : "undef", "\n",
 	   #$lead, "val:   ", defined($val) ? $val : "undef", "\n",
-	   $lead, "depth: ", defined($depth) ? $args{depth} : "undef", "\n$lead--\n");
+	   $lead, "depth: ", defined($args->{depth}) ? $args->{depth} : "undef", "\n$lead--\n");
   return @l;
 }
 
 
 ###############################################################
-# $tree->string($string)
-# $tree->string()
-#   + sets tree structure to reflect that of $string, if
-#     specified,
+# $str = $tree->string($string)
+# $str = $tree->string()
+#   + sets tree structure to reflect that of $string, if specified
 #   + otherwise, returns string rep of tree
-###############################################################
 sub string {
   my $tree = shift;
   return $tree->canonical_string() if (!@_);
   my $str = shift;
+  my $str_orig = $str;
   $tree->clear;
-  my $node = $tree->{key};
+  my $node = $tree->{root};
   while ($str) {
+    last if ($str =~ /^\s*$/ && $node eq $tree->{root});
+
     if ($str =~ s/^([^<(,)>]+)//) { # symbol
       $tree->{labels}{$node} = $1;
     }
-    #elsif ($str =~ s/^<([^<(,)>]+)>//) { # focussed node
-    #  $node->{label} = $1;
-    #  $self->{handle} = $handle->new($handle);  # hack!
-    #}
     elsif ($str =~ s/^\(//) { # first daughter
-      $node = $tree->add_child($node);
+      $node = $tree->addDtr($node);
     }
     elsif ($str =~ s/^,//) {  # next daughter
       $node = $tree->{moms}{$node} if (defined($tree->{moms}{$node}));
-      $node = $tree->add_child($node);
+      $node = $tree->addDtr($node);
     }
     elsif ($str =~ s/^\)//) { # last daughter
       $node = $tree->{moms}{$node} if (defined($tree->{moms}{$node}));
     } else {
-      warn ("cannot interpret tree-string from `$str'\n");
+      warn (__PACKAGE__ , "::string(): cannot interpret tree-string from `$str'\n");
       last;
     }
   }
+  return $str_orig;
 }
 
 ###############################################################
@@ -446,9 +497,10 @@ sub string {
 # $obj = $obj_or_class->loadNativeFh($fh)
 sub loadNativeFh {
   my ($t,$fh) = @_;
-  $t = $t->new() if (!$t);
-  $fh->input_record_separator(undef);
+  $t = $t->new() if (!ref($t));
+  #local $/ = undef;
   my $s = $fh->getline;
+  chomp($s);
   $t->string($s);
   return $t;
 }
@@ -469,7 +521,8 @@ sub saveNativeFh {
 *canonical_string = \&canonicalString;
 sub canonicalString { 
   my ($tree,$node) = @_;
-  return join('',$tree->treeAsciiList($node||$tree->{key}));
+  $tree->nodeDefault($node);
+  return join('',$tree->treeAsciiList($node));
 }
 
 ###############################################################
@@ -487,22 +540,6 @@ sub view {
 }
 
 
-
-###############################################################
-# undef = $node->print_tree_ascii()
-# undef = $node->print_tree_ascii($filehandle)
-# undef = $tree->print_tree_ascii($filehandle, $node])
-#   + prints the list returned by tree_ascii_list, which
-#     constitute an ASCII representation of the (sub)tree
-#     rooted at $node
-###############################################################
-sub printTreeAscii { 
-  my ($tree,$fh,$node) = @_;
-  $node = $tree->{key} if (!defined($node));
-  $fh = STDOUT unless (defined($fh));
-  $fh->print($tree->treeAsciiList($node));
-}
-
 ###############################################################
 # @strings = $tree->treeAsciiList($node)
 # @strings = $node->treeAsciiList()
@@ -511,83 +548,77 @@ sub printTreeAscii {
 #     and which bear a remarkable resemblance to a PROLOG term.
 ###############################################################
 sub treeAsciiList {
-  my ($tree,$node) = @_;
-  $node = $tree if (!defined($node));
-  return $tree->traverse(sub => \&_tree_ascii_list_node,
-			 first => \&_tree_ascii_list_first,
-			 last => \&_tree_ascii_list_last,
-			 butlast => \&_tree_ascii_list_butlast,
-			 node => $node,
-			 #current => $self->{current},
-			);
+  my ($tree,$node) = (shift,shift);
+  $tree->nodeDefault($node);
+  return $tree->traverse({sub => \&_tree_ascii_list_node,
+			  first => sub { '(' },
+			  last => sub { ')' },
+			  butlast => sub { ',' },
+			  node => $node,
+			  #current => $self->{current},
+			  @_,
+			 });
 }
 sub _tree_ascii_list_node {
-  my %args = @_;
-  my $lab = $args{tree}{labels}{$args{node}};
+  my ($args) = @_;
+  my $lab = $args->{tree}{labels}{$args->{node}};
   $lab = 'undef' unless (defined($lab));
-  if (defined($args{current}) && $args{node} eq $args{current}) {
+  if (defined($args->{current}) && $args->{node} eq $args->{current}) {
     return "<$lab>";
   }
   return $lab;
 }
-sub _tree_ascii_list_first { return '('; }
-sub _tree_ascii_list_last { return ')'; }
-sub _tree_ascii_list_butlast { return ','; }
-
 
 ###############################################################
 # I/O: XML
 ###############################################################
 
-# $obj = $obj->saveXMLNode(%args)
-sub saveXMLNode {
-  my $t = shift;
-  (my $nodename=ref($t)) =~ s/::/./g;
-  my $node = XML::LibXML::Element->new($nodename);
-  my ($tn,$xn,$xl);
+##-- inherited
 
-  foreach $tn (keys(%{$t->{moms}})) {
-    $node->appendChild($xn = XML::LibXML::Element->new('node'));
-    $xn->setAttribute('key', $t->key2str($tn));
-    if (defined($t->{moms}{$tn})) {
-      $xn->setAttribute('mom', $t->key2str($t->{moms}{$tn}));
-    } else {
-      $xn->setAttribute('root', "true");
-    }
-    $xn->appendChild($xl = XML::LibXML::Element->new('label'));
-    $xl->appendChild(MUDL::Object::saveXMLNode($t->{labels}{$tn}));
+# $obj = $obj->HashEntry2XMLNode($key,$val)
+sub HashEntry2XMLNode_hmm {
+  my ($t,$k,$v) = @_;
+  return undef if ($k eq 'labels' || $k eq 'moms');
+  return $t->SUPER::HashEntry2XMLNode($k,$v) if ($k ne 'dtrs');
+
+  my ($tn,$xn,$xl,$tdtrs);
+  my %xnodes =
+    map {
+      $xn = XML::LibXML::Element->new('node');
+      $xn->appendChild($xl = XML::LibXML::Element->new('label'));
+      $xl->appendChild(MUDL::Object::saveXMLNode($t->{labels}{$_}));
+      ($_ => $xn)
+    } $t->nodes;
+
+  while (($tn,$xn)=each(%xnodes)) {
+    next if (!defined($tdtrs=$t->{dtrs}{$tn}));
+    $xn->appendChild($xnodes{$_}) foreach (@$tdtrs);
   }
-  return $node;
+
+  my $xtnode = XML::LibXML::Element->new('MUDL.Tree.Nodes');
+  $xtnode->appendChild($xnodes{$t->{root}});
+  return $xtnode;
 }
 
-# $obj = $class_or_obj->loadXMLNode($node,%args)
-sub loadXMLNode {
+# undef = $obj->xmlNode2HashEntry($xmlnode)
+sub xmlNode2HashEntry_hmm {
   my ($t,$node) = @_;
-  $t = $t->new() if (!ref($t));
+  return $t->SUPER::XMLNode2HashEntry($node) if ($node->nodeName ne 'MUDL.Tree.Nodes');
 
-  my ($xn,$xl,$xid,$xroot,$xmom, $tid,$tmom);
-  foreach $xn ($node->getChildrenByTagName('node')) {
-    $xid   = $xn->getAttribute('key');
-    $xmom  = $xn->getAttribute('mom');
-    $xroot = $xn->getAttribute('root');
-    $xl    = ($xn->getChildrenByTagName('label'))[0];
-    $lab   = MUDL::Object->loadXMLNode($xl->firstChild);
+  my @queue = ($t->{root},$node->firstChild);
+  my ($tn,$xn, $xln,$xl, $xd);
+  while (($tn,$xn)=splice(@queue,0,2)) {
+    $xln = ($xn->getChildrenByTagName('label'))[0];
+    $xl = defined($xln) ? MUDL::Object->loadXMLNode($xln->firstChild) : undef;
+    $t->label($tn,$xl) if (defined($xl));
 
-    $tid   = $t->str2key($xid);
-    $t->{labels}{$tid} = $lab;
-    if ($xroot || !defined($xmom)) {
-      $t->{key} = $tid;
-    } else {
-      $tmom = $t->str2key($xmom);
-      $t->{moms}{$tid} = $tmom;
-      $t->{dtrs}{$tmom} = [] if (!$t->{dtrs}{$tmom});
-      push(@{$t->{dtrs}{$tmom}}, $tid);
+    foreach $xd ($xn->getChildrenByTagName('node')) {
+      push(@queue, $t->addDaughter($tn,undef), $xd);
     }
   }
-  @$_ = sort(@$_) foreach (values(%{$t->{dtrs}}));
-
   return $t;
 }
+
 
 ###############################################################
 # Conversion: from cluster
@@ -600,31 +631,51 @@ sub loadXMLNode {
 #      %other_tree_new_args
 sub fromClusters {
   my ($t,$ct,%args) = @_;
-  $t = $t->new(packfmt=>'I',%args) if (!ref($t));
+  $t = $t->new(%args) if (!ref($t));
+  my $cdists = $t->{dists};
+  $t->{dists} = {};             ##-- maps from (interior) node-ids to distance
 
-  my @queue = ('',$#$ct);
+  my @queue = ($t->{root},$#$ct);
+  $t->label($t->{root},-($#$ct+1));
+
   my ($tid,$ctid, $ctn,@tdids,$i);
   while (($tid,$ctid)=splice(@queue,0,2)) {
     $ctn = $ct->[$ctid];
 
-    ##-- leaves?
     foreach $i (0,1) {
-      $tdids[$i] = $tid.pack($t->{packfmt}, $i);
-      $t->{moms}{$tdids[$i]} = $tid;
+      $tdids[$i] = $t->addDtr($tid,undef);
+
       if ($ctn->[$i] >= 0) {
-	$t->{labels}{$tdids[$i]} = $ctn->[$i];
+	##-- Leaf
+	$t->label($tdids[$i], $ctn->[$i]);
       } else {
-	$t->{moms}{$tdids[$i]} = $tid;
+	##-- Non-Leaf
+	$t->label($tdids[$i], -($ctn->[$i]+1));
 	push(@queue, $tdids[$i], -($ctn->[$i]+1));
       }
     }
-    $t->{dtrs}{$tid}   = [@tdids];
-    $t->{labels}{$tid} = 'n'.$ctid;
+
+    if (defined($cdists)) {
+      $t->{dists}{$tid} = $cdists->[$ctid];
+    }
   }
 
   return $t;
 }
 
+
+###############################################################
+# Conversion: to Dendogram
+###############################################################
+sub toDendogram {
+  my $t = shift;
+  require MUDL::Tk::Dendogram;
+  return MUDL::Tk::Dendogram->new(tree=>$t,
+				  ($t->{dists} ? (dists=>$t->{dists}) : qw()),
+				  ($t->{enum} ? (enum=>$t->{enum}) : qw()),
+				  @_,
+				 );
+}
 
 ###############################################################
 # Autoload function allows
@@ -644,4 +695,8 @@ sub AUTOLOAD {
   return undef;
 }
 
+
+
+
 1;
+

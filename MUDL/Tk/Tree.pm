@@ -50,9 +50,11 @@ sub new {
   return $self;
 }
 
-#======================================================================
-# view
-# undef = $t->view(%args)
+##======================================================================
+## view
+## undef = $t->view(%args)
+##   + %args:
+##       loop => $bool, # do/don't enter main loop (default=do)
 sub view {
   my ($tkt,%args) = @_;
   @$tkt{keys(%args)} = values(%args);
@@ -91,8 +93,8 @@ sub view {
 
 
 
-  $tkt->toCanvas(canvas=>$c);
-  Tk::MainLoop if (!defined($args{domain}) || $args{domain});
+  $tkt->toCanvas($c);
+  Tk::MainLoop if (!defined($args{loop}) || $args{loop});
 }
 
 
@@ -100,29 +102,26 @@ sub view {
 # toCanvas
 # $t = $t->toCanvas($canvas,%args)
 #   + %args keys: see $tree
-#     canvas=>$TkCanvas,
 #   + draws the the parse tree rooted at $handle 
 #     on a Tk::Canvas object $canvas
 sub toCanvas {
-  my ($tkt,%args) = @_;
-  my ($canvas);
-  unless (defined($canvas=$args{canvas})) {
+  my ($tkt,$canvas,%args) = @_;
+  unless (defined($canvas)) {
     warn(__PACKAGE__ , "::toCanvas(): no canvas object!\n");
     return undef;
   }
-  delete $args{canvas};
   @$tkt{keys(%args)} = values(%args);
 
   my $pred = undef;
-  $tkt->{tree}->traverse(tkt => $tkt,
-			 canvas=> $canvas,
-			 sub => \&dtk_do_node,
-			 after => \&dtk_on_up,
-			 nodeinfo => {},
-			 ancestors => [],
-			 pred => \$pred,
-			 tags => [$tkt->{tree}],
-			);
+  $tkt->{tree}->traverse({tkt => $tkt,
+			  canvas=> $canvas,
+			  sub => \&dtk_do_node,
+			  after => \&dtk_on_up,
+			  nodeinfo => {},
+			  ancestors => [],
+			  pred => \$pred,
+			  tags => ["$tkt->{tree}"],
+			 });
 
 
   my @bbox = $canvas->bbox("$tkt->{tree}");
@@ -140,54 +139,54 @@ sub toCanvas {
 #======================================================================
 # Drawing guts
 sub dtk_do_node {
-  my (%args) = @_;
+  my ($args) = @_;
 
   #print STDERR "dtk_do_node_called: args=", map { "'$_'" } @_, "\n"; ##-- DEBUG
 
-  $args{nodeinfo}{$args{node}} =
+  $args->{nodeinfo}{$args->{node}} =
     {
-     key => $args{node},
-     str => ('n'.$args{tree}->key2str($args{node})),
-     label => $args{tree}->label($args{node}),
-     depth => $args{depth},
-     ancestors => [ @{$args{ancestors}} ],
-     pred => defined($args{pred}) ? $$args{pred} : undef,
+     key => $args->{node},
+     str => ('n'.$args->{node}),
+     label => $args->{tree}->label($args->{node}),
+     depth => $args->{depth},
+     ancestors => [ @{$args->{ancestors}} ],
+     pred => defined($args->{pred}) ? ${$args->{pred}} : undef,
     };
-  push(@{$args{ancestors}}, "d".$args{nodeinfo}{$args{node}}{str});
+  push(@{$args->{ancestors}}, "d".$args->{nodeinfo}{$args->{node}}{str});
   # interior nodes are handled by dtk_on_up
-  return qw() if (scalar($args{tree}->children($args{node})));
-  dtk_draw_node(%args);
+  return qw() if (scalar($args->{tree}->children($args->{node})));
+  dtk_draw_node($args);
 }
 
 sub dtk_on_up { 
-  my (%args) = @_;
-  $$args{pred} = $args{node};
-  pop(@{$args{ancestors}});
-  return qw() if ($args{tree}->isLeafNode($args{node}));
+  my ($args) = @_;
+  ${$args->{pred}} = $args->{node};
+  pop(@{$args->{ancestors}});
+  return qw() if ($args->{tree}->isLeafNode($args->{node}));
   dtk_draw_node(@_);
 }
 
 sub dtk_draw_node {
-  my (%args) = @_;
-  my $nodei = $args{nodeinfo}->{$args{node}};
-  my $canvas = $args{canvas};
-  my $keystr = $nodei->{str};
+  my ($args) = @_;
+  my $nodei = $args->{nodeinfo}->{$args->{node}};
+  my $canvas = $args->{canvas};
+  my $keystr = 'n'.$args->{node};
   my $id = $canvas->createText(0, 0, 
 			       -tags => ['node',
 					 $keystr,
 					 @{$nodei->{ancestors}},
-					 @{$args{tags}},
+					 @{$args->{tags}},
 					],
 			       -justify => 'center',
 			       -anchor => 'c',
 			       -text => $nodei->{label},
-			       -font => $args{tkt}{font} || '',
+			       -font => $args->{tkt}{font} || '',
 			      );
   $nodei->{id} = $id;
 
   # --- do the node placement ---
   # - preliminary node placement
-  if (scalar($args{tree}->children($args{node}))) {
+  if (scalar($args->{tree}->children($args->{node}))) {
     # nonterminal node
     my @kbbox = $canvas->bbox("d" . $keystr);
     $canvas->coords($id, ($kbbox[2] + $kbbox[0]) / 2, 0);
@@ -198,15 +197,16 @@ sub dtk_draw_node {
 
   my ($xborder);
   my @pbbox = (defined($nodei->{pred})
-	       ? $canvas->bbox( 'n'.$args{tree}->key2str($nodei->{pred}),
-			       'dn'.$args{tree}->key2str($nodei->{pred}))
+	       ? $canvas->bbox( 'n'.$nodei->{pred},
+			       'dn'.$nodei->{pred})
 	       : qw());
+
   if (@pbbox) {
-    $xborder = $pbbox[2] + $args{tkt}{xskip};
+    $xborder = $pbbox[2] + $args->{tkt}{xskip};
     #print STDERR 
-    #  "Huh?? node->value: $node->{value}, pred: $node->{pred}, xskip: $args{xskip}, pbbox[2] = $pbbox[2]\n";
+    #  "Huh?? node->value: $node->{value}, pred: $node->{pred}, xskip: $args->{xskip}, pbbox[2] = $pbbox[2]\n";
   } else {
-    $xborder = $args{tkt}{xskip};
+    $xborder = $args->{tkt}{xskip};
   }
 
   # x placement/adjustment
@@ -217,7 +217,7 @@ sub dtk_draw_node {
   }
 
   # y placement/adjustment
-  $canvas->move($nodei->{id}, 0, $args{tkt}{yskip} + ($nodei->{depth} * $args{tkt}{yskip}));
+  $canvas->move($nodei->{id}, 0, $args->{tkt}{yskip} + ($nodei->{depth} * $args->{tkt}{yskip}));
 
   # --- final height & width calculation ---
   @bbox = $canvas->bbox($keystr);
@@ -227,26 +227,26 @@ sub dtk_draw_node {
 
   # --- do box ? ---
   # include box ?
-  if (defined($args{tkt}{boxactive}) && defined($args{current}) && 
-      $args{tkt}{boxactive} && $args{node}->key eq $args{current}->key) {
+  if (defined($args->{tkt}{boxactive}) && defined($args->{current}) &&
+      $args->{tkt}{boxactive} && $args->{node} eq $args->{current}) {
     $canvas->createRectangle($canvas->bbox($id),
 			     -tags => [$keystr,
 				       @{$nodei->{ancestors}},
-				       @{$args{tags}}]);
+				       @{$args->{tags}}]);
   }
 
   # --- connect the daughters ---
-  my @dtrs = $args{tree}->children($args{node});
+  my @dtrs = $args->{tree}->children($args->{node});
   my ($dtrkey,$dtri,$dx,$dy,$mx,$my);
   foreach $dtrkey (@dtrs) {
-    $dtri = $args{nodeinfo}{$dtrkey};
+    $dtri = $args->{nodeinfo}{$dtrkey};
     ($dx,$dy) = $canvas->coords($dtri->{id});
     ($mx,$my) = $canvas->coords($nodei->{id});
     $canvas->createLine($mx,
-			$my + $args{tkt}{linepad} + ($nodei->{height} / 2),
+			$my + $args->{tkt}{linepad} + ($nodei->{height} / 2),
 			$dx,
-			$dy - ($args{tkt}{linepad} + ($dtri->{height} / 2)),
-			-tags => ["d".$keystr, @{$nodei->{ancestors}}, @{$args{tags}}]);
+			$dy - ($args->{tkt}{linepad} + ($dtri->{height} / 2)),
+			-tags => ["d".$keystr, @{$nodei->{ancestors}}, @{$args->{tags}}]);
   }
 }
 

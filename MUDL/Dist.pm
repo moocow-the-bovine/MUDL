@@ -362,7 +362,7 @@ sub loadNativeFh {
 ##======================================================================
 
 ## $node = $dist->entry2XMLNode($event,$freq)
-sub entry2XMLNode {
+sub hashEntry2XMLNode {
   #my ($d,$e,$f) = @_;
   my $node = XML::LibXML::Element->new('event');
   $node->setAttribute('f',$_[2]);
@@ -370,8 +370,8 @@ sub entry2XMLNode {
   return $node;
 }
 
-## undef = $dist->XMLNode2Entry($node)
-sub XMLNode2Entry {
+## undef = $dist->XMLNode2HashEntry($node)
+sub XMLNode2HashEntry {
   my ($d,$node) = @_;
   $d->{$node->textContent} = $node->getAttribute('f');
 }

@@ -45,14 +45,14 @@ sub size { return scalar(values(%{$_[0]})); }
 ##======================================================================
 
 ## $node = $set->entry2XMLNode($key,$val)
-sub entry2XMLNode {
+sub hashEntry2XMLNode {
   my $node = XML::LibXML::Element->new('value');
   $node->appendChild(MUDL::Object::saveXMLNode($_[2]));
   return $node;
 }
 
 ## undef = $set->XMLNode2Entry($node)
-sub XMLNode2Entry {
+sub XMLNode2HashEntry {
   my ($s,$node) = @_;
   my $val = MUDL::Object->loadXMLNode($node->firstChild);
   $s->{$val} = $val;

@@ -11,9 +11,9 @@ use MUDL::Corpus::Profile;
 use MUDL::Dist::Nary;
 use MUDL::Map;
 use MUDL::Object;
-use MUDL::Set;
-use PDL;
-use Carp;
+#use MUDL::Set;
+#use PDL;
+#use Carp;
 our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile);
 
 ##======================================================================
@@ -47,7 +47,7 @@ sub addSentence {
 ## Evaluation: Unigram modelling
 
 ## ($precision,$recall) = $pr->evaluateUg()
-##   + very strange
+##   + also very strange (?)
 *finish = \&evaluateUg;
 sub evaluateUg {
   my $pr = shift;
@@ -119,6 +119,18 @@ sub getExpected {
   return $sum;
 }
 
+##======================================================================
+## Help
+
+## $string = $class_or_obj->helpString()
+sub helpString {
+  my $that = shift;
+  return
+    (qq(Evaluate token-text (unigram) maps [broken?]\n)
+     .qq(Options:\n)
+     .qq(  map=MAP [default=empty])
+    );
+}
 
 
 1;

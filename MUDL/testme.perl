@@ -397,7 +397,17 @@ sub atcparams {
 ##----------------------------------------------------------------------
 ## Tree Clustering: dendograms
 ##----------------------------------------------------------------------
+use MUDL::Cluster::Tree;
 use MUDL::Tk::Dendogram;
+
+sub dgprep {
+  atcprep;
+  $tc = MUDL::Cluster::Tree->new(%{atcparams(@_)});
+  $tc->cluster();
+  $tct = $tc->toTree(@_);
+  $dg  = $tct->toDendogram(@_);
+  return $dg;
+}
 
 ##----------------------------------------------------------------------
 ## Generic Trees

@@ -139,8 +139,8 @@ package MUDL::Object;
 ## $node = $obj->saveXMLNode(%args)
 ##  + return a new node representing the object
 ##  + default implementation
-##  + hash-entries are converted with $obj->entry2XMLNode($key,$val) if present
-##  + list-entries are converted with $obj->entry2XMLNode($index,$val) if present
+##  + hash-entries are converted with $obj->hashEntry2XMLNode($key,$val) if present
+##  + list-entries are converted with $obj->listEntry2XMLNode($index,$val) if present
 sub saveXMLNode {
   #confess( ref($_[0]) , "::saveXMLNode(): dummy method called.\n");
   my $obj = shift;
@@ -170,9 +170,11 @@ sub saveXMLNode {
     ##-- HASH refs
     if (UNIVERSAL::isa($src,'HASH')) {
       $$noder->setAttribute('MUDL.type','HASH');
-      if ($savesub=UNIVERSAL::can($src,'entry2XMLNode')) {
+      $savesub = UNIVERSAL::can($src,'hashEntry2XMLNode');
+      if ($savesub && $savesub ne UNIVERSAL::can(__PACKAGE__, 'hashEntry2XMLNode')) {
 	while (($k,$v)=each(%$src)) {
-	  $$noder->appendChild(&$savesub($src,$k,$v));
+	  $enode = &$savesub($src,$k,$v);
+	  $$noder->appendChild($enode) if (defined($enode));
 	}
       } else {
 	while (($k,$v)=each(%$src)) {
@@ -187,14 +189,16 @@ sub saveXMLNode {
     ##-- ARRAY refs
     elsif (UNIVERSAL::isa($src,'ARRAY')) {
       $$noder->setAttribute('MUDL.type','ARRAY');
-      if ($savesub=UNIVERSAL::can($src,'entry2XMLNode')) {
+      $savesub = UNIVERSAL::can($src,'listEntry2XMLNode');
+      if ($savesub && $savesub ne UNIVERSAL::can(__PACKAGE__, 'listEntry2XMLNode')) {
 	foreach $k (0..$#$src) {
 	  next if (!exists($src->[$k]));
-	  $$noder->appendChild(&$savesub($src,$k,$src->[$k]));
+	  $enode = &$savesub($src,$k,$src->[$k]);
+	  $$noder->appendChild($enode) if (defined($enode));
 	}
       } else {
 	foreach $k (0..$#$src) {
-	  next if (!exists($src->[$k]));
+	  next if (!exists($src->[$k]) || !defined($src->[$k]));
 	  my $vr = undef;
 	  $enode=XML::LibXML::Element->new('value');
 	  $enode->setAttribute('idx', $k);
@@ -242,6 +246,22 @@ sub saveXMLNode {
 
   return $node;
 }
+
+## $node = $obj->hashEntry2XMLNode($key,$value)
+sub hashEntry2XMLNode {
+  my $enode = XML::LibXML::Element->new('value');
+  $enode->setAttribute('key', $_[1]);
+  $enode->appendChild(__PACKAGE__->saveXMLNode($_[2]));
+  return $enode;
+}
+## $node = $obj->listEntry2XMLNode()
+sub listEntry2XMLNode {
+  my $enode = XML::LibXML::Element->new('value');
+  $enode->setAttribute('idx', $_[1]);
+  $enode->appendChild(__PACKAGE__->saveXMLNode($_[2]));
+  return $enode;
+}
+
 
 ## $str = $obj->saveXMLString(%args)
 ##  + returns object as XML string (NOT a doc string, just raw node)
@@ -301,8 +321,8 @@ sub saveXMLFh {
 ## $obj_or_undef = $class_or_obj->loadXMLNode($node,@args)
 ##  + should load object from $node
 ##  + default implementation should work basically correctly
-##  + hash entries are loaded with $obj->XMLNode2Entry($node) if present
-##  + array entries are loaded with $obj->XMLNode2Entry($node) if present
+##  + hash entries are loaded with $obj->XMLNode2HashEntry($node) if present
+##  + array entries are loaded with $obj->XMLNode2ListEntry($node) if present
 sub loadXMLNode {
   #my ($obj,$node) = splice(@_,0,2);
   #confess( ref($obj) , "::loadXMLNode(): dummy method called.\n");
@@ -312,6 +332,12 @@ sub loadXMLNode {
 
   my ($objr, $loadsub, $otyp, $ntyp, $nodename, $k, $enode);
   while (($objr,$node)=splice(@queue,0,2)) {
+
+    ##-- undef node --> undef
+    if (!defined($node)) {
+      $$objr = undef;
+      next;
+    }
 
     ##-- text node --> scalar string
     if ($node->nodeName eq 'text') {
@@ -326,13 +352,18 @@ sub loadXMLNode {
       carp( __PACKAGE__ , "::loadXMLNode() expected '", ref($$objr), "' element, got '", $nodename, "'\n")
 	if (ref($$objr) ne $otyp);
     } else {
-      $$objr = $otyp->new();
+      if ($otyp eq 'HASH') { $$objr = {}; }
+      elsif ($otyp eq 'ARRAY') { $$objr = []; }
+      elsif ($otyp eq 'REF') { my $objrr; $$objr = \$objrr; }
+      else {
+	$$objr = $otyp->new();
+      }
     }
 
     ##-- subcall
     $loadsub = UNIVERSAL::can($$objr, 'loadXMLNode');
     if ($loadsub && $loadsub ne UNIVERSAL::can( __PACKAGE__ , 'loadXMLNode')) {
-      $$objr = $$objr->loadXMLNode(@_);
+      $$objr = $$objr->loadXMLNode($node,@_);
       next;
     }
 
@@ -341,7 +372,8 @@ sub loadXMLNode {
 
     ##-- HASH refs
     if ($ntyp eq 'HASH' || UNIVERSAL::isa($$objr, 'HASH')) {
-      if ($loadsub=UNIVERSAL::can($$objr, 'XMLNode2Entry')) {
+      $loadsub=UNIVERSAL::can($$objr, 'XMLNode2HashEntry');
+      if ($loadsub && $loadsub ne UNIVERSAL::can( __PACKAGE__ , 'XMLNode2HashEntry')) {
 	foreach $enode ($node->childNodes) {
 	  &$loadsub($$objr,$enode);
 	}
@@ -354,7 +386,8 @@ sub loadXMLNode {
     }
     ##-- ARRAY refs
     elsif ($ntyp eq 'ARRAY' || UNIVERSAL::isa($$objr, 'ARRAY')) {
-      if ($loadsub=UNIVERSAL::can($$objr, 'XMLNode2Entry')) {
+      $loadsub=UNIVERSAL::can($$objr, 'XMLNode2ListEntry');
+      if ($loadsub && $loadsub ne UNIVERSAL::can( __PACKAGE__ , 'XMLNode2ListEntry')) {
 	foreach $enode ($node->childNodes) {
 	  &$loadsub($$objr,$enode);
 	}
@@ -388,6 +421,16 @@ sub loadXMLNode {
 
   return $obj;
 }
+
+## undef = $obj->XMLNode2HashEntry($xmlnode)
+sub XMLNode2HashEntry {
+  $_[0]->{$_[1]->getAttribute('key')} = __PACKAGE__->loadXMLNode($_[1]->firstChild);
+}
+## undef = $obj->XMLNode2ListEntry($xmlnode)
+sub XMLNode2ListEntry {
+  $_[0]->[$_[1]->getAttribute('idx')] = __PACKAGE__->loadXMLNode($_[1]->firstChild);
+}
+
 
 ## $obj_or_undef = $obj->loadXMLDoc($doc,@args)
 ##  + @args are passed to loadXMLNode
@@ -587,7 +630,7 @@ sub loadNativeString {
     confess( __PACKAGE__ , "::loadNativeString(): open failed: $!");
     return undef;
   }
-  binmode($fh,':utf8');
+  #binmode($fh,':utf8');
 
   my $rc = $obj->loadNativeFh($fh,@_);
   $fh->close();

@@ -7,9 +7,9 @@
 ##======================================================================
 
 package MUDL::Unigrams;
-use MUDL::Dist;
 use MUDL::Corpus::Profile;
 use MUDL::Corpus::Model;
+use MUDL::Dist;
 use Carp;
 our @ISA = qw(MUDL::Dist MUDL::Corpus::Profile MUDL::Corpus::Model);
 
@@ -79,6 +79,16 @@ sub readerProbability {
   }
   return $p;
 }
+
+##======================================================================
+## Help
+
+## $string = $class_or_obj->helpString()
+sub helpString {
+  my $that = shift;
+  return qq(Extract token-text unigrams.\n)
+}
+
 
 1;
 

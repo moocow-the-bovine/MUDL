@@ -192,6 +192,16 @@ sub readerProbability {
 }
 
 
+##======================================================================
+## Help
+
+## $string = $class_or_obj->helpString()
+sub helpString {
+  my $that = shift;
+  return qq(Extract token-text bigrams.\n)
+}
+
+
 1;
 
 ##======================================================================

@@ -122,6 +122,53 @@ sub removeIndex {
 }
 
 ##======================================================================
+## Conversion: Encoding
+use Encode;
+
+## $enum = $enum->recodeAll($fromenc, $toenc)
+##  + decodes all strings to $encoding
+sub recodeAll {
+  my ($enum,$from,$to) = @_;
+
+  %{$enum->{sym2id}} = qw();
+  foreach $i (0..$#{$enum->{id2sym}}) {
+    next if (!defined($enum->{id2sym}[$i]));
+    Encode::from_to($enum->{id2sym}[$i], $from, $to);
+    $enum->{sym2id}{$enum->{id2sym}[$i]} = $i;
+  }
+  return $enum;
+}
+
+## $enum = $enum->encode($dst_encoding)
+##   + wrapper for Encode::encode: convert from perl internal to $dst_encoding
+sub encodeAll {
+  my ($enum,$dst) = @_;
+
+  %{$enum->{sym2id}} = qw();
+  foreach $i (0..$#{$enum->{id2sym}}) {
+    next if (!defined($enum->{id2sym}[$i]));
+    $enum->{id2sym}[$i] = Encode::encode($dst, $enum->{id2sym}[$i]);
+    $enum->{sym2id}{$enum->{id2sym}[$i]} = $i;
+  }
+  return $enum;
+}
+
+## $enum = $enum->decodeAll($src_encoding)
+##   + wrapper for Encode::decode: convert from $src_encoding to perl-internal
+sub decodeAll {
+  my ($enum,$src) = @_;
+
+  %{$enum->{sym2id}} = qw();
+  foreach $i (0..$#{$enum->{id2sym}}) {
+    next if (!defined($enum->{id2sym}[$i]));
+    $enum->{id2sym}[$i] = Encode::decode($src,$enum->{id2sym}[$i]);
+    $enum->{sym2id}{$enum->{id2sym}[$i]} = $i;
+  }
+  return $enum;
+}
+
+
+##======================================================================
 ## I/O : AT&T / Native
 
 # $e = $e->saveNative($file_or_fh)
@@ -170,7 +217,7 @@ sub loadNativeFile {
 ##======================================================================
 ## I/O : XML
 
-## $node = $e->saveXMLNode
+## $node = $e->saveXMLNode()
 sub saveXMLNode {
   my $e = shift;
   (my $nodename = ref($e)) =~ s/::/./g;
@@ -192,7 +239,7 @@ sub saveXMLNode {
   return $node;
 }
 
-## $e = $e->loadXMLNode($node)
+## $e = $e->loadXML($node)
 sub loadXMLNode {
   my ($e,$node) = @_;
   $e = $e->new() if (!ref($e));
@@ -204,7 +251,7 @@ sub loadXMLNode {
   foreach $symnode ($node->getChildrenByTagName('symbol')) {
     $lab = $symnode->getAttribute('id');
     if ($symnode->hasChildNodes) {
-      $sym = MUDL::Object->loadXMLNode($enode->firstChild);
+      $sym = MUDL::Object->loadXMLNode($symnode->firstChild);
     } else {
       $sym = $symnode->textContent;
     }

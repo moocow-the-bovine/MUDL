@@ -18,7 +18,7 @@ use MUDL::XML;
 use MUDL::Corpus;
 use MUDL::CorpusIO;
 
-use MUDL::PDL;
+#use MUDL::PDL;
 
 use MUDL::Map;
 use MUDL::Enum;

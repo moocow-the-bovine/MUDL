@@ -77,6 +77,27 @@ sub minkowski {
 
 
 ##======================================================================
+## I/O: Conversion
+
+## $ary = pdl2ary($pdl)
+## $ary = pdl2ary($pdl,$ary)
+sub pdl2ary {
+  my ($pdl,$data) = @_;
+  my @queue = ($pdl,\$data);
+  my ($ref);
+  while (($pdl,$ref) = splice(@queue,0,2)) {
+    if ($pdl->ndims == 0) {
+      $$ref = $pdl->sclr;
+      next;
+    }
+    $$ref = [];
+    push(@queue, $_, \$$ref->[@$$ref]) foreach ($pdl->dog);
+  }
+  return $data;
+}
+
+
+##======================================================================
 ## I/O: XML
 
 ##-- (inherited)
