@@ -608,10 +608,8 @@ sub ddg_menu_open {
 				      -defaultextension=>'.xml',
 				      -filetypes=>
 				      [
-				       ['ASCII Tree Files',  '.tree'],
-				       ['XML Files',         '.xml'],
-				       ['Binary Files',      '.bin'],
-				       ['All Files',         '*'],
+				       ['Tree Files', [qw(.tree .tree.xml .tree.bin .tree.asc)]],
+				       ['All Files',  '*'],
 				      ]
 				     );
   return if (!defined($file));
