@@ -17,9 +17,9 @@ our $VERSION = 0.01;
 
 our @ISA = qw(MUDL::Object);
 
-##======================================================================
+########################################################################
 ## I/O : Abstract: CorpusIO
-##======================================================================
+########################################################################
 package MUDL::CorpusIO;
 use File::Basename;
 use MUDL::Object qw(dummy);
@@ -94,9 +94,9 @@ sub formatWriter {
 }
 
 
-##======================================================================
+########################################################################
 ## I/O : Abstract: Corpus Reader
-##======================================================================
+########################################################################
 package MUDL::CorpusReader;
 use Carp;
 our @ISA = qw(MUDL::CorpusIO);
@@ -127,9 +127,9 @@ MUDL::Object->import('dummy');
 ## $n = $cr->nTokens()
 *nTokens = *nToks = *ntoks = dummy('nTokens');
 
-##======================================================================
+########################################################################
 ## I/O : Abstract: Corpus Writer
-##======================================================================
+########################################################################
 package MUDL::CorpusWriter;
 use Carp;
 MUDL::Object->import('dummy');
@@ -151,9 +151,9 @@ our @ISA = qw(MUDL::CorpusIO);
 *toFile = dummy('toFile');
 *toFh = dummy('toFh');
 
-##======================================================================
+########################################################################
 ## I/O : TT : Reader
-##======================================================================
+########################################################################
 package MUDL::CorpusReader::TT;
 use Carp;
 MUDL::Object->import('dummy');
@@ -198,6 +198,7 @@ sub fromString {
   $cr->{fh}->close() if (defined($cr->{fh}));
   $cr->{fh} = IO::Scalar->new(\$string)
     or croak( __PACKAGE__ , "::fromString(): open failed: $!");
+  binmode($cr->{fh}, ':utf8');
 }
 
 ## undef = $cr->fromFile($filename)
@@ -208,6 +209,7 @@ sub fromFile {
   $cr->{fh}->close() if (defined($cr->{fh}));
   $cr->{fh} = ref($file) ? $file : IO::File->new("<$file");
   croak( __PACKAGE__ , "::fromFile(): open failed for '$file': $!") if (!$cr->{fh});
+  binmode($cr->{fh}, ':utf8');
 }
 
 ## \@sentence_or_undef = $cr->getSentence();
@@ -228,7 +230,7 @@ sub getSentence {
       }
       next;
     }
-    push(@$sent, bless [ split(/\s*\t+\s*/, $line) ], 'MUDL::TTToken');
+    push(@$sent, bless [ split(/\s*\t+\s*/, $line) ], 'MUDL::Token::TT');
     $cr->{ntoks}++;
   }
   if (@$sent || $args{allow_empty_sentences}) {
@@ -253,20 +255,30 @@ sub getToken {
     }
 
     $cr->{ntoks}++;
-    return bless [split(/\s*\t+\s*/, $line)], 'MUDL::TTToken';
+    return bless [split(/\s*\t+\s*/, $line)], 'MUDL::Token::TT';
   }
   return undef;
 }
 
 
 
-##======================================================================
+########################################################################
 ## I/O : TT : Writer
-##======================================================================
+########################################################################
 package MUDL::CorpusWriter::TT;
 use Carp;
 MUDL::Object->import('dummy');
 our @ISA = qw(MUDL::CorpusWriter);
+
+
+## $cw = class->new(%args)
+##   + known %args:
+##      layers => \@binmode_layer_flags
+sub new {
+  my ($that,%args) = @_;
+  my $cw = bless { layers=>[qw(:utf8)], %args }, ref($that)||$that;
+  return $cw;
+}
 
 sub DESTROY {
   my $cw = shift;
@@ -282,6 +294,7 @@ sub toString {
   $cw->{fh}->close() if (defined($cw->{fh}));
   $cw->{fh} = IO::Scalar->new(\$string)
     or croak( __PACKAGE__ , "::toString(): open failed: $!");
+  binmode($cw->{fh}, $_) foreach (@{$cw->{layers}});
 }
 
 ## undef = $cw->toFile($filename_or_fh)
@@ -291,6 +304,7 @@ sub toFile {
   $cw->{fh}->close() if (defined($cw->{fh}));
   $cw->{fh} = ref($file) ? $file : IO::File->new(">$file");
   croak( __PACKAGE__ , "::toFile(): open failed for '$file': $!") if (!$cw->{fh});
+  binmode($cw->{fh}, $_) foreach (@{$cw->{layers}});
 }
 
 ## undef = $cw->putSentence(\@sent);
@@ -317,9 +331,10 @@ sub putToken {
   return undef if (!$cr->{fh});
 
   if (ref($token)) {
-    $cw->{fh}->print($token->saveNativeString);
+    $cw->{fh}->print($tok->saveNativeString);
     #$cw->{fh}->print(join("\t", $tok->{text}, @{$tok->{details}}), "\n");
   } elsif (defined($token)) {
+    #$cw->{fh}->print($tok, "\n");
     $cw->{fh}->print($tok, "\n");
   } else {
     $cw->{fh}->print("\n");
@@ -327,20 +342,29 @@ sub putToken {
 }
 
 
-##======================================================================
+########################################################################
 ## I/O : XML : Reader
-##======================================================================
+########################################################################
 package MUDL::CorpusReader::XML;
 use Carp;
 MUDL::Object->import('dummy');
 MUDL::XML->import(qw(:xpaths :styles));
 our @ISA = qw(MUDL::CorpusReader);
 
+our %TokenClasses =
+  (
+   'raw' => 'MUDL::Token::Raw',
+   'tt' => 'MUDL::Token::TT',
+   'xml' => 'MUDL::Token::XML',
+   'token' => 'MUDL::Token',
+   'default' => 'MUDL::Token::XML',
+  );
+
 ## new(%args)
 sub new {
   my ($that,%args) = @_;
   my $self = bless {
-		    tokenClass => 'Token', ##-- token subclass to generate
+		    tokenClass => 'default', ##-- token subclass to generate
 
 		    s_xpath => $s_xpath,
 		    token_xpath => $token_xpath,
@@ -369,6 +393,14 @@ sub new {
       or croak( __PACKAGE__ , "::new(): could not parse stylesheet document: $!");
     $self->{stylesheet} = $xslt->parse_stylesheet($sdoc)
       or croak( __PACKAGE__ , "::new(): could not parse stylesheet: $!");
+  }
+
+  ##-- token class
+  if (defined($TokenClasses{"\L$self->{tokenClass}\E"})) {
+    $self->{tokenClass} = $TokenClasses{"\L$self->{tokenClass}\E"};
+  } else {
+    carp( __PACKAGE__ , "::new(): unknown tokenClass '$self->{tokenClass}' -- using default.");
+    $self->{tokenClass} = $TokenClasses{default};
   }
 
   return $self;
@@ -454,30 +486,9 @@ sub getSentence {
 
   my $snode = shift(@{$cr->{snodes}});
   my $sent = bless [], 'MUDL::Sentence';
-  my $i = 0;
   foreach my $toknode ($snode->getChildrenByTagName($cr->{token_elt})) {
     $cr->{ntoks}++;
-    push(@$sent,
-	 ($cr->{tokenClass} eq 'raw'
-	  ? (bless(
-		   \(my $txt=join('', map { $_->textContent } $toknode->getChildrenByTagName($cr->{text_elt}))),
-		   'MUDL::RawToken'
-		  ))
-	  : ($cr->{tokenClass} eq 'tt'
-	     ? (bless([
-		       join('', map { $_->textContent } $toknode->getChildrenByTagName($cr->{text_elt})),
-		       join('', map { $_->textContent } $toknode->getChildrenByTagName($cr->{tag_elt})),
-		       (map { $_->textContent } $toknode->getChildrenByTagName($cr->{detail_elt}))
-		      ],
-		      'MUDL::TTToken'))
-	     : (bless({
-		       text=>join('', map { $_->textContent } $toknode->getChildrenByTagName($cr->{text_elt})),
-		       tag=>join('', map { $_->textContent } $toknode->getChildrenByTagName($cr->{tag_elt})),
-		       (map {
-			 ($i++ => $_->textContent)
-		       } $toknode->getChildrenByTagName($cr->{detail_elt}))
-		      }, 'MUDL::Token'))))
-	);
+    push(@$sent, $cr->{tokenClass}->fromCorpusXMLNode($toknode));
   }
   return $sent;
 }
@@ -498,9 +509,9 @@ sub getToken {
 }
 
 
-##======================================================================
+########################################################################
 ## I/O : XML : Writer
-##======================================================================
+########################################################################
 package MUDL::CorpusWriter::XML;
 use Carp;
 MUDL::Object->import('dummy');
@@ -584,6 +595,16 @@ sub putSentence {
   my ($cw,$sent) = @_;
   return undef if (!$cw->{doc});
 
+  my ($snode,$tok);
+  $cw->{root}->appendChild($snode=XML::LibXML::Element->new($cw->{s_elt}));
+  foreach $tok (@$sent) {
+    $snode->appendChild($tok->toCorpusXMLNode());
+  }
+}
+sub putSentenceOld {
+  my ($cw,$sent) = @_;
+  return undef if (!$cw->{doc});
+
   my ($snode,$tok,$toknode,$tag, $akey,$aval,$a_elt,$anode);
   $cw->{root}->appendChild($snode=XML::LibXML::Element->new($cw->{s_elt}));
   foreach $tok (@$sent) {
@@ -594,9 +615,10 @@ sub putSentence {
       foreach $akey ($tok->attributeNames) {
 	$a_elt = $cw->{attr2elt}{$akey};
 	$a_elt = $cw->{detail_elt} if (!defined($a_elt));
+	$anode = XML::LibXML::Element->new($a_elt);
 	$anode->setAttribute('key',$akey);
 	$anode->appendText($tok->attribute($akey));
-	$toknode->appendChild($anode = XML::LibXML::Element->new($a_elt));
+	$toknode->appendChild($anode);
       }
     } else {
       $toknode->appendTextChild($cw->{text_elt}, $tok);
@@ -606,6 +628,73 @@ sub putSentence {
 
 ## undef = $cw->putToken($text_or_hashref)
 #sub putToken
+
+########################################################################
+## I/O : Memory : CorpusReader
+########################################################################
+
+package MUDL::CorpusIO::Corpus;
+use MUDL::Corpus;
+use MUDL::Object;
+use Carp;
+our @ISA = qw(MUDL::CorpusReader MUDL::CorpusWriter);
+
+## $cr = $cr->fromCorpus($mudl_corpus)
+*toCorpus = \&fromCorpus;
+sub fromCorpus { $_[0]{corpus} = $_[1]; }
+
+## undef = $cr->reset
+sub reset {
+  @{$_[0]}{qw(pos nsents ntoks)} = (0,0,0);
+  #$_[0]{corpus} = undef;
+}
+
+## $n = $cr->nSentences
+*nSents = *nsents = \&nSentences;
+sub nSentences { return $_[0]{nsents}; }
+
+## $n = $cr->nTokens
+*nToks = *ntoks = \&nTokens;
+sub nTokens { return $_[0]{ntoks}; }
+
+## $bool = $cr->eof;
+sub eof {
+  my $cr = shift;
+  return (!$cr->{corpus} || $cr->{pos} == @{$cr->{corpus}{sents}});
+}
+
+## $s = $cr->getSentence
+sub getSentence {
+  my $cr = shift;
+  return undef if ($cr->eof);
+  my $s = $cr->{corpus}{sents}[$cr->{pos}++];
+  ++$cr->{nsents};
+  $cr->{ntoks} += @$s;
+  return $s;
+}
+
+## $t = $cr->getToken
+##-- not implemented
+
+##--------------------
+## Writer Methods
+
+## $bool = $cw->flush
+sub flush { ; }
+
+## undef = $cw->putSentence
+sub putSentence {
+  my ($cw,$s) = @_;
+  $cw->{corpus} = MUDL::Corpus->new() if (!$cw->{corpus});
+  push(@{$cw->{corpus}{sents}}, $s);
+}
+
+## undef = $cw->putToken
+##-- not implemented
+
+##-- aliases
+package MUDL::CorpusReader::Corpus;  our @ISA=qw(MUDL::CorpusIO::Corpus);
+package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusWriter::Corpus);
 
 1;
 

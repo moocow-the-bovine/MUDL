@@ -93,6 +93,7 @@ sub saveXMLFile {
   foreach $sent (@{$c->{sents}}) {
     $cw->putSentence($sent);
   }
+  $cw->flush();
   return $c;
 }
 

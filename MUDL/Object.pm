@@ -63,7 +63,7 @@ sub init {
 ## Deep copy
 ##  $copy = copy($obj)
 *clone = \&copy;
-sub copy { return Storable::dclone(@_); }
+sub copy { return Storable::dclone($_[0]); }
 
 
 ########################################################################
@@ -286,7 +286,7 @@ sub saveXMLFh {
 ## I/O: XML: load
 ##======================================================================
 
-## $obj_or_undef = $obj->loadXMLNode($node,@args)
+## $obj_or_undef = $class_or_obj->loadXMLNode($node,@args)
 ##  + should load object from $node
 ##  + default implementation should work basically correctly
 ##  + hash entries are loaded with $obj->XMLNode2Entry($node) if present
@@ -468,7 +468,7 @@ sub saveBinFile {
 sub saveBinFh {
   my ($obj,$fh) = splice(@_,0,2);
   my $ref = ref($obj) ? $obj : \$obj;
-  if (!Storable::store_fd($ref)) {
+  if (!Storable::store_fd($ref, $fh)) {
     confess( __PACKAGE__ , "::saveBinFh(): Storable::store_fd() failed.\n");
     return undef;
   }
@@ -502,8 +502,8 @@ sub loadBinFile {
 ## $obj_or_undef = $obj->loadBinFh($fh,@args)
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
-  if (!($obj=Storable::fd_retrieve($ref))) {
-    confess( __PACKAGE__ , "::loadBinFh(): Storable::retrieve_fd() failed.\n");
+  if (!($obj=Storable::fd_retrieve($fh))) {
+    confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;
   }
   return $obj;
@@ -524,6 +524,8 @@ sub saveNativeString {
     confess( __PACKAGE__ , "::saveNativeString(): open failed: $!");
     return undef;
   }
+  binmode($fh,':utf8');
+
   $obj->saveNativeFh($fh,@_);
   $fh->close();
   return $str;
@@ -538,6 +540,8 @@ sub saveNativeFile {
     confess( __PACKAGE__ , "::saveNativeFile(): open failed for '$file': $!");
     return undef;
   }
+  binmode($fh,':utf8');
+
   my $rc = $obj->saveNativeFh($fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
@@ -564,6 +568,8 @@ sub loadNativeString {
     confess( __PACKAGE__ , "::loadNativeString(): open failed: $!");
     return undef;
   }
+  binmode($fh,':utf8');
+
   my $rc = $obj->loadNativeFh($fh,@_);
   $fh->close();
   return $rc;
@@ -578,6 +584,8 @@ sub loadNativeFile {
     confess( __PACKAGE__ , "::loadNativeFile(): open failed for '$file': $!");
     return undef;
   }
+  binmode($fh,':utf8');
+
   my $rc = $obj->loadNativeFh($fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
@@ -596,28 +604,63 @@ sub loadNativeFile {
 
 
 ##======================================================================
-## I/O: Generic
+## I/O: Generic: Load
 ##======================================================================
 
 ## $class_or_obj->newFromFile($filename,%args)
 ##  + creates a new object, loads a file
 ##  + known args:
 ##     mode => 'xml' | 'bin' | 'native'
-sub newFromFile {
-  my ($that,$file,%args) = @_; 
-  my $obj = $that->new(%args);
+sub loadFile {
+  my ($obj,$file,%args) = @_; 
+  #$obj = $obj->new(%args) if (!ref($obj));
   my $mode = defined($args{mode}) ? $args{mode} : '';
   if ($mode eq 'xml' || $file =~ /\.xml$/) {
-    $obj->loadXMLFile($file,%args)
+    return $obj->loadXMLFile($file,%args)
       or confess( __PACKAGE__ , "::newFromFile() failed for XML file '$file': $!");
   }
   elsif ($mode eq 'bin' || $file =~ /(?:\.bin|\.sto)$/) {
-    $obj->loadBinFile($file,%args)
+    return $obj->loadBinFile($file,%args)
       or confess( __PACKAGE__ , "::newFromFile() failed for bin file '$file': $!");
   }
   else {
-    $obj->loadNativeFile($file,%args)
+    return $obj->loadNativeFile($file,%args)
       or confess( __PACKAGE__ , "::newFromFile() failed for native file '$file': $!");
+  }
+}
+
+
+##======================================================================
+## I/O: Generic: Save
+##======================================================================
+
+## $class_or_obj->saveFile($filename,%args)
+##  + creates a new object, loads a file
+##  + known args:
+##     mode => 'xml' | 'bin' | 'native'
+sub saveFile {
+  my ($obj,$file,%args) = @_;
+
+  my $mode = $args{mode};
+  if ($file =~ /^([^:]+):(.*)/) {
+    $file = $2;
+    $mode = $1;
+  }
+  elsif (!defined($mode)) {
+    $mode = '';
+  }
+
+  if ($mode eq 'xml' || $file =~ /\.xml$/) {
+    return $obj->saveXMLFile($file,%args)
+      or confess( __PACKAGE__ , "::saveFile() failed for XML file '$file': $!");
+  }
+  elsif ($mode eq 'bin' || $file =~ /(?:\.bin|\.sto)$/) {
+    return $obj->saveBinFile($file,%args)
+      or confess( __PACKAGE__ , "::saveFile() failed for binary file '$file': $!");
+  }
+  else {
+    return $obj->saveNativeFile($file,%args)
+      or confess( __PACKAGE__ , "::saveFile() failed for native file '$file': $!");
   }
   return $obj;
 }

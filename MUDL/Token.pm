@@ -14,6 +14,7 @@
 package MUDL::Token;
 use MUDL::Object;
 use Carp;
+use utf8;
 our @ISA = qw(MUDL::Object);
 
 ##======================================================================
@@ -75,12 +76,45 @@ sub loadNativeString {
 }
 
 
+##======================================================================
+## I/O: XML
+
+## $node = $token->toCorpusXMLNode()
+sub toCorpusXMLNode {
+  my $node = XML::LibXML::Element->new('token');
+  $node->appendTextChild('text',$_[0]->text);
+  $node->appendTextChild('tag',$_[0]->tag);
+  my ($a,$anode);
+  foreach $a ($_[0]->attributeNames) {
+    $anode = XML::LibXML::Element->new('detail');
+    $anode->setAttribute('key',$a);
+    $anode->appendText($_[0]->attribute($a));
+    $node->appendChild($anode);
+  }
+  return $node;
+}
+
+## $tok = $tok->fromCorpusXMLNode($node)
+sub fromCorpusXMLNode {
+  my ($tok,$node) = @_;
+  $tok = $tok->new if (!ref($tok));
+  $tok->text(join('', map { $_->textContent } $node->getChildrenByTagName('text')));
+  $tok->tag(join('', map { $_->textContent } $node->getChildrenByTagName('tag')));
+  my $akey=0;
+  foreach my $anode ($node->getChildrenByTagName('detail')) {
+    $tok->attribute($akey++,$anode->textContent);
+  }
+  return $tok;
+}
+
+
 ########################################################################
-## class MUDL::TTToken
+## class MUDL::Token::TT
 ##  + array-based token class for TT files
 ########################################################################
-package MUDL::TTToken;
+package MUDL::Token::TT;
 use Carp;
+use utf8;
 our @ISA = qw(MUDL::Array MUDL::Token);
 
 ##======================================================================
@@ -140,13 +174,160 @@ sub loadNativeString {
   return $_[0];
 }
 
+##======================================================================
+## I/O: XML
+
+## $node = $token->toCorpusXMLNode()
+sub toCorpusXMLNode {
+  my $node = XML::LibXML::Element->new('token');
+  $node->appendTextChild('text',$_[0][0]);
+  $node->appendTextChild('tag',$_[0][1]);
+  $node->appendTextChild('detail',$_) foreach (@{$_[0]}[2..$#{$_[0]}]);
+  return $node;
+}
+
+## $tok = $tok->fromCorpusXMLNode($node)
+sub fromCorpusXMLNode {
+  my ($tok,$node) = @_;
+  $tok = $tok->new if (!ref($tok));
+  @$tok = qw();
+  $tok->[0] = join('', map { $_->textContent } $node->getChildrenByTagName('text'));
+  $tok->[1] = join('', map { $_->textContent } $node->getChildrenByTagName('tag'));
+  push(@$tok, $_->textContent) foreach ($node->getChildrenByTagName('detail'));
+  return $tok;
+}
 
 ########################################################################
-## class MUDL::RawToken
+## class MUDL::Token::XML
+##  + node-based token class for XML files
+########################################################################
+package MUDL::Token::XML;
+use XML::LibXML;
+use Carp;
+use utf8;
+our @ISA = qw(MUDL::Token XML::LibXML::Element);
+
+##-- new
+sub new {
+  my $that = shift;
+  my $tok = bless XML::LibXML::Element->new('token'), ref($that)||$that;
+  my ($k,$v);
+  while (($k,$v)=splice(@_,0,2)) {
+    $tok->appendTextChild($k,$v) if (defined($v));
+  }
+  return $tok;
+}
+
+##======================================================================
+## Accessors
+
+## $txt = $tok->text()
+## $txt = $tok->text($txt)
+sub text {
+  my $tok = shift;
+  if (@_) {
+    $tok->removeChild($_) foreach ($tok->getChildrenByTagName('text'));
+    $tok->appendTextChild('text',$_[1]);
+    return $_[1];
+  }
+  my $old = ($tok->getChildrenByTagName('text'))[0];
+  return $old ? $old->textContent : '';
+}
+
+## $tag = $tok->tag()
+## $tag = $tok->tag($tag)
+sub tag {
+  my $tok = shift;
+  if (@_) {
+    $tok->removeChild($_) foreach ($tok->getChildrenByTagName('tag'));
+    $tok->appendTextChild('tag',$_[1]);
+    return $_[1];
+  }
+  my $old = ($tok->getChildrenByTagName('tag'))[0];
+  return $old ? $old->textContent : '';
+}
+
+## @attributeNames = $tok->attributeNames()
+sub attributeNames { return map { $_->nodeName } $_[0]->childNodes; }
+
+## %attributes = $tok->attributes
+sub attributes {
+  return map { $_ => $_[0]->attribute($_) } $_[0]->attributeNames;
+}
+
+
+## $val = $tok->getAttribute($attr)
+## $val = $tok->setAttribute($attr,$val)
+*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
+sub attribute {
+  my ($tok,$name) = splice(@_,0,2);
+  if ($name eq 'text')   { return $tok->text(@_); }
+  elsif ($name eq 'tag') { return $tok->tag(@_); }
+
+  my $old = ($tok->getChildrenByTagName('detail'))[$_[0]];
+  if (@_) {
+    if ($old) {
+      my $new = $old->cloneNode(0);
+      $tok->replaceChild($new, $old);
+      $new->appendText($_[1]);
+    }
+    else {
+      $tok->appendTextChild('detail', $_[1]);
+    }
+    return $_[1];
+  }
+
+  return $old ? $old->textContent : undef;
+}
+
+
+##======================================================================
+## I/O: Native
+
+## $str = $tok->saveNativeStr()
+##  + only saves 'text', 'tag', and numerically keyed attributes
+*saveTTString = \&saveNativeString;
+sub saveNativeString {
+  return join("\t",
+	      (grep {
+		defined($_)
+	      }
+	       $_[0]->text,
+	       $_[0]->tag,
+	       (map { $_->textContent } $_[0]->getChildrenByTagName('detail'))),
+	     )."\n";
+}
+
+# $tok = $tok->loadNativeStr($str)
+*loadTTString = \&loadNativeString;
+sub loadNativeString {
+  my ($tok,$str) = @_;
+  $tok = $tok->new() if (!ref($tok));
+  my @fields = split(/\s*\t+\s*/,$str);
+  $tok->text($fields[0]) if (@fields > 0);
+  $tok->tag($fields[1]) if (@fields > 1);
+  $tok->appendTextChild('detail', $_) foreach (@fields[2..$#fields]);
+  return $tok;
+}
+
+##======================================================================
+## I/O: XML
+
+## $node = $token->toCorpusXMLNode()
+sub toCorpusXMLNode { return $_[0]; }
+
+## $tok = $tok->fromCorpusXMLNode($node)
+sub fromCorpusXMLNode { return bless($_[1], $_[0]||ref($_[0])); }
+
+
+
+########################################################################
+## class MUDL::Token::Raw
 ##  + scalar-based token class for raw-text tokens
 ########################################################################
-package MUDL::RawToken;
+package MUDL::Token::Raw;
 use Carp;
+use utf8;
 our @ISA = qw(MUDL::Scalar MUDL::Token);
 
 ##======================================================================
@@ -200,6 +381,25 @@ sub loadNativeString {
   $_[0] = $_[0]->new if (!ref($_[0]));
   (${$_[0]} = $_[1]) =~ s/^([^\t\r\n]*\S)\s*[\t\r\n]/$1/;
   return $_[0];
+}
+
+
+##======================================================================
+## I/O: XML
+
+## $node = $token->toCorpusXMLNode()
+sub toCorpusXMLNode {
+  my $node = XML::LibXML::Element->new('token');
+  $node->appendTextChild('text',${$_[0]});
+  return $node;
+}
+
+## $tok = $tok->fromCorpusXMLNode($node)
+sub fromCorpusXMLNode {
+  my ($tok,$node) = @_;
+  $tok = $tok->new if (!ref($tok));
+  $$tok = join('', map { $_->textContent } $node->getChildrenByTagName('text'));
+  return $tok;
 }
 
 

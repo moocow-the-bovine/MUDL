@@ -14,13 +14,14 @@ our @ISA = qw(MUDL::Dist::Partial);
 
 ## object structure:
 ##   + size  : number of possible events
+##   + sizes : array of sizes (per slot)
 ##   + zmass : total mass alotted to zero-count events ("missing mass")
 ##   + nzero : number of zero-probability entries
 ##   + sep   : field-separator string (default="\t")
 sub new {
   my $that = shift;
   my $self = $that->SUPER::new(sep=>"\t", @_);
-  #bless $self->{nz}, 'MUDL::Dist::Nary::NZ';
+  $self->{sizes} = [] if (!$self->{sizes});
   return $self;
 }
 
@@ -57,8 +58,43 @@ sub project1 {
 }
 
 ##----------------------------------------------
+## Selection
+
+## $d2 = $d->select($coderef_or_str)
+##  + selects all events for which &$coderef_or_str($key,$val) evaluates to true
+##  + $codestr can use variables $key,$val and/or parameters @_[0,1]
+sub select {
+  my ($d,$code) = @_;
+  $code = eval qq(sub { $code }) if (!ref($code));
+  my $d2 = ref($d)->new();
+  $d2->{sep} = $d->{sep};
+  my ($key,$val);
+  while (($key,$val)=each(%{$d->{nz}})) {
+    $d2->{nz}{$key} = $val if (&$code($key,$val));
+  }
+  return $d2;
+}
+
+
+##----------------------------------------------
+## clear
+sub clear {
+  @{$_[0]{sizes}} = qw();
+  return $_[0]->SUPER::clear();
+}
+
+##----------------------------------------------
 ## size
-sub getSize {
+
+## \@sizes = $d->sizes()
+##   + returns size of each slot
+sub sizes {
+  return @{$_[0]{sizes}} ? $_[0]{sizes} : $_[0]->{sizes} = $_[0]->getSizes;
+}
+
+## \@sizes = $d->getSizes()
+##   + recomputes size per slot
+sub getSizes {
   my $d = shift;
   my @sets = qw();
   my ($k,@fields,$i);
@@ -69,8 +105,15 @@ sub getSize {
       $sets[$i]{$fields[$i]} = undef;
     }
   }
+  @{$d->{sizes}} = map { scalar(keys(%$_)) } @sets;
+  return $d->{sizes};
+}
+
+## $size = $d->getSize();
+sub getSize {
+  my $d = shift;
   my $prod = 1;
-  $prod *= scalar(keys(%$_)) foreach (@sets);
+  $prod *= $_ foreach (@{$d->{sizes}});
   return $prod;
 }
 
@@ -80,9 +123,19 @@ sub getSize {
 
 ##-- implement as another class
 
-## $cnd = $nd->conditionalizeN(\@target_fields, \@given_fields)
-##   + converts $nd->{nz} to { "@target_fields\t@given_fields" => P(@target_fields|@given_fields), ... }
-
+## $cnd = $nd->conditionalizeN(\@given_fields)
+##   + converts $nd->{nz} to { $event => P($event|@given_fields), ... }
+sub conditionalize {
+  my ($d,$gf) = @_;
+  my $gd = $d->projectN(@$gf);
+  my ($k,$gk);
+  foreach $k (keys(%{$d->{nz}})) {
+    @fields = split(/(?:\Q$d->{sep}\E)+/, $k);
+    $gk = join($d->{sep}, @fields[@$gf]);
+    $d->{nz}{$k} /= $gd->{nz}{$gk};
+  }
+  return $d;
+}
 
 1;
 

@@ -1,5 +1,10 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="ISO-8859-1"?>
 <MUDL.Corpus>
+<s>
+    <token>
+      <text>הצü</text>
+    </token>
+</s>
   <s>
     <token>
       <text>This</text>

@@ -8,6 +8,8 @@ use File::Basename qw(basename);
 
 use Time::HiRes qw(gettimeofday tv_interval);
 
+use utf8;
+
 ##----------------------------------------------------------------------
 ## Globals
 ##----------------------------------------------------------------------
@@ -23,8 +25,11 @@ our $verbose      = 2;
 our $XML_VERSION  = "1.0";
 our $XML_ENCODING = 'UTF-8';
 
-our $fmt_level = 0;
-our $xmlmode = 'DEFAULT';
+our $fmt_level = 1;         ##-- XML format level
+our $tokclass = 'DEFAULT';
+
+our $tt_layers = [qw(:utf8)];
+#our $tt_layers = [];
 
 ##----------------------------------------------------------------------
 ## Command-line processing
@@ -38,10 +43,12 @@ GetOptions(##-- general
 	   ##-- I/O
 	   'output|o=s' => \$outfile,
 
-	   'xmlmode|mode|m=s' => \$xmlmode,
+	   'xmlclass|class|xc|c=s' => \$tokclass,
 	   'xmlencoding|xe|e=s' => \$XML_ENCODING,
 	   'xmlversion|xv=s' => \$XML_VERSION,
 	   'xmlformat|format|f=i' => \$fmt_level,
+
+	   'ttlayers|ttl|tl|l=s@' => $tt_layers,
 	  );
 
 pod2usage({
@@ -78,7 +85,10 @@ $cr = 'MUDL::CorpusIO';
 $cw = MUDL::CorpusWriter->fileWriter($outfile,
 				     format=>$fmt_level,
 				     xmlencoding=>$XML_ENCODING,
-				     xmlversion=>$XML_VERSION)
+				     xmlversion=>$XML_VERSION,
+
+				     layers=>$tt_layers,
+				    )
   or die("$progname: could not create CorpusWriter for '$outfile': $!");
 
 $ntoks = $nfiles = 0;
@@ -87,7 +97,7 @@ $time0 = [gettimeofday];
 foreach $file (@ARGV) {
   vmsg(2, "$progname: processing ", basename($file), ": ");
   $cr->reset() if (ref($cr));
-  $cr = $cr->fileReader($file, mode=>$xmlmode);
+  $cr = $cr->fileReader($file, tokenClass=>$tokclass);
 
   $timeF0 = [gettimeofday];
 

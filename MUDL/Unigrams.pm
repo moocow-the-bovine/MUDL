@@ -8,11 +8,10 @@
 
 package MUDL::Unigrams;
 use MUDL::Dist;
-use MUDL::XML;
+use MUDL::Corpus::Profile;
+use MUDL::Corpus::Model;
 use Carp;
-use IO::File;
-our @ISA = qw(MUDL::Dist);
-our $VERSION = 0.01;
+our @ISA = qw(MUDL::Dist MUDL::Corpus::Profile MUDL::Corpus::Model);
 
 ## OBJECT STRUCTURE:
 ##   + (from Dist): $wd => $count, ...
@@ -21,58 +20,24 @@ our $VERSION = 0.01;
 ## Accessors
 
 ## @words = $ug->vocabulary()
-*V = *vocab = *Sigma = *sigma = \&vocabulary;
 sub vocabulary {
   my $ug = shift;
   return keys(%$ug);
 }
 
-## size()
+## getSize()
 ##   + returns number of unigrams
-sub size { return scalar($_[0]->sigma); }
+sub getSize { return scalar($_[0]->vocabulary); }
 
 ##======================================================================
-## add unigrams learn from a corpus
+## Corpus::Profile Methods
 
-## $ug = $ug->addCorpus($corpus,%args)
-sub addCorpus {
-  my ($ug,$corpus) = @_;
-  my ($s,$txt);
-  foreach $s (@{$corpus->sentences}) {
-    foreach (@$s) {
-      $txt = ref($_) ? $_->{text} : $_;
-      ++$ug->{$txt};
-    }
-  }
-  return $ug;
-}
-
-## $bg = $bg->addReader($reader,%args)
-sub addReader {
-  my ($ug,$cr) = @_;
-  my ($s,$txt);
-  while (defined($s=$cr->getSentence)) {
-    next if (!@$s);
-    foreach (@$s) {
-      $txt = ref($_) ? $_->{text} : $_;
-      if (!defined($txt)) {
-	warn( __PACKAGE__ , "::addReader(): undefined token text!");
-	next;
-      }
-      ++$ug->{$txt};
-    }
-  }
-  return $ug;
-}
+## undef = $ug->addSentence(\@sent)
+sub addSentence { ++$_[0]->{ref($_) ? $_->text : $_} foreach (@{$_[1]}); }
 
 
 ##======================================================================
-## I/O: XML
-
-## (inherited)
-
-##======================================================================
-## I/O: TnT
+## I/O: Native
 ##
 ## (not yet implemented)
 
@@ -81,36 +46,17 @@ sub addReader {
 
 ## $logprob = sentenceProbability(\@sent,%args)
 ##   + %args : 'unknown'=>$unknown_symbol
-*sp = *sP = *sentp = *sentP = *sentProb = *sentprob = *sentenceProb = \&sentenceProbability;
+##             'punknown'=>p($unknown_symbol)
 sub sentenceProbability {
   my ($ug,$s,%args) = @_;
   $args{unknown} = '__UNKNOWN__' if (!defined($args{unknown}));
-  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}}));
+  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}}));  ##-- HACK
   my $p = 0;
-  my ($tok,$txt,$ptxt);
+  my ($tok,$txt);
   foreach $tok (@$s) {
-    $txt = ref($tok) ? $tok->{text} : $tok;
+    $txt = ref($tok) ? $tok->text : $tok;
     $txt = $args{unknown} if (!defined($ug->{$txt}));
     $p += log($ug->{$txt});
-  }
-  return $p;
-}
-
-## $logprob = corpusProbability($corpus,%args)
-##   + %args : 'unknown'=>$unknown_symbol
-*corpusp = *corpusP = *corpusprob = *corpusProb = \&corpusProbability;
-sub corpusProbability {
-  my ($ug,$corpus,%args) = @_;
-  $args{unknown} = '__UNKNOWN__' if (!defined($args{unknown}));
-  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}}));
-  my $p = 0;
-  my ($s,$tok,$txt,$ptxt);
-  foreach $s (@{$corpus->{sents}}) {
-    foreach $tok (@$s) {
-      $txt = ref($tok) ? $tok->{text} : $tok;
-      $txt = $args{unknown} if (!defined($ug->{$txt}));
-      $p += log($ug->{$txt});
-    }
   }
   return $p;
 }
@@ -121,12 +67,12 @@ sub corpusProbability {
 sub readerProbability {
   my ($ug,$cr,%args) = @_;
   $args{unknown} = '__UNKNOWN__' if (!defined($args{unknown}));
-  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}}));
+  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}})); ##-- HACK
   my $p = 0;
   my ($s,$tok,$txt);
   while (defined($s=$cr->getSentence)) {
     foreach $tok (@$s) {
-      $txt = ref($tok) ? $tok->{text} : $tok;
+      $txt = ref($tok) ? $tok->text : $tok;
       $txt = $args{unknown} if (!defined($ug->{$txt}));
       $p += log($ug->{$txt});
     }

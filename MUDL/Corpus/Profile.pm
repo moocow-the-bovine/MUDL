@@ -1,39 +1,37 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL.pm
+## File: MUDL::Corpus::Profile.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner
+##  + MUDL unsupervised dependency learner: corpus profiles
 ##======================================================================
 
-package MUDL;
-our $VERSION = 0.01;
-
-##-- just load all sub-modules
-
-use MUDL::Utils;    ##-- very old, needs work
-#use MUDL::FsaUtils; ##-- useful hacks: should update getArcs() to use perl-floats as weights
-
-use MUDL::XML;
-use MUDL::Corpus;
+package MUDL::Corpus::Profile;
+use MUDL::Object qw(dummy);
 use MUDL::CorpusIO;
-use MUDL::Enum;
-use MUDL::Set;
+use Carp;
+our @ISA = qw(MUDL::Object);
 
-use MUDL::Token;
-use MUDL::Sentence;
+##======================================================================
+## Corpus::Profile: Abstract Methods
 
-use MUDL::Dist;
-use MUDL::Dist::Partial;
-use MUDL::Dist::Nary;
-use MUDL::Dist::Enum;
-use MUDL::Ranks;
+## undef = $profile->addCorpus($Corpus,@args)
+##  + calls addReader()
+sub addCorpus {
+  return $_[0]->addReader(MUDL::CorpusReader::Corpus->new(corpus=>$_[1]),@_[2..$#_]);
+}
 
-use MUDL::Corpus::Profile;
-use MUDL::Corpus::Profile::LRBound;
+## undef = $profile->addReader($CorpusReader,@args)
+##  + calls addSentence($s) for every sentence
+sub addReader {
+  my ($pr,$cr) = splice(@_,0,2);
+  my ($s);
+  $pr->addSentence($s,@_) while (defined($s=$cr->getSentence));
+}
 
-use MUDL::Unigrams;
-use MUDL::Bigrams; ##-- need a-fixin' (?)
+## undef = $profile->addSentence(\@sentence)
+##  + dummy
+*addSentence = dummy('addSentence');
 
 1;
 

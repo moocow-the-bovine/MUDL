@@ -168,11 +168,12 @@ sub loadNativeFile {
 ##======================================================================
 ## I/O : XML
 
-## $node = $e->saveXMLNode()
-sub saveXMLNodeOld {
+## $node = $e->saveXMLNode
+sub saveXMLNode {
   my $e = shift;
-  (my $nodename = ref($d)) =~ s/::/./g;
+  (my $nodename = ref($e)) =~ s/::/./g;
   my $node = XML::LibXML::Element->new($nodename);
+  $node->setAttribute('MUDL.type','HASH');
 
   my ($lab,$sym,$inode);
   my $id2sym = $e->{id2sym};
@@ -181,34 +182,33 @@ sub saveXMLNodeOld {
     $node->appendChild($inode=XML::LibXML::Element->new('symbol'));
     $inode->setAttribute('id', $lab);
     if (ref($sym)) {
-      $inode->appendText($sym);
-    } else {
       $inode->appendChild($sym->saveXMLNode);
+    } else {
+      $inode->appendText($sym);
     }
   }
-
   return $node;
 }
 
 ## $e = $e->loadXMLNode($node)
-sub loadXMLNodeOld {
+sub loadXMLNode {
   my ($e,$node) = @_;
+  $e = $e->new() if (!ref($e));
   (my $nodename = ref($e)) =~ s/::/./g;
-  carp( __PACKAGE__ , "::loadXMLNode() expected '$nodename' element, got '", $node->nodeName, "'\n")
+  carp( ref($e) , "::loadXMLNode() expected '$nodename' element, got '", $node->nodeName, "'\n")
     if ($node->nodeName ne $nodename);
 
   my ($symnode,$lab,$sym);
   foreach $symnode ($node->getChildrenByTagName('symbol')) {
     $lab = $symnode->getAttribute('id');
     if ($symnode->hasChildNodes) {
-      $sym = MUDL::XML::Object->newFromXMLNode($enode->firstChild);
+      $sym = MUDL::Object->loadXMLNode($enode->firstChild);
     } else {
       $sym = $symnode->textContent;
     }
     $e->{sym2id}{$sym} = $lab;
     $e->{id2sym}[$lab] = $sym;
   }
-
   return $e;
 }
 

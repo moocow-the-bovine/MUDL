@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::Dist::Partial.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -71,7 +71,7 @@ sub size {
 sub getSize { return scalar(keys(%{$_[0]->{nz}})); }
 
 ## $nzero = $d->nzero()
-##  + should only be called in first form after all non-zero events have been added
+##  + should only be called after all non-zero events have been added
 *nZero = \&nzero;
 sub nzero { $_[0]{nzero} ? $_[0]{nzero} : $_[0]->getNzero; }
 
@@ -167,7 +167,7 @@ sub saveNativeFh {
 
 ## $obj = $class_or_obj->loadNativeFh($fh,%args)
 ##  + LOSSY
-sub loadNative {
+sub loadNativeFh {
   my $d = shift;
   $d = $d->new() if (!ref($d));
   return $d if ($d->{nz}->loadNativeFh(@_));
