@@ -10,8 +10,15 @@ package MUDL;
 our $VERSION = 0.01;
 
 ##-- just load all sub-modules
+use MUDL::Utils;
 use MUDL::FsaUtils;
 use MUDL::XML;
+use MUDL::Corpus;
+use MUDL::Enum;
+use MUDL::Dist;
+use MUDL::Ranks;
+use MUDL::Unigrams;
+use MUDL::Bigrams;
 
 1;
 

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MUDL.Corpus>
+  <s>
+    <token>
+      <text>This</text>
+    </token>
+    <token>
+      <text>is</text>
+    </token>
+    <token>
+      <text>a</text>
+    </token>
+    <token>
+      <text>test</text>
+    </token>
+    <token>
+      <text>.</text>
+    </token>
+  </s>
+  <s>
+    <token>
+      <text>This</text>
+    </token>
+    <token>
+      <text>is</text>
+    </token>
+    <token>
+      <text>only</text>
+    </token>
+    <token>
+      <text>a</text>
+    </token>
+    <token>
+      <text>test</text>
+    </token>
+    <token>
+      <text>.</text>
+    </token>
+  </s>
+</MUDL.Corpus>
