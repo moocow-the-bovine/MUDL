@@ -16,9 +16,35 @@ our %EXPORT_TAGS =
   (
    weights => [qw(prob2logf logf2prob round)],
    arcs => [qw(getStateArcs setStateArcs)],
+   cmp => [qw(lexcmp)],
+   strutils => [qw(packed2str sm2str)],
   );
 $EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
 our @EXPORT_OK = @{$EXPORT_TAGS{all}};
+
+##======================================================================
+## Sorting utilities
+##======================================================================
+
+## $cmp_val = lexcmp($s1,$s2)
+##   + compares two strings according to their 'lexicographical order',
+##     defined as in Carrasco&Oncina(99).  $s1,$s2 should be strings
+##     of packed label-ids (i.e. $s1=$s2=pack('l*',@labelids)).
+sub lexcmp {
+  return (length($_[0]) < length($_[1])
+	  ? -1
+	  : (length($_[0]) > length($_[1])
+	     ? 1
+	     : ($_[0] cmp $_[1])));
+}
+
+##======================================================================
+## String utilities
+##======================================================================
+
+## $str2stateId = packed2str($packedstr)
+sub packed2str { return join(',', unpack('l*',$_[0])); }
+
 
 ##======================================================================
 ## Weight Converters
@@ -109,9 +135,9 @@ package MUDL::FsaUtils;
 ## /RWTH::Fsa::*State*
 ##======================================================================
 
+
 ##======================================================================
-## StateMap Utilities
-##======================================================================
+## RWTH::Fsa::StateMap
 package RWTH::Fsa::StateMap;
 
 ## \@ary = $sm->asArray()
@@ -144,6 +170,10 @@ sub asString {
 	      } (0..($sm->size-1)))
      .']');
 }
+
+package MUDL::FsaUtils;
+## /RWTH::Fsa::StateMap
+##======================================================================
 
 
 
@@ -247,18 +277,7 @@ sub bfsort {
 ##----------------------------------------------------------------------
 ## Fsa utils: hashing & comparison
 ##----------------------------------------------------------------------
-
-## $cmp_val = lexcmp($s1,$s2)
-##   + compares two strings according to their 'lexicographical order',
-##     defined as in Carrasco&Oncina(99).  $s1,$s2 should be strings
-##     of packed label-ids (i.e. $s1=$s2=pack('l*',@labelids)).
-sub lexcmp {
-  return (length($_[0]) < length($_[1])
-	  ? -1
-	  : (length($_[0]) > length($_[1])
-	     ? 1
-	     : ($_[0] cmp $_[1])));
-}
+*lexcmp = \&MUDL::FsaUtils::lexcmp;
 
 ## \%packed2stateid = $fsa->kernel
 ##    + returns a hash of the form
@@ -287,8 +306,7 @@ sub kernel {
   return \%s2q;
 }
 
-## $str2stateId = packed2str($packedstr)
-sub packed2str { return join(',', unpack('l*',$_)); }
+*packed2str = \&MUDL::FsaUtils::packed2str;
 
 ## \%str2stateId = $fsa->strKernel()
 ##  + human-readable

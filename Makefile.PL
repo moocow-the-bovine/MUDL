@@ -8,6 +8,8 @@ WriteMakefile
    AUTHOR       => 'Bryan Jurish <moocow@ling.uni-potsdam.de>',
    ABSTRACT     => 'MUDL Unsupervised Dependency Learner',
    PREREQ_PM    => {
+		    XML::LibXML => undef,
+		    XML::LibXSLT => undef,
 		   },
   );
 

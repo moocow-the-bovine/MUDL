@@ -11,6 +11,7 @@ our $VERSION = 0.01;
 
 ##-- just load all sub-modules
 use MUDL::FsaUtils;
+use MUDL::XML;
 
 1;
 
