@@ -1,0 +1,216 @@
+#!/usr/bin/perl -wd
+
+use lib qw(..);
+use MUDL;
+use MUDL::PDL;
+use MUDL::Cluster::KMeans;
+use PDL;
+use Chart::Graph::Gnuplot qw(gnuplot);
+
+BEGIN { $, = ' '; }
+
+sub testdata {
+  $n = 4 if (!$n);   # 4 training instances
+  $d = 2 if (!$d);   # 2 features
+  $k = 3 if (!$k);   # 2 clusters
+
+  #$mat = $m = #MUDL::PDL->new(random($n,$d) * 10);
+  $mat = $m = random($n,$d) * 10;
+
+  ##-- centers
+  ($min,$max) = $mat->minmaximum;
+  $centers = $cs = random($k, $mat->dim(1)) * ($max-$min)->transpose + $min->transpose;
+
+  ##-- indices
+  $indices = $is = MUDL::PDL->new(zeroes($n));
+  $indices_old = not($indices);
+
+  ##-- distances
+  $dists = zeroes($n, $k);
+
+  ##-- temporaries
+  $mtmp = zeroes($n,$d); ##-- for getdists0
+}
+
+sub getdists0 {
+  ##-- use temporary
+  $mtmp = zeroes($n,$d) if (!defined($mtmp) || $iter==0);
+  foreach $ki (0..$k-1) {
+    ##-- difference
+    $mat->minus($centers->slice($ki), $mtmp, 0);
+
+    ##-- euclidean distance
+    $mtmp->xchg(0,1)->inplace->pow(2)->sumover($stmp=$dists->slice(",($ki)"));
+    $stmp->inplace->pow(0.5);
+  }
+  return $dists;
+}
+
+sub getdists1 {
+  ##-- quite slow, not much difference for large datasets
+  foreach $ki (0..$k-1) {
+    $dists->slice(",($ki)") .= cdistance($mat, $centers->slice($ki));
+  }
+  return $dists;
+}
+
+sub getdists2 {
+  ##-- fast (for small datasets), but gobbles memory
+  return $dists = cdistance($mat->slice(",,*$k"),
+			    $centers->xchg(0,1)->slice("*$n,,"),
+			    \&euclid);
+}
+sub getdists2b {
+  ##-- use temporary?
+  $mtmp2 = zeroes($n,$d,$k) if (!defined($mtmp2) || $iter==0);
+
+  ##-- difference
+  $mat->slice(",,*$k")->minus($centers->xchg(0,1)->slice("*$n,,"), $mtmp2, 0);
+
+  ##-- euclid
+  $mtmp2->xchg(0,1)->inplace->pow(2)->sumover($dists);
+  $dists->inplace->pow(0.5);
+
+  return $dists;
+}
+
+
+sub getdists3 {
+  ##-- slowest
+  foreach $ni (0..$n-1) {
+    $dists->slice("($ni)") .= cdistance($mat->slice("$ni"), $centers);
+  }
+  return $dists;
+}
+BEGIN{ *getdists = \&getdists1; }
+
+sub realloc {
+  $changed = 0;
+  $indices_old = $indices;
+  $indices     = $dists->xchg(0,1)->minimum_ind;
+  $changed = 1 if (any $indices_old != $indices);
+  return $indices;
+}
+sub recenter {
+  foreach $ki (0..$k-1) {
+    $centers->slice("($ki)") .= $m->dice(which $indices == $ki)->average;
+  }
+}
+
+##-- whole iter
+sub kmiter {
+  getdists();
+  realloc;
+  recenter;
+  ++$iter;
+}
+$itermod = 10;
+sub kmreset {
+  $changed=1;
+  $iter=0;
+  $maxiter=0;
+}
+
+sub kmiterN {
+  my $n = shift;
+  my $max = $iter + $n;
+  select STDERR; $| = 1; select STDOUT;
+  while ($changed && $iter < $max) {
+    print STDERR "$iter";
+    kmiter;
+    print STDERR "\[$changed] ";
+  }
+  print STDERR "\n";
+}
+
+##-- test configurations
+sub bigtest {
+  ($n,$d,$k) = (128,42,10);
+  $iter = 0;
+  testdata();
+}
+sub bigtest2d {
+  ($n,$d,$k) = (128,2,10);
+  $iter = 0;
+  testdata();
+}
+sub ktest2d {
+  ($n,$d,$k) = (1024,2,10);
+  $iter = 0;
+  testdata();
+}
+sub smalltest_random {
+  ($n,$d,$k) = (4,2,3);
+  $iter = 0;
+  testdata;
+}
+sub smalltest {
+  ($n,$d,$k) = (4,2,3);
+  $iter = 0;
+
+  $mat = $m = pdl([ [1,1], [2,8], [6,6], [7,5] ])->transpose;
+  $centers = $cs = pdl([ [4,7], [4,5], [4,3] ])->transpose;
+  $indices = $is = zeroes($n);
+  $dists = zeroes($n,$k);
+}
+
+sub plotmc {
+  plotdata({title=>"K-Means Iter #$iter"}, [$mat, title=>'mat'], [$centers, title=>'centers']);
+}
+
+sub plotcl {
+  plotdata({title=>"K-Means Iter #$iter"},
+	   #[$mat, title=>'mat'],
+	   [$centers, title=>'centers'],
+	   map {
+	     my $which = (which $indices == $_);
+	     ($which->isempty
+	      ? qw()
+	      : [$m->dice($which), title=>"cluster $_"])
+	   } (0..$k-1)
+	  );
+}
+
+
+
+BEGIN {
+  %plotm_global_options=
+    (
+     title => 'plotm',
+     'output type'=>'x11',
+     'xrange'=>'[0:10]',
+     'yrange'=>'[0:10]',
+    );
+
+  %plotm_matrix_options=
+    (
+    );
+
+  #testdata();
+  smalltest();
+}
+
+##-- plotm([$pdl,%options],...)
+sub plotdata {
+  my $global_args = shift;
+  $m = $mat if (!defined($m));
+  gnuplot({
+	   %plotm_global_options,
+	   ($global_args ? %$global_args : qw()),
+	  },
+
+	  (map {
+	    [
+	     {
+	      %plotm_matrix_options,
+	      @$_[1..$#$_],
+	      type=>'columns',
+	     },
+	     (map { [$_->list] } $_->[0]->dog)
+	    ]
+	  } @_));
+}
+
+foreach $i (0..100) {
+  print "--dummy[$i]--\n";
+}

@@ -20,7 +20,7 @@ our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile MUDL::Corpus::Model);
 sub new {
   my $that = shift;
   my $self = bless $that->SUPER::new(), ref($that)||$that;
-  @$self{qw(bos eos)} = ('__$', '__$');
+  @$self{qw(bos eos nfields)} = ('__$', '__$', 2);
   return $self;
 }
 
@@ -55,7 +55,7 @@ sub conditionalize {
   $total = $ug->total if (!$total);
   my ($k,$f1,$w1,$w2);
   foreach $k (keys(%{$bg->{nz}})) {
-    ($w1,$w2) = split($bg->{sep}, $k, 2);
+    ($w1,$w2) = $bg->split($k);
     $f1 = $ug->{$w1};
     if ($f1) {
       $bg->{nz}{$k} /= $f1;

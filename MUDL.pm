@@ -17,7 +17,12 @@ use MUDL::Utils;    ##-- very old, needs work
 use MUDL::XML;
 use MUDL::Corpus;
 use MUDL::CorpusIO;
+
+use MUDL::PDL;
+
+use MUDL::Map;
 use MUDL::Enum;
+use MUDL::Enum::Nary;
 use MUDL::Set;
 
 use MUDL::Token;
@@ -26,7 +31,7 @@ use MUDL::Sentence;
 use MUDL::Dist;
 use MUDL::Dist::Partial;
 use MUDL::Dist::Nary;
-use MUDL::Dist::Enum;
+use MUDL::EDist;
 use MUDL::Ranks;
 
 use MUDL::Corpus::Profile;

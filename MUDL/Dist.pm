@@ -8,12 +8,14 @@
 
 package MUDL::Dist;
 use MUDL::Object;
+use MUDL::Set;
+use MUDL::Map;
 use IO::File;
 use PDL;
 use PDL::Fit::Linfit;
 use Carp;
 
-our @ISA = qw(MUDL::Object);
+our @ISA = qw(MUDL::Map);
 
 ##======================================================================
 ## Accessors
@@ -30,15 +32,26 @@ sub f {
 }
 
 ## $d = $d->clear()
-sub clear {
-  my $d = shift;
-  %$d = qw();
-  return $d;
-}
+##  -- inherited from MUDL::Map
 
 ## @events = $d->events()
 sub events { return keys(%{$_[0]}); }
 
+## $domain = $d->domain()
+sub domain { return MUDL::Set->new(keys(%{$_[0]})); }
+
+## [$domains] = $d->domains()
+*domains = \&getDomains;
+sub getDomains { return [$_[0]->domain]; }
+
+## $size = $d->size()
+sub size { return scalar(values(%{$_[0]})); }
+
+## \@sizes = $d->sizes()
+sub sizes { return [ $_[0]->size ]; }
+
+## 1 = $d->nFields()
+sub nFields { return 1; }
 
 ##======================================================================
 ## Smoothing & Normalization
@@ -159,7 +172,147 @@ sub entropy {
   return $H;
 }
 
+##======================================================================
+## Pruning
+##======================================================================
 
+## $d = $d->prune(%args)
+##  + %args:
+##    which  => \&code, # $keepit = code($event,$freq,\%args);   # default: pruneZeroSub()
+##    keep   => $bool,  # whether keep positive results (true) or prune them (false)
+##    bash   => $bool,  # bash pruned symbols to a single symbol
+##    bashto => $event, # event to bash pruned symbols to
+sub prune {
+  my ($d,%args) = @_;
+  %args = (which=>$d->pruneByZeroSub, bash=>0, bashto=>'__UNKNOWN__', keep=>1, %args);
+  my ($k,$v);
+  my $bashval = 0;
+  while (($k,$v) = each(%$d)) {
+    if (($args{keep} && !$args{which}->($k,$v,\%args))
+	||
+	(!$args{keep} && $args{which}->($k,$v,\%args)))
+      {
+	delete($d->{$k});
+	$bashval += $v;
+      }
+  }
+  ##-- bash
+  if ($args{bash} && defined($args{bashto})) {
+    $d->{$args{bashto}} = $bashval;
+  }
+  return $d;
+}
+
+##======================================================================
+## Pruning: Aliases
+
+## $d = $d->pruneByZero()
+sub pruneByZero  { my $d=shift; $d->prune(which=>$d->pruneByZeroSub,  @_); }
+
+## $d = $d->pruneByValue(min=>$min, max=>$max)
+sub pruneByValue { my $d=shift; $d->prune(which=>$d->pruneByValueSub(@_),  @_); }
+
+## $d = $d->pruneByRank(min=>$min_rank, max=>$max_rank, ...)
+sub pruneByRank  { my $d=shift; $d->prune(which=>$d->pruneByRankSub(@_),  @_); }
+
+## $d = $d->pruneByEnum(enum=>$e, ...)
+sub pruneByEnum { my $d=shift; $d->prune(which=>$d->pruneByEnumSub(@_), @_); }
+
+## $d = $d->pruneBySet(set=>$s, ...)
+sub pruneBySet { my $d=shift; $d->prune(which=>$d->pruneBySetSub(@_), @_); }
+
+## $d = $d->pruneByRegex(re=>$re, ...)
+sub pruneByRegex { my $d=shift; $d->prune(which=>$d->pruneByRegexSub(@_), @_); }
+
+##======================================================================
+## Pruning: Selection
+
+## \&prunesub = $d->pruneByZeroSub()
+##   + returns sub to prune events with zero values
+sub pruneByZeroSub { return shift->pruneByValueSub(min=>1); }
+
+## \&prunesub = $d->pruneByValueSub(%args)
+##   + %args: min=>$min, max=>$max
+##   + returns sub to prune values not in range $min..$max (inclusive)
+sub pruneByValueSub {
+  my ($d,%args) = @_;
+  my ($min,$max) = @args{qw(min max)};
+  return sub {
+    (!defined($min) || $_[1] >= $min) && (!defined($max) || $_[1] <= $max);
+  };
+}
+
+## \&prunesub = $d->pruneByRankSub(%args)
+##   + returns sub to prune events by rank
+##   + %args:
+##      min   => $min_rank,   # (inclusive)
+##      max   => $max_rank,   # (inclusive)
+##      ranks => $ranks,      # otherwise auto-created
+##      sort  => 'asc'|'dsc', # for rank creation
+##      qsize => $qsize,      # for rank creation
+##      shared=> $bool,       # for rank creation
+sub pruneByRankSub {
+  my ($d,%args) = @_;
+  my $ranks = $args{ranks};
+  if (!$ranks) {
+    my $rclass = $args{shared} ? 'MUDL::XRanks' : 'MUDL::Ranks';
+    $ranks = $rclass->fromDist($d,%args);
+    $ranks = MUDL::Quanta->fromRanks($ranks,$args{qsize}) if ($args{qsize});
+  }
+  my ($min,$max) = @args{qw(min max)};
+  return sub {
+    (!defined($min) || $ranks->{$_[0]} >= $min) && (!defined($max) || $ranks->{$_[0]} <= $max);
+  }
+}
+
+## \&prunesub = $d->pruneByRegexSub(re=>$re,...)
+##   + returns sub to prune events not matching $re
+sub pruneByRegexSub {
+  my ($d,%args) = @_;
+  my $re = qr/$args{re}/o;
+  return sub { $_[0] =~ $re; };
+}
+
+## \&prunesub = $d->pruneByEnumSub(enum=>$enum,...)
+##   + returns sub to prune events not defined by $enum
+sub pruneByEnumSub {
+  my ($d,%args) = @_;
+  my $enum = $args{enum};
+  return sub { defined($enum->index($_[0])); };
+}
+
+## \&prunesub = pruneBySetSub(set=>$set,...)
+##   + returns sub to prune events not defined in $set
+sub pruneBySetSub {
+  my ($d,%args) = @_;
+  my $set = $args{set};
+  return sub { defined($set->{$_[0]}); };
+}
+
+##======================================================================
+## Conversion: enumeration
+##======================================================================
+
+## $enum = $d->toEnum()
+## $enum = $d->toEnum($enum)
+##   + enumerates events, does not alter dist
+sub toEnum {
+  my ($d,$e) = @_;
+  $e = MUDL::Enum->new() if (!$e);
+  $e->addSymbol($_) foreach (keys(%$d));
+  return $e;
+}
+
+## $edist = $d->toEDist()
+## $edist = $d->toEDist($enum)
+##   + returns a MUDL::EDist using enumerated events
+sub toEDist {
+  my ($d,$enum) = @_;
+  $enum = MUDL::Enum->new() if (!$enum);
+  my $ed = MUDL::EDist->new(enum=>$enum);
+  @{$ed->{nz}}{map { $enum->addSymbol($_) } keys(%$d)} = values(%$d);
+  return $ed;
+}
 
 
 ##======================================================================

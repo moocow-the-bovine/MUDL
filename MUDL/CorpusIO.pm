@@ -35,7 +35,8 @@ our %FORMATS =
    t => 'TT',
    native => 'TT',
    tnt => 'TT',
-   DEFAULT => 'XML',
+   #DEFAULT => 'XML',
+   DEFAULT => 'TT',
   );
 *fileReader = \&formatReader;
 sub formatReader {

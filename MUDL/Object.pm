@@ -47,7 +47,7 @@ sub new {
 ## \&dummy_sub = dummy($name)
 sub dummy {
   my $name = shift;
-  return sub { confess( ref($_[0]) , "::${name}() not implemented"); };
+  return sub { confess( ref($_[0])||$_[0] , "::${name}() not implemented"); };
 }
 
 ##======================================================================
@@ -203,6 +203,18 @@ sub saveXMLNode {
 	}
       }
     }
+    ##-- PDLs
+    elsif (UNIVERSAL::isa($src,'PDL')) {
+      $$noder->setAttribute('MUDL.type', 'PDL');
+      $$noder->setAttribute('MUDL.dims', join(' ', $src->dims));
+      my ($i,$n);
+      for ($i=0; $i < $src->nelem; $i++) {
+	$n = XML::LibXML::Element->new('value');
+	$n->setAttribute('i',$i);
+	$n->setAttribute('v',$src->flat->at($i));
+	$$noder->appendChild($n);
+      }
+    }
     ##-- SCALAR refs
     elsif (UNIVERSAL::isa($src,'SCALAR')) {
       $$noder->setAttribute('MUDL.type','SCALAR');
@@ -351,6 +363,13 @@ sub loadXMLNode {
 	  $k = $enode->getAttribute('idx');
 	  push(@queue, \$$objr->[$k], $enode->firstChild);  ##-- firstChild(): dangerous
 	}
+      }
+    }
+    ##-- PDLs
+    elsif ($ntyp eq 'PDL' || UNIVERSAL::isa($$objr, 'PDL')) {
+      $$objr->reshape(split(/\s+/, $node->getAttribute('MUDL.dims') || '1'));
+      foreach $enode ($node->childNodes) {
+	$$objr->flat->set($enode->getAttribute('i'), $enode->getAttribute('v'));
       }
     }
     ##-- SCALAR refs
@@ -502,7 +521,7 @@ sub loadBinFile {
 ## $obj_or_undef = $obj->loadBinFh($fh,@args)
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
-  if (!($obj=Storable::fd_retrieve($fh))) {
+  if (!defined($obj=Storable::fd_retrieve($fh))) {
     confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;
   }
@@ -524,7 +543,7 @@ sub saveNativeString {
     confess( __PACKAGE__ , "::saveNativeString(): open failed: $!");
     return undef;
   }
-  binmode($fh,':utf8');
+  #binmode($fh,':utf8');
 
   $obj->saveNativeFh($fh,@_);
   $fh->close();

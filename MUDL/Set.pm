@@ -14,11 +14,22 @@ use Carp;
 our @ISA = qw(MUDL::Object);
 
 ##======================================================================
+## New
+
+## $set = Set->new(@elts)
+sub new {
+  return bless { (map { $_=>$_ } @_[1..$#_]) }, ref($_[0])||$_[0];
+}
+
+##======================================================================
 ## Accessors
 
 ## @elts = $set->elements
 *members = \&elements;
 sub elements { return values(%{$_[0]}); }
+
+## $size = $set->size
+sub size { return scalar(values(%{$_[0]})); }
 
 ##======================================================================
 ## Operations

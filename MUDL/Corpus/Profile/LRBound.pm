@@ -9,8 +9,9 @@
 package MUDL::Corpus::Profile::LRBound;
 use MUDL::Corpus::Profile;
 use MUDL::Dist::Nary;
-use MUDL::Object qw(dummy);
+use MUDL::Object;
 use MUDL::Set;
+use PDL;
 use Carp;
 our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile);
 
@@ -21,6 +22,8 @@ sub new {
   my $self = $that->SUPER::new(eos=>'__$',
 			       bos=>'__$',
 			       bounds=>MUDL::Set->new,
+			       dobounds=>1,           # whether to profile bounds
+			       dononbounds=>1,        # whether to profile non-bounds
 			       %args);
   return $self;
 }
@@ -35,51 +38,84 @@ sub addSentence {
   my @st = ($pr->{bos}, (map { $_->text } @$s), $pr->{eos});
   my @bi = (0, (grep { exists($pr->{bounds}{$st[$_]}) } (1..$#st-1)), $#st);
 
-  my ($bii,$sti);
+  #my ($bii,$sti);
   foreach $bii (1..$#bi) {
     ##-- add bound's own context
-    $pr->{nz}{join($pr->{sep}, @st[@bi[$bii-1, $bii, $bii+1]])}++ if ($bii != $#bi);
+    if ($pr->{dobounds} && $bii != $#bi) {
+      ++$pr->{nz}{join($pr->{sep}, @st[@bi[$bii-1, $bii, $bii+1]])};
+    }
 
     ##-- add intra-bound context
-    foreach $sti ($bi[$bii-1]+1..$bi[$bii]-1) {
-      $pr->{nz}{join($pr->{sep}, @st[$bi[$bii-1], $sti, $bi[$bii]])}++;
+    if ($pr->{dononbounds}) {
+      foreach $sti ($bi[$bii-1]+1..$bi[$bii]-1) {
+	++$pr->{nz}{join($pr->{sep}, @st[$bi[$bii-1], $sti, $bi[$bii]])};
+      }
     }
   }
 
   return $pr;
 }
-sub addSentence0 {
-  my ($lrp,$s) = @_;
-  my ($t);
-  my $lb = $lrp->{bos};
-  my @cws = qw();
-  foreach $t ((map { $_->text } @$s), $lrp->{eos}) {
-    if (exists($lrp->{bounds}{$t})) {
-      $lrp->{nz}{join($lrp->{sep}, $lb, $_, $t)}++ foreach (@cws);
-      @cws = qw();
-    }
-    push(@cws, $t);
-  }
-  return $lrp;
+
+
+##======================================================================
+## Conversion: to Enum
+
+## $enum = $lr->toEnumi()
+## $enum = $lr->toEnumi($enum)
+##  + independent enums
+*toEnum = \&toEnumi;
+sub toEnumi {
+  my ($lr,$enum) = @_;
+
+  my ($el,$ec,$er);
+  $el = $er = MUDL::Enum->new();
+  #$ec = $lr->{dobounds} ? $el : MUDL::Enum->new();
+  $ec = MUDL::Enum->new();
+  my $en = MUDL::Enum::Nary->new(enums=>[$el,$ec,$er], sep=>$lr->{sep});
+  $lr->SUPER::toEnum($en);
+
+  return $en;
 }
 
-## undef = $profile->addReader($reader)
-sub addReader0 {
-  my ($lrp,$cr) = @_;
-  my ($s,$t,$lb,@cws);
-  while (defined($s=$cr->getSentence)) {
-    $lb = $lrp->{bos};
-    @cws = qw();
-    foreach $t ((map { $_->text } @$s), $lrp->{eos}) {
-      if (exists($lrp->{bounds}{$t})) {
-	$lrp->{nz}{join($lrp->{sep}, $lb, $_, $t)}++ foreach (@cws);
-	@cws = qw();
-	$lb = $t;
-      }
-      push(@cws, $t);
-    }
+
+##======================================================================
+## Conversion: to independent PDL
+
+## ($pdl,$enum) = $lr->toPDLi()
+## ($pdl,$enum) = $lr->toPDLi($pdl)
+## ($pdl,$enum) = $lr->toPDLi($pdl,$enum)
+##   + in scalar context returns $pdl
+sub toPDLi {
+  my ($lr,$pdl,$en) = @_;
+
+  ##-- enum
+  $en = $lr->toEnumi() if (!$en);
+  my ($el,$ec,$er) = @{$en->{enums}};
+  my $ne = $el->size;
+
+  ##-- pdl
+  $pdl = PDL->new() if (!defined($pdl));
+  $pdl->reshape($ec->size, $ne * 2);
+  $pdl .= 0;
+
+  ##-- data
+  my ($k,$v,@fields);
+  while (($k,$v)=each(%{$lr->{nz}})) {
+    @fields = $lr->split($k);
+    $pdl->slice($ec->index($fields[1]) . ',' .  $el->index($fields[0])) += $v;
+    $pdl->slice($ec->index($fields[1]) . ',' . ($er->index($fields[2])+$ne)) += $v;
   }
-  return $lrp;
+
+  ##-- normalization
+  foreach $k (0..$pdl->dim(0)-1) {
+    $v  = $pdl->slice("$k,0:".($ne-1));
+    $v /= $v->sum;
+
+    $v  = $pdl->slice("$k,$ne:".($ne*2-1));
+    $v /= $v->sum;
+  }
+
+  return wantarray ? ($pdl,$en) : $pdl;
 }
 
 

@@ -63,24 +63,37 @@ sub size {
   if (@_) {
     return $d->{size} = shift;
   }
-  return $d->{size} ? $d->{size} : $d->{size}=$d->getSize;
+  return $d->{size} ? $d->{size} : ($d->{size}=$d->getSize);
 }
 
 ## $size = $d->getSize()
 ##  + recomputes {size} member
 sub getSize { return scalar(keys(%{$_[0]->{nz}})); }
 
+## \@sizes = $d->sizes()
+sub sizes { return [ $_[0]->size ]; }
+
 ## $nzero = $d->nzero()
 ##  + should only be called after all non-zero events have been added
 *nZero = \&nzero;
-sub nzero { $_[0]{nzero} ? $_[0]{nzero} : $_[0]->getNzero; }
+sub nzero { $_[0]{nzero} ? $_[0]{nzero} : ($_[0]{nzero}=$_[0]->getNzero); }
 
 ## $nZero = $d->getNZero()
 ##  + recomputes {nzero} member
 *getnzero = *getNzero = \&getNZero;
 sub getNZero {
   my $d = shift;
-  return $d->{nzero} = $d->size - scalar(grep {$_ != 0} values(%{$d->{nz}}));
+  return $d->size - scalar(grep {$_ != 0} values(%{$d->{nz}}));
+}
+
+
+## $d = $d->updateStatic()
+##  + recompute static data (size,nZero) if possible
+sub updateStatic {
+  my $d = shift;
+  $d->{size} = $d->getSize() if ($d->{size});
+  $d->{nzero} = $d->getNZero() if ($d->{nzero});
+  return $d;
 }
 
 ##======================================================================
@@ -154,6 +167,41 @@ sub entropy {
 
 
 ##======================================================================
+## Pruning
+##======================================================================
+
+## $d = $d->prune(%args)
+##  + %args: see MUDL::Dist::prune()
+sub prune {
+  my $d = shift;
+  $d->{nz}->prune(@_);
+  #$d->updateStatic;   ##-- maybe we won't really always want this...
+  return $d;
+}
+
+##======================================================================
+## Conversion
+##======================================================================
+
+## $enum = $d->toEnum()
+## $enum = $d->toEnum($enum)
+##   + enumerates events, does not alter dist
+##-- should be wrapped by AUTOLOAD
+
+## $edist = $d->toEDist()
+## $edist = $d->toEDist($enum)
+##   + returns a MUDL::EDist::Partial using enumerated events
+sub toEDist {
+  my ($d,$enum) = @_;
+  $enum = MUDL::Enum->new() if (!$enum);
+  my $ed = MUDL::EDist::Partial->new(enum=>$enum);
+  @{$ed->{nz}}{map { $enum->addSymbol($_) } keys(%{$d->{nz}})} = values(%{$d->{nz}});
+  @$ed{qw(size zmass nzero)} = @$d{qw(size zmass nzero)};
+  return $ed;
+}
+
+
+##======================================================================
 ## I/O: Native
 ##======================================================================
 
@@ -187,11 +235,21 @@ sub AUTOLOAD {
   my $d = shift;
   return undef if (!defined($d) || !defined($d->{nz}));
   (my $name = $AUTOLOAD) =~ s/.*:://; ##-- strip qualification
+
   my ($sub);
   if (!($sub=$d->{nz}->can($name))) {
-    croak( __PACKAGE__ , "::$name() not defined in AUTOLOAD.\n");
+    croak( ref($d) , "::$name() not defined in ", __PACKAGE__ , "::AUTOLOAD.\n");
   }
-  return &$sub($d->{nz},@_);
+
+  if ($name =~ /^pruneBy/) {
+    ##-- special handling for pruning aliases / selection subs
+    my ($psub);
+    if ($psub=$d->can("${name}Sub")) {
+      unshift(@_, which=>$psub->($d,@_));
+    }
+  }
+
+  return $sub->($d->{nz},@_);
 }
 
 1;

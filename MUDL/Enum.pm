@@ -13,7 +13,6 @@ use Carp;
 
 our @ISA = qw(MUDL::Object);
 
-our $VERSION = 0.01;
 our $NoLabel = -1;
 
 ##======================================================================
@@ -27,25 +26,25 @@ sub new {
 ##======================================================================
 ## Accessors
 
+## $size = $e->size
+sub size { return scalar(@{$_[0]{id2sym}}); }
+
 ## $id = $e->index($symbol)
-*id = \&index;
-*sym2id = \&index;
+*id = *sym2id = \&index;
 sub index { return $_[0]->{sym2id}{$_[1]}; }
 
 ## $sym = $e->symbol($index)
-*sym = \&symbol;
-*id2sym = \&symbol;
+*sym = *id2sym = \&symbol;
 sub symbol { return $_[1] == $NoLabel ? undef : $_[0]->{id2sym}[$_[1]]; }
 
-## @syms = $e->symbols
-sub symbols { return @{$_[0]->{id2sym}}; }
+## @syms = $e->allSymbols
+sub allSymbols { return @{$_[0]->{id2sym}}; }
 
-## %indices = $e->indices()
-*indexes = \&indices;
-sub indices { return values(%{$_[0]->{sym2id}}); }
+## @indices = $e->allIndices()
+sub allIndices { return values(%{$_[0]->{sym2id}}); }
 
 ##======================================================================
-## Manipulators
+## Manipulators: General
 
 ## undef = $e->clear
 sub clear {
@@ -54,6 +53,30 @@ sub clear {
   %{$e->{sym2id}} = qw();
   return $e;
 }
+
+## $e = $e->compactFast()
+## $e = $e->compactFast(\@changed)
+##   + renumbers elements, possibly keeping track of changes
+sub compact {
+  my ($e,$changed) = @_;
+  my $id2s = $e->{id2sym};
+  my $s2id = $e->{sym2id};
+  my $offset = 0;
+  my ($i,$s);
+  foreach $i (0..$#$id2s) {
+    if (!defined($s=$id2s->[$i])) {
+      ++$offset;
+      next;
+    }
+    $s2id->{$s} -= $offset;
+    @$id2s[$i-$offset,$i] = @$id2s[$i,$i-$offset];
+    $changed->[$i] = $i-$offset if ($changed);
+  }
+  return $e;
+}
+
+##======================================================================
+## Manipulators: Elements
 
 ## $id = $e->addSymbol($sym)
 *add = \&addSymbol;
@@ -95,29 +118,8 @@ sub removeIndex {
   delete($e->{id2sym}[$i]);
   delete($e->{sym2id}{$s}) if (defined($s));
   return $s;
-}
 
-## $e = $e->compactFast()
-## $e = $e->compactFast(\@changed)
-##   + renumbers elements, possibly keeping track of changes
-sub compact {
-  my ($e,$changed) = @_;
-  my $id2s = $e->{id2sym};
-  my $s2id = $e->{sym2id};
-  my $offset = 0;
-  my ($i,$s);
-  foreach $i (0..$#$id2s) {
-    if (!defined($s=$id2s->[$i])) {
-      ++$offset;
-      next;
-    }
-    $s2id->{$s} -= $offset;
-    @$id2s[$i-$offset,$i] = @$id2s[$i,$i-$offset];
-    $changed->[$i] = $i-$offset if ($changed);
-  }
-  return $e;
 }
-
 
 ##======================================================================
 ## I/O : AT&T / Native
@@ -217,7 +219,7 @@ sub loadXMLNode {
 1;
 
 ##======================================================================
-## Docs
+
 =pod
 
 =head1 NAME
