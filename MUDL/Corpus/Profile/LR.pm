@@ -38,12 +38,16 @@ sub new {
   my $self = $that->SUPER::new
     (eos=>'__$',
      bos=>'__$',
+     ##-- targets, bounds
      targets=>$targets,
      bounds=>$bounds,
      nfields=>$nfields,
-     enum=>$enum,
+     enum=>$enum, ##-- nary enum: [targets, bounds, ... , bounds]
+
+     ##-- frequency distributions
      left=>MUDL::EDist::Nary->new(nfields=>($nfields+1), enum=>$enum),
      right=>MUDL::EDist::Nary->new(nfields=>($nfields+1), enum=>$enum),
+
      donorm=>1, ##-- normalize on pdl-ization ?
      %args);
 
@@ -60,12 +64,16 @@ sub new {
 ##======================================================================
 ## Conversion: to independent PDL
 
-## $pdl = $lr->toPDL()
-## $pdl = $lr->toPDL($pdl)
+## $pdl_2d = $lr->toPDL()
+## $pdl_2d = $lr->toPDL($pdl_2d)
 ##   + converts to pdl
 ##   + returned pdl is of dimensions: ($d,$n), where:
 ##     - $n == number-of-targets
 ##     - $d == 2 * (number-of-bounds ^ $nfields)   ##-- left-bounds & right-bounds
+##   + may call the following:
+##     - undef = $lr->finishPdl($pdl_3d)
+##     - undef = $lr->normalizePdl($pdl_3d)
+##   + $pdl_3d is of dimensions (2, $d/2, $n) [separated R- and L-components]
 *toPDLi = \&toPDL;
 sub toPDL {
   my ($lr,$pdl) = @_;
@@ -78,51 +86,55 @@ sub toPDL {
 
   ##-- pdl
   $pdl = zeroes(double,1) if (!defined($pdl));
-  $pdl->reshape(2*($neb**$nfields), $net)
-    if ($pdl->dim(0) != 2*($neb**$nfields) || $pdl->dim(1) != $net);
+  $pdl->reshape(2, ($neb**$nfields), $net)
+    if ($pdl->dim(0) != 2 || $pdl->dim(1) != ($neb**$nfields) || $pdl->dim(2) != $net);
   $pdl .= 0;
 
-  ##-- data: left-context
+  ##-- frequency data: left-context
   my ($k,$v,$tid,@bids);
   while (($k,$v)=each(%{$lr->{left}{nz}})) {
     ($tid,@bids) = $lr->{left}->split($k);
     foreach $i (0..$#bids) {
-      $pdl->slice(($i*$neb + $bids[$i]) . ',' . $tid) += $v;
+      $pdl->slice('0,' . ($i*$neb + $bids[$i]) . ',' . $tid) += $v;
     }
   }
-  ##-- data: right-context
-  my $offset = $neb**$nfields;
+  ##-- frequency data: right-context
   while (($k,$v)=each(%{$lr->{right}{nz}})) {
     ($tid,@bids) = $lr->{right}->split($k);
     foreach $i (0..$#bids) {
-      $pdl->slice(($offset + ($i*$neb) + $bids[$i]) . ',' . $tid) += $v
+      $pdl->slice('1,' . ($i*$neb + $bids[$i]) . ',' . $tid) += $v
     }
   }
+
+  ##-- data munging
+  $lr->finishPdl($pdl) if ($lr->can('finishPdl'));
 
   ##-- normalization
   $lr->normalizePdl($pdl) if ($lr->{donorm});
 
+  ##-- reshape
+  $pdl->reshape($pdl->dim(0)*$pdl->dim(1), $pdl->dim(2));
   return $pdl;
 }
 
 
-## undef = $lr->normalizePdl($pdl)
+## $pdl_3d = $lr->normalizePdl($pdl_3d)
 ##  + normalize a pdl
 sub normalizePdl {
   my ($lr,$pdl) = @_;
   my ($sum);
 
-  my $offset = $pdl->dim(0)/2;
   $pdl -= $pdl->min;
-  foreach $ni (0..$pdl->dim(1)-1) {
+  foreach $ni (0..$pdl->dim(2)-1) {
     ##-- normalize left- & right- subvectors independently
+
     ##-- : left subvector
-    $v    = $pdl->slice('0:'.($offset-1).",$ni");
+    $v    = $pdl->slice("0,:,$ni");
     $sum  = $v->sum;
     $v   /= $sum if ($sum != 0);
 
     ##-- : right subvector
-    $v    = $pdl->slice("$offset:".($pdl->dim(0)-1).",$ni");
+    $v    = $pdl->slice("1,:,$ni");
     $sum  = $v->sum;
     $v   /= $sum if ($sum != 0);
   }

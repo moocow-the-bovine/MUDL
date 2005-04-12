@@ -92,6 +92,13 @@ sub addSentence {
 
 ##-- inherited from MUDL:::Corpus::Profile::LR
 
+## $pdl = $lr->toPDL()
+## $pdl = $lr->toPDL($pdl)
+
+## undef = $lr->finishPdl($pdl);
+
+## undef = $lr->normalizePdl($pdl);
+
 
 ##======================================================================
 ## Help

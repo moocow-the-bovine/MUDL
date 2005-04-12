@@ -35,7 +35,7 @@ sub new {
 ##  + inherited
 
 ## undef = $profile->finish()
-sub finish {
+sub finishOld {
   my $pr = shift;
   $pr->dist2mi($pr->{left});
   $pr->dist2mi($pr->{right});
@@ -72,6 +72,27 @@ sub dist2mi {
 ## Conversion: to PDL
 
 ##-- inherited from MUDL:::Corpus::Profile::LR
+
+## $pdl = $lr->toPDL()
+## $pdl = $lr->toPDL($pdl)
+
+## $pdl3d = $lr->finishPdl($pdl3d);
+sub finishPdl {
+  my ($lr,$pdl) = @_;
+
+  my ($Ptb, $Pt, $Pb);
+  foreach my $dir (0,1) {
+    $Ptb  = $pdl->slice("($dir),,");
+    $Ptb /= $Ptb->sum;
+
+    $Pt  = $Ptb->sumover;
+    $Pb  = $Ptb->xchg(0,1)->sumover;
+
+    ##-- CONTINUE HERE!
+  }
+}
+
+## undef = $lr->normalizePdl($pdl);
 
 
 ##======================================================================
