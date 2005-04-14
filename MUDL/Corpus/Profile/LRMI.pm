@@ -9,6 +9,7 @@
 package MUDL::Corpus::Profile::LRMI;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
+use MUDL::EDist;
 use PDL;
 use Carp;
 our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
@@ -88,8 +89,11 @@ sub finishPdl {
     $Pt  = $Ptb->sumover;
     $Pb  = $Ptb->xchg(0,1)->sumover;
 
-    ##-- CONTINUE HERE!
+    $Ptb .= log($Ptb/($Pt->transpose*$Pb))/log(2);
   }
+  $pdl->inplace->setnantobad->inplace->setbadtoval(0);
+
+  return $pdl;
 }
 
 ## undef = $lr->normalizePdl($pdl);

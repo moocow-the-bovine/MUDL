@@ -61,6 +61,7 @@ sub nFields { return 1; }
 sub normalize {
   my ($d,$total) = @_;
   $total = $d->total if (!$total);
+  return $d if ($total==0);
   $_ /= $total foreach (values(%$d));
   return $d;
 }
