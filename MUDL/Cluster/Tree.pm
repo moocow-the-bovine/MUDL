@@ -253,6 +253,124 @@ sub clusterEnumFull {
 
 
 ##======================================================================
+## Conversion: distance-to-probability (new)
+##======================================================================
+
+## %d2pMethods = ($name => \&sub, ...)
+##   + methods such that &sub($leafdistance_pdl,%args) = $prob_pdl
+##   + $leafdistance_pdl : $k by $n
+##   + $prob_pdl         : $k by $n
+our %d2pMethods =
+  (
+   nbest_hughes => \&d2p_nbest_hughes,
+   nbest_base   => \&d2p_nbest_base,
+   linear       => \&d2p_linear,
+   inverse      => \&d2p_inverse,
+   DEFAULT      => \&d2p_nbest_base,
+  );
+
+## $probPdl = $tc->membershipProbPdl(%args)
+##   + %args:
+##       method => $dist2probMethod,
+##   + $dist2probMethod is a key %d2pMethods
+##   + $leafdistance_pdl : $k by $n
+##   + $prob_pdl         : $k by $n
+##     - $prob_pdl->at($ki,$ni) ~= p($class_ki | $target_ni)
+sub membershipProbs {
+  my ($tc,%args) = @_;
+  require PDL;
+
+  my $ld = $tc->{leafdist};
+  $ld = $tc->leafdistances() if (!defined($ld));
+
+  my $method = $args{method} ? $args{method} : 'DEFAULT';
+  my $d2psub = $tc->can($method);
+
+  croak(ref($tc), "::membershipProbs(): unknown conversion method '$method'!")
+    if (!defined($d2psub) && !defined($d2psub=$d2pMethods{$method}));
+
+  return $d2psub->($tc,$ld,%args);
+}
+
+##----------------------------------------------------------------------
+## Conversion: distance-to-probability: full
+##----------------------------------------------------------------------
+
+## $probPdl = $tc->d2p_linear($leafdists,%args)
+##  + %args: (none)
+sub d2p_linear {
+  my ($tc,$ld,%args) = @_;
+  my $pdl = $ld->max - $ld; # (+1?) ??? (+ $ld->where($ld!=0)->min ???);
+  $pdl /= $pdl->sumover->transpose;
+  return $pdl;
+}
+
+## $probPdl = $tc->d2p_inverse($leafdists,%args)
+##  + %args: (none)
+sub d2p_inverse {
+  my ($tc,$ld,%args) = @_;
+  my $ldmin = $ld->where($ld!=0)->min;
+  my $pdl   = $ldmin / ($ldmin + $ld);
+
+  $pdl /= $pdl->sumover->transpose;
+
+  return $pdl;
+}
+
+
+##----------------------------------------------------------------------
+## Conversion: distance-to-probability: n-best
+##----------------------------------------------------------------------
+
+##------------------------------------------------------
+## $probPdl = $tc->d2p_nbest_hughes($leafdists,%args)
+##  + %args:
+##     n => $nbest
+sub d2p_nbest_hughes {
+  my ($tc,$ld,%args) = @_;
+  my $n = $args{n} || 1;
+
+  my $pdl   = zeroes(double, $ld->dims);
+  my $ipsum = (sequence($n)+1)->pow(-1)->sum;
+  my $ipdl  = sequence(long, $n);
+  foreach $ni (0..($ld->dim(1)-1)) {
+    $ld->slice(",($ni)")->minimum_n_ind($ipdl);
+    foreach $ki (0..($n-1)) {
+      $pdl->set($ipdl->at($ki), $ni, 1/($ki+1)/$ipsum );
+    }
+  }
+
+  return $pdl;
+}
+
+##------------------------------------------------------
+## $probPdl = $tc->d2p_nbest_base($leafdists,%args)
+##  + %args:
+##     n => $nbest, # =1
+##     b => $base   # =2
+sub d2p_nbest_base {
+  my ($tc,$ld,%args) = @_;
+  my $n = $args{n} || 1;
+  my $b = $args{b} || 2;
+
+  my $pdl = zeroes(double, $ld->dims);
+  my $ipsum = sum(pow(pdl($b), -(sequence($n)+1)));
+  my $ipdl  = sequence(long, $n);
+  foreach $ni (0..($ld->dim(1)-1)) {
+    $ld->slice(",($ni)")->minimum_n_ind($ipdl);
+    foreach $ki (0..($n-1)) {
+      $pdl->set($ipdl->at($ki), $ni, $b**-($ki+1)/$ipsum );
+    }
+  }
+
+  return $pdl;
+}
+
+##======================================================================
+## Conversion: distance-to-probability (old)
+##======================================================================
+
+##======================================================================
 ## $pdist = $tc->toJointPdlDist(%args)
 ##  + returns a MUDL::PdlDist representing the clusters
 ##  + returned dist has dimensions ($d,$n): $pdist->at($cid,$wid) = p($cid,$wid)
