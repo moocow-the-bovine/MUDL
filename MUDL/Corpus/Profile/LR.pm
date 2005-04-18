@@ -74,8 +74,24 @@ sub new {
 ##     - undef = $lr->finishPdl($pdl_3d)
 ##     - undef = $lr->normalizePdl($pdl_3d)
 ##   + $pdl_3d is of dimensions (2, $d/2, $n) [separated R- and L-components]
-*toPDLi = \&toPDL;
 sub toPDL {
+  my ($lr,$pdl) = @_;
+  $pdl = $lr->toPDL3d($pdl);
+  $pdl->reshape($pdl->dim(0)*$pdl->dim(1), $pdl->dim(2));
+  return $pdl;
+}
+
+## $pdl_3d = $lr->toPDL3d()
+## $pdl_3d = $lr->toPDL3d($pdl_3d)
+##   + converts to pdl
+##   + returned $pdl_3d is of dimensions: (2,$d,$n), where:
+##     - $n == number-of-targets
+##     - $d == (number-of-bounds ^ $nfields)   ##-- left-bounds & right-bounds
+##   + may call the following:
+##     - undef = $lr->finishPdl($pdl_3d)
+##     - undef = $lr->normalizePdl($pdl_3d)
+*toPDLi = \&toPDL;
+sub toPDL3d {
   my ($lr,$pdl) = @_;
 
   ##-- enum
@@ -112,14 +128,12 @@ sub toPDL {
   ##-- normalization
   $lr->normalizePdl($pdl) if ($lr->{donorm});
 
-  ##-- reshape
-  $pdl->reshape($pdl->dim(0)*$pdl->dim(1), $pdl->dim(2));
   return $pdl;
 }
 
 
 ## $pdl_3d = $lr->normalizePdl($pdl_3d)
-##  + normalize a pdl
+##  + normalize a pdl (3d)
 sub normalizePdl {
   my ($lr,$pdl) = @_;
   my ($sum);
