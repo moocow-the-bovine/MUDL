@@ -95,6 +95,9 @@ sub addSentence {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
+## $pdl = $lr->toPDL3d()
+## $pdl = $lr->toPDL3d($pdl)
+
 ## undef = $lr->finishPdl($pdl);
 
 ## undef = $lr->normalizePdl($pdl);

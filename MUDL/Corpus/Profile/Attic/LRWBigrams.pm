@@ -162,6 +162,7 @@ sub helpString {
   my $that = shift;
   return
     (qq(Extract weighted left- and right-bigram profile wrt. fixed boundary set.\n)
+     .qq(--- WARNING: OBSOLETE ---\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
