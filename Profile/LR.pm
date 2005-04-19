@@ -20,6 +20,8 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##   + %args:
 ##       eos => $eos_str,
 ##       bos => $bos_str,
+##       targets => $targets_enum,
+##       bounds => $bounds_enum,
 ##       left => $left_edist,
 ##       right=> $right_edist,
 ##       donorm => $do_normalize,
@@ -103,7 +105,7 @@ sub toPDL3d {
   ##-- pdl
   $pdl = zeroes(double,1) if (!defined($pdl));
   $pdl->reshape(2, ($neb**$nfields), $net)
-    if ($pdl->dim(0) != 2 || $pdl->dim(1) != ($neb**$nfields) || $pdl->dim(2) != $net);
+    if ($pdl->ndims < 3 || $pdl->dim(0) < 2 || $pdl->dim(1) < ($neb**$nfields) || $pdl->dim(2) < $net);
   $pdl .= 0;
 
   ##-- frequency data: left-context
