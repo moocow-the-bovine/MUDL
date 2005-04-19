@@ -211,7 +211,24 @@ sub mutualInformation {
 ## Conversion: enumeration
 ##======================================================================
 
-## nyi
+## $edist_nary = $pd->toEDist();
+## $edist_nary = $pd->toEDist($edist_nary);
+sub toEDist {
+  my ($pd,$ed) = @_;
+  $ed = MUDL::EDist::Nary->new(enum=>$pd->{enum}) if (!defined($ed));
+
+  my $pdl = $pd->{pdl};
+  my @nzipdls = $pdl->whichND;
+  return $ed if (!@nzipdls);
+
+  my @nzi;
+  foreach $i (0..($nzipdls[0]->nelem-1)) {
+    @nzi = map { $_->at($i) } @nzipdls;
+    $ed->{nz}{join($ed->{sep}, @nzi)} = $pdl->at(@nzi);
+  }
+
+  return $ed;
+}
 
 ##======================================================================
 ## I/O: Native

@@ -95,7 +95,7 @@ sub addIndexedSymbol {
   if (defined($oldid=$e->{sym2id}{$sym})) {
     $e->{id2sym}[$oldid] = undef;
   }
-  $e->{sym2id}{$sym} = $newid;
+  $e->{sym2id}{$sym} = $id;
   $e->{id2sym}[$id]  = $sym;
   return $id;
 }
@@ -120,6 +120,20 @@ sub removeIndex {
   return $s;
 
 }
+
+##======================================================================
+## Manipulators: addition
+
+## $enum1 = $enum1->addEnum($enum2)
+##  + adds all symbols from $enum2 to $enum1
+##  + does not preserve mapping of $enum2
+*merge = *union = \&addEnum;
+sub addEnum {
+  my ($e1,$e2) = @_;
+  $e1->addSymbol($_) foreach (@{$e2->{id2sym}});
+  return $e1;
+}
+
 
 ##======================================================================
 ## Conversion: Encoding

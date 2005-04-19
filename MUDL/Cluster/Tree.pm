@@ -271,12 +271,14 @@ our %d2pMethods =
 
 ## $probPdl = $tc->membershipProbPdl(%args)
 ##   + %args:
+##       pdl    => $probPdl,
 ##       method => $dist2probMethod,
 ##   + $dist2probMethod is a key %d2pMethods
 ##   + $leafdistance_pdl : $k by $n
 ##   + $prob_pdl         : $k by $n
 ##     - $prob_pdl->at($ki,$ni) ~= p($class_ki | $target_ni)
-sub membershipProbs {
+*membershipProbs = \&membershipProbPdl;
+sub membershipProbPdl {
   my ($tc,%args) = @_;
   require PDL;
 
@@ -296,23 +298,49 @@ sub membershipProbs {
 ## Conversion: distance-to-probability: full
 ##----------------------------------------------------------------------
 
+## $pdl = $tc->d2p_getPdl($leafdists,$args_pdl)
+##  + %args:
+##     pdl => $probPdl,
+##  + returns a pdl at least as large as $leafdists
+sub d2p_getPdl {
+  my ($tc,$ld,$pdl) = @_;
+  return zeroes($ld->dims) if (!defined($pdl));
+
+  $pdl->reshape($ld->dims)
+    if ($pdl->ndims != 2 || $pdl->dim(0) < $ld->dim(0) || $pdl->dim(1) < $ld->dim(1));
+
+  return $pdl;
+}
+
+## $pdl_slice = $tc->d2p_slicePdl($leafdists,$pdl)
+sub d2p_slicePdl {
+  my ($tc,$ld,$pdl) = @_;
+  return $pdl->slice("0:".($ld->dims(0)-1).",0:".($ld->dims(1)-1));
+}
+
 ## $probPdl = $tc->d2p_linear($leafdists,%args)
-##  + %args: (none)
+##  + %args:
+##     pdl => $probPdl,
 sub d2p_linear {
   my ($tc,$ld,%args) = @_;
-  my $pdl = $ld->max - $ld; # (+1?) ??? (+ $ld->where($ld!=0)->min ???);
-  $pdl /= $pdl->sumover->transpose;
+  my $pdl   = $tc->d2p_getPdl($ld,$args{pdl});
+  my $pdls  = $tc->d2p_slicePdl($ld,$pdl);
+  $pdls    .= $ld->max - $ld; # (+1?) ??? (+ $ld->where($ld!=0)->min ???);
+  $pdls    /= $pdls->sumover->transpose;
   return $pdl;
 }
 
 ## $probPdl = $tc->d2p_inverse($leafdists,%args)
-##  + %args: (none)
+##  + %args:
+##     pdl => $probPdl,
 sub d2p_inverse {
   my ($tc,$ld,%args) = @_;
-  my $ldmin = $ld->where($ld!=0)->min;
-  my $pdl   = $ldmin / ($ldmin + $ld);
+  my $pdl    = $tc->d2p_getPdl($ld,$args{pdl});
+  my $pdls   = $tc->d2p_slicePdl($ld,$pdl);
+  my $ldmin  = $ld->where($ld!=0)->min;
 
-  $pdl /= $pdl->sumover->transpose;
+  $pdls     .= $ldmin / ($ldmin + $ld);
+  $pdls     /= $pdls->sumover->transpose;
 
   return $pdl;
 }
@@ -325,12 +353,13 @@ sub d2p_inverse {
 ##------------------------------------------------------
 ## $probPdl = $tc->d2p_nbest_hughes($leafdists,%args)
 ##  + %args:
-##     n => $nbest
+##    n => $nbest,
+##    pdl => $probPdl,
 sub d2p_nbest_hughes {
   my ($tc,$ld,%args) = @_;
   my $n = $args{n} || 1;
 
-  my $pdl   = zeroes(double, $ld->dims);
+  my $pdl   = $tc->d2p_getPdl($ld,$args{pdl});
   my $ipsum = (sequence($n)+1)->pow(-1)->sum;
   my $ipdl  = sequence(long, $n);
   foreach $ni (0..($ld->dim(1)-1)) {
@@ -348,12 +377,13 @@ sub d2p_nbest_hughes {
 ##  + %args:
 ##     n => $nbest, # =1
 ##     b => $base   # =2
+##    pdl => $probPdl,
 sub d2p_nbest_base {
   my ($tc,$ld,%args) = @_;
   my $n = $args{n} || 1;
   my $b = $args{b} || 2;
 
-  my $pdl = zeroes(double, $ld->dims);
+  my $pdl   = $tc->d2p_getPdl($ld,$args{pdl});
   my $ipsum = sum(pow(pdl($b), -(sequence($n)+1)));
   my $ipdl  = sequence(long, $n);
   foreach $ni (0..($ld->dim(1)-1)) {
