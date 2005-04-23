@@ -31,6 +31,7 @@ our @ISA = qw(MUDL::Object);
 ##  fhat => $edist_nary,   ## $fhat($dir,$classid,$tokid) = ^f_${dir}($tokid,$bound_classid)
 ##  prof => $profile,      ## current profile
 ##  stage => $i,           ## stage number
+##  d2p => {method=>'nbest_base',n=>4,b=>2},
 ## }
 ## $mp = MUDL::Corpus::MetaProfile->new(%args)
 sub new {
