@@ -10,6 +10,7 @@ package MUDL::Corpus::MetaProfile;
 use MUDL::Corpus::Profile;
 use MUDL::Cluster::Tree;
 use PDL;
+use PDL::Cluster;
 use Carp;
 our @ISA = qw(MUDL::Object);
 
@@ -25,10 +26,11 @@ our @ISA = qw(MUDL::Object);
 ##  tree => $cluster_tree, ## MUDL::Cluster::Tree
 ##  ##
 ##  ##-- previous data
-##  Mprev => $pdl2d,       ## dims: 2*$nclusters_bounds, $nclusters_targets
+##  Mprev => $pdl2d,       ## dims: 2*$n_clusters_bounds, $n_clusters_targets
+##  Mhat  => $pdl2d,       ## dims: 2*$n_clusters_bounds, $n_current_word_targets + $n_clusters_targets_old
 ##  ##
 ##  ##-- current iteration data
-##  fhat => $edist_nary,   ## $fhat($dir,$classid,$tokid) = ^f_${dir}($tokid,$bound_classid)
+##  #fhat => $edist_nary,  ## $fhat($dir,$classid,$tokid) = ^f_${dir}($tokid,$bound_classid)
 ##  prof => $profile,      ## current profile
 ##  stage => $i,           ## stage number
 ##  d2p => {method=>'nbest_base',n=>4,b=>2},
@@ -58,7 +60,7 @@ sub new {
 }
 
 ##======================================================================
-## Bootstrapping
+## Bootstrapping (stage = 1)
 ##======================================================================
 
 ##--------------------------------------------------------------
@@ -111,15 +113,14 @@ sub bootstrap {
 ##  + generated $tweakedDist, a distribution over target & bounds classes
 ##    from $profileDistNary, over target and bound words.
 ##  + still pretty slow, but the best we've got yet [ca. 10s on test 200x200 / nbest=4]
-*bootstrapProfileDist = \&bootstrapProfileDist2;
-sub bootstrapProfileDist2 {
+sub bootstrapProfileDist {
   my ($mp,$wvdist) = @_;
 
   my $k        = $mp->{cenum}->size;
-  my $fcb_pdl  = zeroes(double, $k, $k);
+  my $fwb_pdl  = zeroes(double, $k, $k);
   my $phat     = $mp->{phat};
 
-  my ($key,$f, $Pcw,$Pbv);
+  my ($key,$f, $w,$v, $Pcw,$Pbv);
   while (($key,$f)=each(%{$wvdist->{nz}})) {
     ($w,$v) = $wvdist->split($key);
 
@@ -130,35 +131,150 @@ sub bootstrapProfileDist2 {
 
   my $fcb_ed = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
 				      sep=>$wvdist->{sep},
-				      enum=>MUDL::EDist::Nary->new(nfields=>$wvdist->{enum}{nfields},
-								   enums=>[$mp->{cenum},$mp->{cenum}]),
+				      enum=>MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
+								  enums=>[$mp->{cenum},$mp->{cenum}]),
 				     );
 
   return MUDL::PdlDist->new(pdl=>$fcb_pdl,enum=>$fcb_ed->{enum})->toEDist($fcb_ed);
 }
-##-- pretty darn slow [ca. 18s on test 200x200 / nbest=4]
-sub bootstrapProfileDist0 {
-  my ($mp,$wvdist) = @_;
-  my $cbdist = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
-				      sep=>$wvdist->{sep},
-				      enum=>MUDL::EDist::Nary->new(nfields=>$wvdist->{enum}{nfields},
-								   enums=>[$mp->{cenum},$mp->{cenum}]),
-				     );
+
+##======================================================================
+## Attachment (Stage > 1)
+##======================================================================
+
+##--------------------------------------------------------------
+## $mp = $mp->attach($profileK)
+##  + extends @$profileK{'left','right'} to ^f_${dir}($tokid_K, $bound_classid)
+##  + computes $mp->{Mhat} ~ \phi(^f) ~ (clustering data for current stage)
+##  + updates $mp->{phat}  ~ ^p(c|w)  ~ (by comparing new targets to old cluster assignment)
+##  + extends $mp->{tenum} to include $profileK->{targets} strings
+##  + updates $mp->{Mprev} to include newly acquired targets
+##  + $profileK is destructively altered!
+sub attach {
+  my ($mp,$prof) = @_;
+
+  ##----------------------------
+  ## Dummy
+  carp(ref($mp),"::attach(): WARNING: not yet fully implemented!");
+  #croak(ref($mp),"::attach(): not yet implemented!");
+
+  ##----------------------------
+  ## Assign new profile (loses old)
+  $mp->{prof} = $prof;
+  ++$mp->{stage};
+
+  ##----------------------------
+  ## Tweak profile: f() -> ^f()
+  $prof->{left}  = $mp->attachProfileDist($prof->{left});
+  $prof->{right} = $mp->attachProfileDist($prof->{right});
+
+  ##----------------------------
+  ## Tweak profile: replace literal bounds with cluster-enum
+  $_ = $mp->{cenum} foreach (grep { $_ eq $prof->{bounds} } @{$prof->{enum}{enums}});
+  $prof->{bounds} = $mp->{cenum};
+
+  ##----------------------------
+  ## Tweak profile: generate new data PDL-2d: ^M(d*Nb+b,w) ~ $mp->{Mhat}
+  ##
+  ##                                 0..(n_k-1)                (n_k..(n_k+n_c-1))
+  ##  + Mhat : (2*$nclusters_bounds, $ntargets_current_words + $ntargets_clusters)
+  my $Mhat  = $mp->{Mhat} = $prof->toPDL;
+  my $Mprev = $mp->{Mprev};
+  my $Nt    = $mp->{prof}{targets}->size;     ## == $Mhat->dim(1)
+  my $Nc    = $mp->{cenum}->size;             ## == $Mprev->dim(1)
+  $Mhat->reshape($Mhat->dim(0), $Nt + $Nc);
+  $Mhat->slice(",$Nt:".($Nt+$Nc-1)) .= $Mprev;
+
+  ##----------------------------
+  ## Attach Data: get new distances ~~ add this to Tree() ?!
+  my $Dists   = $mp->{Dists} = zeroes(double, $Nc, $Nt);
+  my $rowids  = sequence(long, $Nt);
+  my $mask    = ones(long, $Mhat->dims);
+  my $weights = ones(double, $Nc);
+  foreach $cid (0..($Nc-1)) {
+    rowdistances($Mhat,
+		 $mask,
+		 $weights,
+		 $rowids,
+		 $cid+$Nt,
+		 $Dists->slice("($cid)"),
+		 $mp->{tree}{dist},
+		 $mp->{tree}{method});
+  }
+  return $mp;
+  #$Dists->inplace->setnantobad->inplace->setbadtoval(-1); ##-- eos,bos get 'inf'
+
+  ##----------------------------
+  ## Attach Data: convert distances to probabilities
   my $phat = $mp->{phat};
-  my ($key,$f, $w,$v, $c,$b, $Pcw,$Pvw);
+  $phat->reshape($phat->dim(0), $phat->dim(1) + $cmin);
+  $mp->{tree}->membershipProbPdl(leafdist=>$Dists,
+				 pdl=>$phat->slice(",".($phat->dim(1)-$cmin).":".($phat->dim(1)-1)),
+				 %{$mp->{d2p}},
+				);
+  #my $phat_new = $mp->{tree}->membershipProbPdl(leafdist=>$Dists, %{$mp->{d2p}});
+
+  return $mp;
+}
+
+
+##--------------------------------------------------------------
+## $tweakedDist = $mp->attachProfileDist($profileDistNary)
+##  + generated $tweakedDist, a distribution over target-WORDS & bound-CLASSES
+##    from $profileDistNary, over target-words and bound-words.
+*attachProfileDist = \&attachProfileDist1;
+sub attachProfileDist1 {
+  my ($mp,$wvdist) = @_;
+
+  my $k        = $mp->{cenum}->size;
+  my $n        = $wvdist->{enum}{enums}[0]->size;
+  my $fwb_pdl  = zeroes(double, $n, $k);
+  my $phat     = $mp->{phat};
+
+  my ($key,$f, $w,$v, $Pbv);
   while (($key,$f)=each(%{$wvdist->{nz}})) {
     ($w,$v) = $wvdist->split($key);
-    $Pcw = $phat->slice(",($w)");
-    $Pcv = $phat->slice(",($v)");
+
+    $Pbv                     = $phat->slice(",($v)"); ##-- implicit bound-reuse!
+    $fwb_pdl->slice("($w)") += $Pbv * $f;
+  }
+
+  my $fwb_ed = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
+				      sep=>$wvdist->{sep},
+				      enum=>MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
+								  enums=>[
+									  $wvdist->{enum}{enums}[0],
+									  $mp->{cenum}
+									 ]),
+				     );
+
+  return MUDL::PdlDist->new(pdl=>$fwb_pdl, enum=>$fwb_ed->{enum})->toEDist($fwb_ed);
+}
+
+
+##  -> (old version): pretty darn slow [ca. 18s on test 200x200 / nbest=4]
+sub attachProfileDist0 {
+  my ($mp,$wvdist) = @_;
+  my $wbdist = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
+				      sep=>$wvdist->{sep},
+				      enum=>MUDL::EDist::Nary->new(nfields=>$wvdist->{enum}{nfields},
+								   enums=>[
+									   $wvdist->{enum}{enums}[0],
+									   $mp->{cenum}
+									  ]),
+				     );
+  my $phat = $mp->{phat};
+  my ($key,$f, $w,$v, $b, $Pbv);
+  while (($key,$f)=each(%{$wvdist->{nz}})) {
+    ($w,$v) = $wvdist->split($key);
+    $Pbv = $phat->slice(",($v)");
 
     ##-- actual frequency-smearing: dog slow!
-    foreach $c ($Pcw->which->list) {
-      foreach $b ($Pcv->which->list) {
-	$cbdist->{nz}{$c.$cbdist->{sep}.$b} += $Pcv->at($b) * $Pcw->at($c) * $f;
-      }
+    foreach $b ($Pbv->which->list) {
+      $wbdist->{nz}{$w.$wbdist->{sep}.$b} += $Pcv->at($b) * $f;
     }
   }
-  return $cbdist;
+  return $wbdist;
 }
 
 
