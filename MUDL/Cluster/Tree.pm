@@ -1,3 +1,4 @@
+
 #-*- Mode: Perl -*-
 
 ## File: MUDL::Cluster::Tree.pm
@@ -271,8 +272,9 @@ our %d2pMethods =
 
 ## $probPdl = $tc->membershipProbPdl(%args)
 ##   + %args:
-##       pdl    => $probPdl,
-##       method => $dist2probMethod,
+##       pdl      => $probPdl,
+##       leafdist => $leafdistance_pdl,  [default=$tc->{leafdist}]
+##       method   => $dist2probMethod,
 ##   + $dist2probMethod is a key %d2pMethods
 ##   + $leafdistance_pdl : $k by $n
 ##   + $prob_pdl         : $k by $n
@@ -282,7 +284,8 @@ sub membershipProbPdl {
   my ($tc,%args) = @_;
   require PDL;
 
-  my $ld = $tc->{leafdist};
+  my $ld = $args{leafdist};
+  $ld = $tc->{leafdist}      if (!defined($ld));
   $ld = $tc->leafdistances() if (!defined($ld));
 
   my $method = $args{method} ? $args{method} : 'DEFAULT';
