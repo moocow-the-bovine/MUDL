@@ -9,26 +9,39 @@ use MUDL::Corpus::MetaProfile;
 
 BEGIN {
   $, = ' ';
+  select STDERR; $|=1; select STDOUT;
 }
 
 ##-- test1()
 sub test1 {
-  use vars qw($mp1 $bds2 $tgs2 $prf2);
-  $mp1  = load('stage1.mp.bin');  loadModule(ref($mp1));
-  $bds2 = load('stage2.bds.bin'); loadModule(ref($bds2));
-  $tgs2 = load('stage2.tgs.bin'); loadModule(ref($tgs2));
+
+  use vars qw($bds1 $tgs1 $prf1 $tc1 $mp1);
+  $prf1 = load('stage1.prf.bin');  loadModule(ref($prf1));
+  $bds1 = $prf1->{bounds};
+  $tgs1 = $prf1->{targets};
+  $tc1  = load('stage1.tc.bin');   loadModule(ref($tc1));
+  $mp1  = load('stage1.mp.bin');   loadModule(ref($mp1));
+
+  use vars qw($bds2 $tgs2 $prf2 $tc2 $mp2);
   $prf2 = load('stage2.prf.bin'); loadModule(ref($prf2));
+  $bds2 = $prf2->{bounds};
+  $tgs2 = $prf2->{targets};
 
   use vars qw($mp $prof);
   $mp   = $mp1;
   $prof = $prf2;
 }
 
+sub bs {
+  $mp1 = MUDL::Corpus::MetaProfile->new();
+  $mp1->bootstrap($prf1,$tc1);
+}
+
 sub test2 {
   $mp->attach($prof);
 
   ##-- get data
-  my ($Mhat, $Mprev, $Nt, $Nc);
+  our ($Mhat, $Mprev, $Nt, $Nc);
   ($Mhat,$Mprev) = @$mp{qw(Mhat Mprev)};
   $Nt = $tgs2->size;
   $Nc = $mp->{cenum}->size;
