@@ -15,6 +15,19 @@ use Carp;
 our @ISA = qw(MUDL::Object);
 
 ##======================================================================
+## Corpus::MetaProfile: Globals
+
+##-- verbosity levels
+our $vl_none  = 0;
+our $vl_error = 1;
+our $vl_warn  = 2;
+our $vl_info  = 3;
+our $vl_debug = 10;
+our $vl_full  = 255;
+
+our $vl_default = $vl_debug;
+
+##======================================================================
 ## Corpus::MetaProfile: Constructor
 ## {
 ##  ##
@@ -35,6 +48,8 @@ our @ISA = qw(MUDL::Object);
 ##  prof => $profile,      ## current profile
 ##  stage => $i,           ## stage number
 ##  d2p => {method=>'nbest_base',n=>4,b=>2},
+##  ##-- messages
+##  verbose => $level
 ## }
 ## $mp = MUDL::Corpus::MetaProfile->new(%args)
 sub new {
@@ -57,7 +72,19 @@ sub new {
 			   ##-- distance-to-probability args
 			   d2p => {method=>'nbest_base',n=>4,b=>2},
 			   ##--
+			   verbose => $vl_default,
 			   %args);
+}
+
+##======================================================================
+## Corpus::MetaProfile: Messages
+
+## $mp->vmsg($level, @msg)
+sub vmsg {
+  my ($mp,$level,@msg) = @_;
+  $mp->{verbose} = $vl_default if (!defined($mp->{verbose}));
+  return if (!defined($mp->{verbose}) || $mp->{verbose} < $level);
+  print STDERR ref($mp), ": ", @msg;
 }
 
 ##======================================================================
@@ -71,6 +98,8 @@ sub new {
 ##  + $profile1 and $tree1 may both be destructively altered!
 sub bootstrap {
   my ($mp,$prof,$tree,%args) = @_;
+  $mp->vmsg($vl_info, "bootstrap().\n");
+
   $mp->{prof} = $prof;
   $mp->{tree} = $tree;
   $mp->{stage} = 1;
@@ -87,6 +116,7 @@ sub bootstrap {
   }
 
   ##-- populate {phat}: p(class|target)
+  $mp->vmsg($vl_info, "bootstrap(): phat ~ ^p(c|w)\n");
   $mp->{phat} = zeroes(double, $mp->{cenum}->size, $mp->{tenum}->size);
   $tree->membershipProbPdl( %{$mp->{d2p}}, pdl=>$mp->{phat}, %args );
   foreach (@$mp{qw(bos eos)}) {
@@ -96,23 +126,33 @@ sub bootstrap {
   ##-------- populate pprof: ($bcluster, $tcluster)
 
   ##-- pprof: step 0: create pseudo-profile
-  my $pprof = $mp->{pprof} = ref($prof)->new(bounds=>$mp->{cenum},
-					     targets=>$mp->{cenum},
-					     (map { ($_=>$prof->{$_}) }
-					      grep { $_ ne 'nz' } keys(%$prof)),
-					    );
+  $mp->vmsg($vl_info, "bootstrap(): pprof ~ f_{<=k}(d,b_c,w)\n");
+
+
+  ##-- copy profile
+  my (%nztmp);
+  foreach $dir (qw(left right)) {
+    ##-- save temp
+    $nztmp{$dir} = $prof->{$dir}{nz};
+    $prof->{$dir}{nz} = ref($nztmp{$dir})->new();
+  }
+  my $pprof = $mp->{pprof} = $prof->copy;
+  $prof->{$_}{nz} = $nztmp{$_} foreach (qw(left right));
 
   ##-- pprof: step 1: tweak profile distributions
   $mp->{pprof}{left}  = $mp->bootstrapProfileDist($prof->{left});
   $mp->{pprof}{right} = $mp->bootstrapProfileDist($prof->{right});
 
   ##-- pprof: step 2: replace literal bounds with cluster-enum
-  foreach (grep {$_ eq $prof->{bounds} || $_ eq $prof->{targets}} @{$prof->{enum}{enums}}) {
+  foreach (grep {$_ eq $pprof->{bounds} || $_ eq $pprof->{targets}} @{$pprof->{enum}{enums}}) {
     $_ = $mp->{cenum};
   }
+  $pprof->{bounds} = $pprof->{targets} = $mp->{cenum};
 
 
   ##-------- populate Mprev: ($ndirs, $bcluster, $tcluster)
+
+  $mp->vmsg($vl_info, "bootstrap(): Mhat ~ ^M{<=k}(d,b_c,b_t)\n");
 
   ##-- Mprev: generate pdl (using tweaked profile)
   $mp->{Mprev} = $pprof->toPDL;
@@ -232,6 +272,8 @@ sub targetWords2Clusters {
 sub attach {
   my ($mp,$prof) = @_;
 
+  $mp->vmsg($vl_info, "attach().\n");
+
   ##----------------------------
   ## Dummy
   carp(ref($mp),"::attach(): WARNING: not yet fully implemented!");
@@ -244,6 +286,7 @@ sub attach {
 
   ##----------------------------
   ## Tweak profile: f_k(d,w,v) ---> f'_k(d,w,b)
+  $mp->vmsg($vl_info, "attach(): f_k(d,w,v) --> f'_k(d,w,c_b)\n");
   $prof->{left}  = $mp->boundWords2Clusters($prof->{left});
   $prof->{right} = $mp->boundWords2Clusters($prof->{right});
 
@@ -255,18 +298,24 @@ sub attach {
   ##----------------------------
   ## Tweak profile: generate new data PDL-2d: ^M(d*Nb+b,w) ~ $mp->{Mhat}
   ##
-  ##                                 0..(n_k-1)                (n_k..(n_k+n_c-1))
+  ##                                 0..(N_t-1)                (N_t..(N_t+N_c-1))
   ##  + Mhat : (2*$nclusters_bounds, $ntargets_current_words + $ntargets_clusters)
-  my $Mhat  = $mp->{Mhat} = $prof->toPDL;
+  $mp->vmsg($vl_info, "attach(): Mhat ~ ^M(d,c_b,c_t)\n");
+  my $Mhat  = $prof->toPDL;
   my $Mprev = $mp->{Mprev};
-  my $Nt    = $mp->{prof}{targets}->size;     ## == $Mhat->dim(1)
+  my $Nt    = $mp->{prof}{targets}->size;     ## == $Mhat->dim(1) 
   my $Nc    = $mp->{cenum}->size;             ## == $Mprev->dim(1)
   $Mhat->reshape($Mhat->dim(0), $Nt + $Nc);
   $Mhat->slice(",$Nt:".($Nt+$Nc-1)) .= $Mprev;
 
+  ##-- save / debug
+  $mp->{Mhat} = $Mhat;
+  #$mp->vmsg($vl_debug, "Nt=$Nt ; Nc=$Nc\n");
+
   ##----------------------------
   ## Attach Data: get new distances ~~ add this to Tree() ?!
-  my $Dists   = $mp->{Dists} = zeroes(double, $Nc, $Nt);
+  $mp->vmsg($vl_info, "attach(): rowdistances()\n");
+  my $Dists   = zeroes(double, $Nc, $Nt);
   my $rowids  = sequence(long, $Nt);
   my $mask    = ones(long, $Mhat->dims);
   my $weights = ones(double, $Mhat->dim(0)); # 2*$Nc
@@ -280,17 +329,22 @@ sub attach {
 		 $mp->{tree}{dist},
 		 $mp->{tree}{method});
   }
-  #return $mp; ##-- DEBUG
   #$Dists->inplace->setnantobad->inplace->setbadtoval(-1); ##-- eos,bos get 'inf'
+
+  ##-- save/debug
+  $mp->{Dists} = $Dists;
+  #return $mp; ##-- DEBUG
 
   ##----------------------------
   ## Attach Data: convert distances to probabilities: ^p(c|w)
+  $mp->vmsg($vl_info, "attach(): phat ~ ^p(c|w)\n");
   my $phat = $mp->{phat};
   $phat->reshape($phat->dim(0), $phat->dim(1) + $Nt);
   $mp->{tree}->membershipProbPdl(leafdist=>$Dists,
-				 pdl=>$phat->slice(",".($phat->dim(1)-$cmin).":".($phat->dim(1)-1)),
+				 pdl=>$phat->slice(",".($phat->dim(1)-$Nt).":".($phat->dim(1)-1)),
 				 %{$mp->{d2p}},
 				);
+  return $mp; ##-- DEBUG
 
   ##----------------------------
   ## Bootstrap: update ^f_{<=k}(d, c_t, c_b) == $mp->{pprof}
@@ -314,9 +368,20 @@ sub attach {
 
 
 ##--------------------------------------------------------------
+## $mp = $mp->addProfileDist($pprofDirDist, $profDirDist)
+##  + extends $pprofDirDist by $profDirDist
+sub addProfileDist {
+  my ($mp,$pcbdist,$wbdist) = @_;
+  my $cbdist = $mp->targetWords2Clusters($wbdist); ##-- NO! target-enum<-!->phat mismatch!
+}
+
+
+##--------------------------------------------------------------
 ## $tweakedDist = $mp->attachProfileDist($profileDistNary)
 ##  + generated $tweakedDist, a distribution over target-WORDS & bound-CLASSES
 ##    from $profileDistNary, over target-words and bound-words.
+##
+## --> OBSOLETE
 *attachProfileDist = \&attachProfileDist1;
 sub attachProfileDist1 {
   my ($mp,$wvdist) = @_;
