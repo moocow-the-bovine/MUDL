@@ -26,8 +26,9 @@ our @ISA = qw(MUDL::Object);
 ##  tree => $cluster_tree, ## MUDL::Cluster::Tree
 ##  ##
 ##  ##-- previous data
+##  pprof => $prev_prof,   ## ^f_{<=k}($dir, $bound_cluster, $target_word)
 ##  Mprev => $pdl2d,       ## dims: 2*$n_clusters_bounds, $n_clusters_targets
-##  Mhat  => $pdl2d,       ## dims: 2*$n_clusters_bounds, $n_current_word_targets + $n_clusters_targets_old
+##  #Mhat  => $pdl2d,      ## dims: 2*$n_clusters_bounds, $n_current_word_targets + $n_clusters_targets_old
 ##  ##
 ##  ##-- current iteration data
 ##  #fhat => $edist_nary,  ## $fhat($dir,$classid,$tokid) = ^f_${dir}($tokid,$bound_classid)
@@ -92,18 +93,29 @@ sub bootstrap {
     $mp->{phat}->set($mp->{ctenum}->indices($_,$_), 1.0);
   }
 
+  ##-------- populate pprof: ($bcluster, $tcluster)
+
+  ##-- pprof: step 0: create pseudo-profile
+  my $pprof = $mp->{pprof} = ref($prof)->new(bounds=>$mp->{cenum},
+					     targets=>$mp->{cenum},
+					     (map { ($_=>$prof->{$_}) }
+					      grep { $_ ne 'nz' } keys(%$prof)),
+					    );
+
+  ##-- pprof: step 1: tweak profile distributions
+  $mp->{pprof}{left}  = $mp->bootstrapProfileDist($prof->{left});
+  $mp->{pprof}{right} = $mp->bootstrapProfileDist($prof->{right});
+
+  ##-- pprof: step 2: replace literal bounds with cluster-enum
+  foreach (grep {$_ eq $prof->{bounds} || $_ eq $prof->{targets}} @{$prof->{enum}{enums}}) {
+    $_ = $mp->{cenum};
+  }
+
+
   ##-------- populate Mprev: ($ndirs, $bcluster, $tcluster)
 
-  ##-- Mprev: step 1: tweak profile distributions
-  $prof->{left}  = $mp->bootstrapProfileDist($prof->{left});
-  $prof->{right} = $mp->bootstrapProfileDist($prof->{right});
-
-  ##-- Mprev: step 2: replace literal bounds with cluster-enum
-  $_ = $mp->{cenum} foreach (grep { $_ eq $prof->{bounds} || $_ eq $prof->{targets} } @{$prof->{enum}{enums}});
-  $prof->{bounds} = $prof->{targets} = $mp->{cenum};
-
-  ##-- Mprev: step 3: generate pdl (using tweaked profile)
-  $mp->{Mprev} = $prof->toPDL;
+  ##-- Mprev: generate pdl (using tweaked profile)
+  $mp->{Mprev} = $pprof->toPDL;
 
   return $mp;
 }
@@ -113,11 +125,14 @@ sub bootstrap {
 ##  + generated $tweakedDist, a distribution over target & bounds classes
 ##    from $profileDistNary, over target and bound words.
 ##  + still pretty slow, but the best we've got yet [ca. 10s on test 200x200 / nbest=4]
+##  + should be equivalent to:
+##      $tweakedDist = $mp->targetWords2Clusters($mp->boundWords2Clusters($profileDistNary))
+##                   = $mp->boundWords2Clusters($mp->targetWords2Clusters($profileDistNary))
 sub bootstrapProfileDist {
   my ($mp,$wvdist) = @_;
 
-  my $k        = $mp->{cenum}->size;
-  my $fwb_pdl  = zeroes(double, $k, $k);
+  my $Nc       = $mp->{cenum}->size;
+  my $fcb_pdl  = zeroes(double, $Nc, $Nc);
   my $phat     = $mp->{phat};
 
   my ($key,$f, $w,$v, $Pcw,$Pbv);
@@ -137,6 +152,70 @@ sub bootstrapProfileDist {
 
   return MUDL::PdlDist->new(pdl=>$fcb_pdl,enum=>$fcb_ed->{enum})->toEDist($fcb_ed);
 }
+
+
+##--------------------------------------------------------------
+## $tweakedDist = $mp->boundWords2Clusters($profileDistNary)
+##  + generated $tweakedDist, a distribution over target-words & bound-clusters
+##    from $profileDistNary, over target- and bound-words.
+##  + still pretty slow, but the best we've got yet [ca. 10s on test 200x200 / nbest=4]
+sub boundWords2Clusters {
+  my ($mp,$wvdist) = @_;
+
+  my $Nc      = $mp->{cenum}->size;
+  my $Nt      = $wvdist->{enum}{enums}[0]->size;
+  my $fwb_pdl = zeroes(double, $Nt, $Nc);
+  my $phat    = $mp->{phat};
+
+  my ($key,$f, $w,$v, $Pbv);
+  while (($key,$f)=each(%{$wvdist->{nz}})) {
+    ($w,$v) = $wvdist->split($key);
+
+    $Pbv                     = $phat->slice(",($v)"); ##-- implicit bound-reuse!
+    $fwb_pdl->slice("($w)") += $Pbv * $f;
+  }
+
+  my $fwb_ed = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
+				      sep=>$wvdist->{sep},
+				      enum=>MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
+								  enums=>[
+									  $wvdist->{enum}{enums}[0],
+									  $mp->{cenum}
+									 ]),
+				     );
+
+  return MUDL::PdlDist->new(pdl=>$fwb_pdl, enum=>$fwb_ed->{enum})->toEDist($fwb_ed);
+}
+
+
+##--------------------------------------------------------------
+## $tweakedDist = $mp->targetWords2Clusters($profileDistNary)
+##  + generates $tweakedDist, a distribution over target-clusters & bound-clusters
+##    from $profileDistNary, over target-words and bound-clusters.
+sub targetWords2Clusters {
+  my ($mp,$wbdist) = @_;
+
+  my $Nc      = $mp->{cenum}->size;
+  my $fcb_pdl = zeroes(double, $Nc, $Nc);
+  my $phat    = $mp->{phat};
+
+  my ($key,$f, $w,$b, $Pcw);
+  while (($key,$f)=each(%{$wbdist->{nz}})) {
+    ($w,$b) = $wbdist->split($key);
+
+    $Pcw                      = $phat->slice(",($w)");
+    $fcb_pdl->slice(",($b)") += $Pcw * $f;
+  }
+
+  my $fcb_ed = MUDL::EDist::Nary->new(nfields=>$wbdist->{nfields},
+				      sep=>$wbdist->{sep},
+				      enum=>MUDL::Enum::Nary->new(nfields=>$wbdist->{enum}{nfields},
+								  enums=>[$mp->{cenum},$mp->{cenum}]),
+				     );
+
+  return MUDL::PdlDist->new(pdl=>$fcb_pdl, enum=>$fcb_ed->{enum})->toEDist($fcb_ed);
+}
+
 
 ##======================================================================
 ## Attachment (Stage > 1)
@@ -159,14 +238,14 @@ sub attach {
   #croak(ref($mp),"::attach(): not yet implemented!");
 
   ##----------------------------
-  ## Assign new profile (loses old)
-  $mp->{prof} = $prof;
+  ## Assign new profile (loses old literal profile)
+  $mp->{prof}  = $prof;
   ++$mp->{stage};
 
   ##----------------------------
-  ## Tweak profile: f() -> ^f()
-  $prof->{left}  = $mp->attachProfileDist($prof->{left});
-  $prof->{right} = $mp->attachProfileDist($prof->{right});
+  ## Tweak profile: f_k(d,w,v) ---> f'_k(d,w,b)
+  $prof->{left}  = $mp->boundWords2Clusters($prof->{left});
+  $prof->{right} = $mp->boundWords2Clusters($prof->{right});
 
   ##----------------------------
   ## Tweak profile: replace literal bounds with cluster-enum
@@ -190,7 +269,7 @@ sub attach {
   my $Dists   = $mp->{Dists} = zeroes(double, $Nc, $Nt);
   my $rowids  = sequence(long, $Nt);
   my $mask    = ones(long, $Mhat->dims);
-  my $weights = ones(double, $Nc);
+  my $weights = ones(double, $Mhat->dim(0)); # 2*$Nc
   foreach $cid (0..($Nc-1)) {
     rowdistances($Mhat,
 		 $mask,
@@ -201,18 +280,34 @@ sub attach {
 		 $mp->{tree}{dist},
 		 $mp->{tree}{method});
   }
-  return $mp;
+  #return $mp; ##-- DEBUG
   #$Dists->inplace->setnantobad->inplace->setbadtoval(-1); ##-- eos,bos get 'inf'
 
   ##----------------------------
-  ## Attach Data: convert distances to probabilities
+  ## Attach Data: convert distances to probabilities: ^p(c|w)
   my $phat = $mp->{phat};
-  $phat->reshape($phat->dim(0), $phat->dim(1) + $cmin);
+  $phat->reshape($phat->dim(0), $phat->dim(1) + $Nt);
   $mp->{tree}->membershipProbPdl(leafdist=>$Dists,
 				 pdl=>$phat->slice(",".($phat->dim(1)-$cmin).":".($phat->dim(1)-1)),
 				 %{$mp->{d2p}},
 				);
-  #my $phat_new = $mp->{tree}->membershipProbPdl(leafdist=>$Dists, %{$mp->{d2p}});
+
+  ##----------------------------
+  ## Bootstrap: update ^f_{<=k}(d, c_t, c_b) == $mp->{pprof}
+  foreach $dir (qw(left right)) {
+    $mp->addProfile($mp->{pprof}{$dir}, $prof->{$dir});
+    ##-- CONTINUE HERE!
+  }
+
+  ##----------------------------
+  ## Update Bootstrapper: refine Mprev == ^M_{<=k}(d, c_b, c_t) == \phi(^f_{<=k}(d, c_b, c_t))
+
+  ##---> doesn't this require saving ^f_{<=k}(d,c_b,c_t) ?!
+  ##---> or at least f_{<=k}(d,c_b,w)
+
+
+  ##-- cleanup: delete temporaries
+  #delete(@$mp{qw(Mhat Dists)};
 
   return $mp;
 }
@@ -226,9 +321,9 @@ sub attach {
 sub attachProfileDist1 {
   my ($mp,$wvdist) = @_;
 
-  my $k        = $mp->{cenum}->size;
-  my $n        = $wvdist->{enum}{enums}[0]->size;
-  my $fwb_pdl  = zeroes(double, $n, $k);
+  my $Nc       = $mp->{cenum}->size;
+  my $Nt       = $wvdist->{enum}{enums}[0]->size;
+  my $fwb_pdl  = zeroes(double, $Nt, $Nc);
   my $phat     = $mp->{phat};
 
   my ($key,$f, $w,$v, $Pbv);
