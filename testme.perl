@@ -24,6 +24,16 @@ sub test1 {
   $prof = $prf2;
 }
 
+sub test2 {
+  $mp->attach($prof);
+
+  ##-- get data
+  my ($Mhat, $Mprev, $Nt, $Nc);
+  ($Mhat,$Mprev) = @$mp{qw(Mhat Mprev)};
+  $Nt = $tgs2->size;
+  $Nc = $mp->{cenum}->size;
+}
+
 
 ##-- dummy
 foreach $i (0..100) {
