@@ -551,7 +551,7 @@ sub toMetaMap {
 ##======================================================================
 ## $tree = $tc->toTree(%args)
 ##  + returns a MUDL::Tree representing the clusters
-##  + %args are passed to MUDL::Tree->toTree(), fromClusters()
+##  + %args are passed to MUDL::Tree->fromClusters()
 sub toTree {
   my $tc = shift;
   require MUDL::Tree;

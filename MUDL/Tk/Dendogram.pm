@@ -10,6 +10,7 @@ package MUDL::Tk::Dendogram;
 use MUDL::Object;
 use Tk;
 use Tk::ROText;
+use PDL;
 
 our @ISA = qw(MUDL::Object);
 
@@ -339,7 +340,7 @@ sub _ddg_draw_node {
     $labtxt = $lab if (!defined($labtxt));
     $labtxt = $keystr if (!defined($labtxt));
 
-    #print STDERR "LEAF: node=$node ; lab=$lab ; keystr=$keystr\n";
+    #print STDERR "LEAF: node=$node ; lab=$lab ; keystr=$keystr ; labtxt='$labtxt'\n";
     #print STDERR "    : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";
 
     $cid = $canvas->createText(0, $args->{texty},
@@ -377,21 +378,29 @@ sub _ddg_draw_node {
     my @sdtrs = map { 'n'.$_ } @dtrs;
 
     ##-- get daughter coords
-    my ($x0,$y0) = $canvas->coords($sdtrs[0]);
-    my ($x1,$y1) = $canvas->coords($sdtrs[1]);
+    my @dcoords = map { [$canvas->coords($_)] } @sdtrs;
+    #my ($x0,$y0) = $canvas->coords($sdtrs[0]);
+    #my ($x1,$y1) = $canvas->coords($sdtrs[1]);
 
-    #print STDERR "NONTERM: node=$node ; lab=$lab ; keystr=$keystr\n";
-    #print STDERR "       : sdtrs=", @sdtrs, "\n";
-    #print STDERR "       : (x0,y0)=($x0,$y0) ; (x1,y1)=($x1,$y1)\n";
-    #print STDERR "       : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";
+    ##print STDERR "NONTERM: node=$node ; lab=$lab ; keystr=$keystr\n";
+    ##print STDERR "       : sdtrs=", @sdtrs, "\n";
+    ##print STDERR "       : (x0,y0)=($x0,$y0) ; (x1,y1)=($x1,$y1)\n";
+    ##print STDERR "       : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";
 
     ##-- get distance
     my $dist = defined($tree->{dists}) && defined($tree->{dists}{$node}) ? $tree->{dists}{$node} : 0;
 
     ##-----------------------
     ## new node
-    my $y  = ($y0 + $y1) / 2;
-    my $x  = ($x0 < $x1 ? $x0 : $x1) - $dg->{xpad} - ($dg->{dmult}*$dist);
+    my $dcpdl  = pdl(\@dcoords);
+    my $dcpdlx = $dcpdl->slice("0");
+    my $dcpdly = $dcpdl->slice("1");
+    my $y      = $dcpdly->avg;
+    my $x      = $dcpdlx->min - $dg->{xpad} - ($dg->{dmult}*$dist);
+
+    ##--OLD
+    #my $y  = ($y0 + $y1) / 2;
+    #my $x  = ($x0 < $x1 ? $x0 : $x1) - $dg->{xpad} - ($dg->{dmult}*$dist);
 
     $cid = $canvas->createText($x, $y,
 			       -anchor=>'c',
@@ -406,17 +415,41 @@ sub _ddg_draw_node {
 				       @{$args->{tags}}]);
     $args->{dg}{cid2nid}{$cid} = $node;
 
-    $cid = $canvas->createLine($x0, $y0,
-			       $x,  $y0,
-			       #$x,  $y,
-			       $x,  $y1,
-			       $x1, $y1,
+    ##-- crossbar
+    $cid = $canvas->createLine($x, $dcpdly->max,
+			       $x, $dcpdly->min,
 			       -tags=>['line',
 				       ('n'.$keystr),
 				       @{$args->{ancestors}},
 				       @{$args->{nodeinfo}{$keystr}{leaves}},
 				       @{$args->{tags}}]);
     $args->{dg}{cid2nid}{$cid} = $node;
+
+    ##-- daughter connector lines
+    my ($dx,$dy);
+    foreach $dcoords (@dcoords) {
+      ($dx,$dy) = @$dcoords;
+      $cid = $canvas->createLine($dx, $dy,
+				 $x,  $dy,
+				 -tags=>['line',
+					 ('n'.$keystr),
+					 @{$args->{ancestors}},
+					 @{$args->{nodeinfo}{$keystr}{leaves}},
+					 @{$args->{tags}}]);
+      $args->{dg}{cid2nid}{$cid} = $node;
+    }
+
+    #$cid = $canvas->createLine($x0, $y0,
+	#		       $x,  $y0,
+	#		       #$x,  $y,
+	#		       $x,  $y1,
+	#		       $x1, $y1,
+	#		       -tags=>['line',
+	#			       ('n'.$keystr),
+	#			       @{$args->{ancestors}},
+	#			       @{$args->{nodeinfo}{$keystr}{leaves}},
+	#			       @{$args->{tags}}]);
+    #$args->{dg}{cid2nid}{$cid} = $node;
   }
 
   return qw();

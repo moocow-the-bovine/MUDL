@@ -1,4 +1,4 @@
-# -*- Mode: Perl -*-
+## -*- Mode: Perl -*-
 
 ## File: MUDL::Tree.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -721,9 +721,9 @@ sub toDendogram {
   my $t = shift;
   require MUDL::Tk::Dendogram;
   return MUDL::Tk::Dendogram->new(tree=>$t,
-				  ($t->{dists}  ? (dists=>$t->{dists}) : qw()),
-				  ($t->{enum}   ? (enum=>$t->{enum}) : qw()),
-				  ($t->{dmult}  ? (dmult=>$t->{dmult}) : qw()),
+				  (defined($t->{dists}) ? (dists=>$t->{dists}) : qw()),
+				  (defined($t->{enum})  ? (enum=>$t->{enum}) : qw()),
+				  (defined($t->{dmult}) ? (dmult=>$t->{dmult}) : qw()),
 				  @_,
 				 );
 }
