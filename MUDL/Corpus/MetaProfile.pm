@@ -486,6 +486,7 @@ sub toTree {
   my $vt = MUDL::Tree->new();
 
   ##-- tree properties
+  my $Nc = $mp->{cenum}->size;
   $vt->{enum}   = $mp->{tenum};
   #$vt->{dists}  = pdl(1)/($mp->{phat}+1);
   $vt->{dists}  = {};
@@ -498,18 +499,25 @@ sub toTree {
 
   ##-- add clusters
   my %cid2node = qw();
-  my ($cid,$cstr);
+  my %cid2newnode = qw();
+  my %cid2oldnode = qw();
+  my ($cid,$cstr,$nid);
   foreach $cid (0..($mp->{cenum}->size-1)) {
     #$cstr = $mp->{cenum}->symbol($cid);
-    $cid2node{$cid} = $vt->addDaughter($root, $cid);
+    $nid = $cid2node{$cid} = $vt->addDaughter($root, $cid);
+    $cid2oldnode{$cid}     = $vt->addDaughter($nid, $cid+$Nc);
+    $cid2newnode{$cid}     = $vt->addDaughter($nid, $cid+2*$Nc);
   }
 
   ##-- add targets
+  my $ctargets = $mp->{prof}{targets};
   my %tid2node = qw();
-  my ($tid,$tstr,$ttid);
+  my ($tid,$tstr,$ttid,$cnid);
   while (($tstr,$tid)=each(%{$mp->{tenum}{sym2id}})) {
     $cid = $tid2cid->at($tid);
-    $ttid = $tid2node{$tid} = $vt->addDaughter($cid2node{$cid}, $tid);
+
+    $cnid = defined($ctargets->index($tstr)) ? $cid2newnode{$cid} : $cid2oldnode{$cid};
+    $ttid = $tid2node{$tid} = $vt->addDaughter($cnid, $tid);
     $vt->{groups}{$ttid} = $cid;
   }
 
