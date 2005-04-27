@@ -41,10 +41,21 @@ sub test2 {
   $mp->attach($prof);
 
   ##-- get data
-  our ($Mhat, $Mprev, $Nt, $Nc);
+  our ($Mhat, $Mprev, $Nt, $Nc, $cenum, $tenum, %tk2tlek, $Dists);
   ($Mhat,$Mprev) = @$mp{qw(Mhat Mprev)};
   $Nt = $tgs2->size;
   $Nc = $mp->{cenum}->size;
+  $cenum = $mp->{cenum};
+  $tenum = $mp->{tenum};
+  %tk2tlek = %{$mp->{tk2tlek}};
+  $Dists = $mp->{Dists};
+}
+
+sub test2b {
+  use vars qw($vt $dg);
+  $mp = load('stage2.mp.bin');
+  $vt = $mp->toTree;
+  $dg = $vt->toDendogram;
 }
 
 
