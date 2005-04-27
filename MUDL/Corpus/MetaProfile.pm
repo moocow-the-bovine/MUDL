@@ -37,6 +37,7 @@ our $vl_default = $vl_debug;
 ##  tenum => $enum,        ## previous-targets (token) enum (T_{<=$i})
 ##  ctenum => $enum_nary,  ## ($class,$target)
 ##  tree => $cluster_tree, ## MUDL::Cluster::Tree
+##  vtree => $viewing_tree, ## viewable tree
 ##  ##
 ##  ##-- previous data
 ##  pprof => $prev_prof,   ## ^f_{<=k}($dir, $bound_cluster, $target_word)
@@ -126,7 +127,7 @@ sub bootstrap {
   ##-------- populate pprof: ($bcluster, $tcluster)
 
   ##-- pprof: step 0: create pseudo-profile
-  $mp->vmsg($vl_info, "bootstrap(): pprof ~ f_{<=k}(d,b_c,w)\n");
+  $mp->vmsg($vl_info, "bootstrap(): pprof ~ f_{<=k}(d, c_b, w)\n");
 
 
   ##-- copy profile
@@ -152,7 +153,7 @@ sub bootstrap {
 
   ##-------- populate Mprev: ($ndirs, $bcluster, $tcluster)
 
-  $mp->vmsg($vl_info, "bootstrap(): Mhat ~ ^M{<=k}(d,b_c,b_t)\n");
+  $mp->vmsg($vl_info, "bootstrap(): Mprev ~ ^M_{<=k}(d, c_b, c_t)\n");
 
   ##-- Mprev: generate pdl (using tweaked profile)
   $mp->{Mprev} = $pprof->toPDL;
@@ -276,7 +277,7 @@ sub attach {
 
   ##----------------------------
   ## Dummy
-  carp(ref($mp),"::attach(): WARNING: not yet fully implemented!");
+  #carp(ref($mp),"::attach(): WARNING: not yet fully implemented!");
   #croak(ref($mp),"::attach(): not yet implemented!");
 
   ##----------------------------
@@ -300,7 +301,7 @@ sub attach {
   ##
   ##                                 0..(N_t-1)                (N_t..(N_t+N_c-1))
   ##  + Mhat : (2*$nclusters_bounds, $ntargets_current_words + $ntargets_clusters)
-  $mp->vmsg($vl_info, "attach(): Mhat ~ ^M(d,c_b,c_t)\n");
+  $mp->vmsg($vl_info, "attach(): Mhat ~ ^M_k(d,c_b,c_t)\n");
   my $Mhat  = $prof->toPDL;
   my $Mprev = $mp->{Mprev};
   my $Nt    = $mp->{prof}{targets}->size;     ## == $Mhat->dim(1) 
@@ -335,44 +336,75 @@ sub attach {
   $mp->{Dists} = $Dists;
   #return $mp; ##-- DEBUG
 
+
+  ##----------------------------
+  ## Attach Data: update target-enum $mp->{tenum}
+  $mp->vmsg($vl_info, "attach(): targets_{<=k} u= targets_k\n");
+  my %tk2tlek = qw();
+  my $tenum = $mp->{tenum};
+  my ($oldid,$newid,$tok);
+  while (($tok,$oldid)=each(%{$prof->{targets}{sym2id}})) {
+    $tk2tlek{$oldid} = $tenum->addSymbol($tok);
+  }
+
+  $mp->{tk2tlek} = \%tk2tlek; ##-- DEBUG
+  #return $mp; ##-- DEBUG
+
   ##----------------------------
   ## Attach Data: convert distances to probabilities: ^p(c|w)
-  $mp->vmsg($vl_info, "attach(): phat ~ ^p(c|w)\n");
-  my $phat = $mp->{phat};
-  $phat->reshape($phat->dim(0), $phat->dim(1) + $Nt);
-  $mp->{tree}->membershipProbPdl(leafdist=>$Dists,
-				 pdl=>$phat->slice(",".($phat->dim(1)-$Nt).":".($phat->dim(1)-1)),
-				 %{$mp->{d2p}},
-				);
-  return $mp; ##-- DEBUG
+  $mp->vmsg($vl_info, "attach(): phat ~ ^p_k(c|w)\n");
+  my $phatk = $mp->{tree}->membershipProbPdl(leafdists=>$Dists,
+					     pdl=>zeroes(double, $Nc, $Nt),
+					     %{$mp->{d2p}});
+  $mp->{phat}->reshape($mp->{phat}->dim(0), $tenum->size);
+  my $phatlek = $mp->{phat};
+  while (($oldid,$newid)=each(%tk2tlek)) {
+    $phatlek->slice(",($newid)") += $phatk->slice(",($oldid)");
+  }
+
+  #return $mp; ##-- DEBUG
 
   ##----------------------------
   ## Bootstrap: update ^f_{<=k}(d, c_t, c_b) == $mp->{pprof}
+  $mp->vmsg($vl_info, "attach(): pprof ~ ^f_{<=k}(d, c_t, c_b)\n");
   foreach $dir (qw(left right)) {
-    $mp->addProfile($mp->{pprof}{$dir}, $prof->{$dir});
-    ##-- CONTINUE HERE!
+    $mp->addProfileDist($prof->{$dir}, $mp->{pprof}{$dir}, \%tk2tlek);
   }
 
   ##----------------------------
   ## Update Bootstrapper: refine Mprev == ^M_{<=k}(d, c_b, c_t) == \phi(^f_{<=k}(d, c_b, c_t))
 
-  ##---> doesn't this require saving ^f_{<=k}(d,c_b,c_t) ?!
-  ##---> or at least f_{<=k}(d,c_b,w)
-
+  $mp->vmsg($vl_info, "attach(): Mprev ~ ^M_{<=k}(d, b_c, b_t)\n");
+  $mp->{Mprev} = $mp->{pprof}->toPDL;
 
   ##-- cleanup: delete temporaries
-  #delete(@$mp{qw(Mhat Dists)};
+  #delete(@$mp{qw(tk2tlek Mhat Dists)};
 
   return $mp;
 }
 
 
 ##--------------------------------------------------------------
-## $mp = $mp->addProfileDist($pprofDirDist, $profDirDist)
-##  + extends $pprofDirDist by $profDirDist
+## $mp = $mp->addProfileDist($profDirDist_k, $profDirDist_lek, \%id2id)
+##  + extends $profDirDist_lek by $profDirDist_k
+##  + %id2id maps old IDs (in $profDirDist_k) to new IDs (for $profDirDist_lek)
+##  + pretty ugly, really.
 sub addProfileDist {
-  my ($mp,$pcbdist,$wbdist) = @_;
-  my $cbdist = $mp->targetWords2Clusters($wbdist); ##-- NO! target-enum<-!->phat mismatch!
+  my ($mp,$wbdist,$pcbdist,$id2id) = @_;
+
+  my $fcb_pdl = $pcbdist->toPDL();
+  my $phat    = $mp->{phat};
+
+  my ($key,$f,$w,$b,$Pcw);
+  while (($key,$f)=each(%{$wbdist->{nz}})) {
+    ($w,$b) = $wbdist->split($key);
+
+    $Pcw                      = $phat->slice(",($id2id->{$w})");
+    $fcb_pdl->slice(",($b)") += $Pcw * $f;
+  }
+
+  MUDL::PdlDist->new(pdl=>$fcb_pdl, enum=>$pcbdist->{enum})->toEDist($pcbdist);
+  return $pcbdist;
 }
 
 
@@ -435,6 +467,53 @@ sub attachProfileDist0 {
     }
   }
   return $wbdist;
+}
+
+
+##======================================================================
+## Viewing: Tree
+##======================================================================
+
+##------------------------------------------------------
+## $tree = $mp->toTree(%args)
+##   + %args (?)
+sub toTree {
+  my $mp = shift;
+  require MUDL::Tree;
+
+  ##-- base tree
+  my $ct = $mp->{tree};
+  my $vt = MUDL::Tree->new();
+
+  ##-- tree properties
+  $vt->{enum}   = $mp->{tenum};
+  #$vt->{dists}  = pdl(1)/($mp->{phat}+1);
+  $vt->{dists}  = {};
+  $vt->{groups} = {};
+
+  my $tid2cid = $mp->{phat}->maximum_ind;
+
+  ##-- root
+  $root = $vt->root('');
+
+  ##-- add clusters
+  my %cid2node = qw();
+  my ($cid,$cstr);
+  foreach $cid (0..($mp->{cenum}->size-1)) {
+    #$cstr = $mp->{cenum}->symbol($cid);
+    $cid2node{$cid} = $vt->addDaughter($root, $cid);
+  }
+
+  ##-- add targets
+  my %tid2node = qw();
+  my ($tid,$tstr,$ttid);
+  while (($tstr,$tid)=each(%{$mp->{tenum}{sym2id}})) {
+    $cid = $tid2cid->at($tid);
+    $ttid = $tid2node{$tid} = $vt->addDaughter($cid2node{$cid}, $tid);
+    $vt->{groups}{$ttid} = $cid;
+  }
+
+  return $vt;
 }
 
 
