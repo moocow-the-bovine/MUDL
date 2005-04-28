@@ -121,6 +121,8 @@ sub bootstrap {
   $mp->{phat} = zeroes(double, $mp->{cenum}->size, $mp->{tenum}->size);
   $tree->membershipProbPdl( %{$mp->{d2p}}, pdl=>$mp->{phat}, %args );
   foreach (@$mp{qw(bos eos)}) {
+    $mp->{phat}->slice($mp->{cenum}->index($_).",") .= 0;
+    $mp->{phat}->slice(",".$mp->{tenum}->index($_)) .= 0;
     $mp->{phat}->set($mp->{ctenum}->indices($_,$_), 1.0);
   }
 
