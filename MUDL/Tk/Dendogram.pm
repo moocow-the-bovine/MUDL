@@ -30,8 +30,8 @@ our @ISA = qw(MUDL::Object);
 ##      gdepth=>$groupDepth,
 ##   + Assumptions:
 ##     - interior nodes of $tree are integer-labelled
-##     - $tree may have {dists} member: used for computing distances
-##     - $tree may have {enum} member: used for computing enums
+##     - $tree may have {dists} member: used for computing distances: { $nonterm_nodid => $distance_at_nodid, ... }
+##     - $tree may have {enum} member: used for computing enums --- OBSOLETE!
 ##     - $tree is strictly binary branching
 sub new {
   my $that = shift;
@@ -336,9 +336,9 @@ sub _ddg_draw_node {
     ##--------------------------
     ## Leaf Drawing
     $labtxt = $lab = $tree->label($node);
-    $labtxt = $tree->{enum}->symbol($lab) if (defined($tree->{enum}));
-    $labtxt = $lab if (!defined($labtxt));
-    $labtxt = $keystr if (!defined($labtxt));
+    #$labtxt = $tree->{enum}->symbol($lab) if (defined($tree->{enum}));
+    #$labtxt = $lab if (!defined($labtxt));
+    $labtxt = "key:".$keystr if (!defined($labtxt));
 
     #print STDERR "LEAF: node=$node ; lab=$lab ; keystr=$keystr ; labtxt='$labtxt'\n";
     #print STDERR "    : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";
@@ -347,14 +347,14 @@ sub _ddg_draw_node {
 			       -tags => ['node', 'leaf',
 					 ('n'.$keystr),
 					 ('al'.$keystr),
-					 'g'.$tree->{groups}{$keystr},
+					 'g'.(defined($tree->{groups}{$keystr}) ? $tree->{groups}{$keystr} : '(none)'),
 					 @{$args->{ancestors}},
 					 @{$args->{tags}},
 					],
 			       -justify => 'left',
 			       -anchor => 'w',
 			       -text => $labtxt,
-			       -font => $args->{dg}{font} || '',
+			       -font => ($args->{dg}{font} || ''),
 			      );
     $args->{texty} = $dg->{ypad} + ($canvas->bbox($cid))[3];
     $args->{dg}{cid2nid}{$cid} = $node;

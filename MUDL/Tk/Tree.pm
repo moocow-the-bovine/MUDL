@@ -9,6 +9,7 @@
 package MUDL::Tk::Tree;
 use MUDL::Object;
 use Tk;
+use utf8;
 
 our @ISA = qw(MUDL::Object);
 

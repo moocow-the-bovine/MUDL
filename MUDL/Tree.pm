@@ -685,7 +685,7 @@ sub fromClusterPDL {
   my @queue = ($t->{root}, $ct->dim(1)-2);
   $t->label($t->{root}, $ct->dim(1)-1);
 
-  my ($tid,$ctid, $tlab, $ctn,@tdids,$i);
+  my ($tid,$ctid, $tlabi,$tlabs, $ctn,@tdids,$i);
   while (($tid,$ctid)=splice(@queue,0,2)) {
     $ctn = $ct->slice(",($ctid)");
 
@@ -694,14 +694,22 @@ sub fromClusterPDL {
 
       if ($ctn->at($i) >= 0) {
 	##-- Leaf
-	$t->label($tdids[$i], ($tlab=$ctn->at($i)));
+	#$t->label($tdids[$i], ($tlabi=$ctn->at($i)));
+	$tlabi = $ctn->at($i);
+	$tlabs  = defined($t->{enum}) ? $t->{enum}->symbol($tlabi) : undef;
+	$tlabs  = $tlabi if (!defined($tlabs));
+	$t->label($tdids[$i], $tlabs);
 	if (defined($cgroups)) {
-	  $t->{groups}{$tdids[$i]} = $cgroups->at($tlab);
+	  $t->{groups}{$tdids[$i]} = $cgroups->at($tlabi);
 	}
       } else {
 	##-- Non-Leaf
-	$t->label($tdids[$i], -($ctn->at($i)+1));
-	push(@queue, $tdids[$i], -($ctn->at($i)+1));
+	#$t->label($tdids[$i], -($ctn->at($i)+1)); #OLD
+
+	$tlabi = -($ctn->at($i)+1);
+	$tlabs = $tlabi;
+	$t->label($tdids[$i], $tlabs);
+	push(@queue, $tdids[$i], $tlabi);
       }
     }
 
