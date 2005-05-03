@@ -103,13 +103,16 @@ sub saveNativeFh {
 		 : '--unnamed--'));
 
   $fh->print
-    ("\n",
-     "%%", ('-' x 70), "\n",
-     "%% ", ref($pr), " Eval ($name):\n",
-     "%%\n",
-     "%%   p(tag|tok) [Precision] : ", sprintf("%6.2f%%", 100*$pr->{ptok2tag}), "\n",
-     "%%   p(tok|tag) [Recall]    : ", sprintf("%6.2f%%", 100*$pr->{ptag2tok}), "\n",
-     "%%", ('-' x 70), "\n",
+    ("##\n",
+     "##", ('-' x 70), "\n",
+     "## ", ref($pr), " Eval ($name):\n",
+     "##\n",
+     "##   p(tag|tok) [Precision] : ", sprintf("%6.2f%%", 100*$pr->{ptok2tag}), "\n",
+     "##   p(tok|tag) [Recall]    : ", sprintf("%6.2f%%", 100*$pr->{ptag2tok}), "\n",
+     "##", ('-' x 70), "\n",
+     "\n",
+     "\$precision=$pr->{ptok2tag};\n",
+     "\$recall=$pr->{ptag2tok};\n",
     );
 }
 
