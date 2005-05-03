@@ -76,6 +76,7 @@ sub new {
 ##     - undef = $lr->finishPdl($pdl_3d)
 ##     - undef = $lr->normalizePdl($pdl_3d)
 ##   + $pdl_3d is of dimensions (2, $d/2, $n) [separated R- and L-components]
+*toPDLi = \&toPDL;
 sub toPDL {
   my ($lr,$pdl) = @_;
   $pdl = $lr->toPDL3d($pdl);
@@ -92,7 +93,6 @@ sub toPDL {
 ##   + may call the following:
 ##     - undef = $lr->finishPdl($pdl_3d)
 ##     - undef = $lr->normalizePdl($pdl_3d)
-*toPDLi = \&toPDL;
 sub toPDL3d {
   my ($lr,$pdl) = @_;
 
