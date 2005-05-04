@@ -21,3 +21,10 @@ sub test1 {
 
   return $lrmi;
 }
+
+
+
+##--- dummy
+foreach $dummy (0..100) {
+  print "--dummy ($dummy)--\n";
+}

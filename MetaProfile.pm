@@ -12,10 +12,16 @@ use MUDL::Cluster::Tree;
 use PDL;
 use PDL::Cluster;
 use Carp;
-our @ISA = qw(MUDL::Object);
+our @ISA = qw(MUDL::Object Exporter);
 
 ##======================================================================
 ## Corpus::MetaProfile: Globals
+
+our @EXPORT_OK = (map { $@_ } values(%EXPORT_TAGS));
+our %EXPORT_TAGS=
+  (
+   vlevels=>[qw($vl_none $vl_error $vl_warn $vl_debug $vl_full $vl_default)],
+  );
 
 ##-- verbosity levels
 our $vl_none  = 0;
@@ -27,8 +33,18 @@ our $vl_full  = 255;
 
 our $vl_default = $vl_debug;
 
+##-- methods (subclass aliases)
+our %methods = {
+		full => __PACKAGE__ ,
+		DEFAULT => __PACKAGE__ ,
+		deep => MUDL::Corpus::MetaProfile::Deep,
+	       };
+
 ##======================================================================
 ## Corpus::MetaProfile: Constructor
+##   + special %args:
+##     method => $reclusterMethod,  ##-- subclass flag: see %methods
+##   + Object structure:
 ## {
 ##  ##
 ##  ##-- global data
@@ -53,7 +69,7 @@ our $vl_default = $vl_debug;
 ##  #fhat => $edist_nary,  ## $fhat($dir,$classid,$tokid) = ^f_${dir}($tokid,$bound_classid)
 ##  prof => $profile,      ## current profile: ^f_{$dir}($dir, $bound_word, $target_word)
 ##  stage => $i,           ## stage number
-##  d2p => {method=>'nbest_base',n=>4,b=>2},  ## distance-to-probability arguments
+##  d2p => {method=>'nbest_inverse',n=>8,b=>2},  ## distance-to-probability arguments
 ##  ##-- messages
 ##  verbose => $level
 ## }
@@ -61,12 +77,27 @@ our $vl_default = $vl_debug;
 sub new {
   my ($that,%args) = @_;
 
-  return $that->SUPER::new(stage => 0,
-			   phat  => undef,
-			   prof  => undef,
-			   d2p => {method=>'nbest_base',n=>4,b=>2},
-			   verbose => $vl_default,
-			   %args);
+  my $method = defined($args{method}) ? $args{method} : 'DEFAULT';
+  my $class  = $methods{$method};
+  if (!defined($class)) {
+    confess(ref($that)||$that, "::new(): no class for method '$method'!");
+    return undef;
+  }
+
+  if ($class eq __PACKAGE__) {
+    return $that->SUPER::new(stage => 0,
+			     phat  => undef,
+			     prof  => undef,
+			     d2p => {method=>'nbest_inverse',n=>8,b=>2},
+			     verbose => $vl_default,
+			     %args);
+  } else {
+    if (!eval qq(require $class qw();)) {
+      confess(__PACKAGE__, "::new(): 'require $class' failed: $@");
+      return undef;
+    }
+    return $class->new(%args);
+  }
 }
 
 ##======================================================================
