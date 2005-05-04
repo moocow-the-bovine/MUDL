@@ -158,6 +158,36 @@ sub normalizePdl {
 }
 
 ##======================================================================
+## I/O: libcluster
+__PACKAGE__->registerIOMode('libcluster-data',
+			    {saveFh=>\&saveLibclusterDataFh,});
+__PACKAGE__->registerFileSuffix('\.lcd\.txt', 'libcluster-data');
+
+## $bool = $lr->saveLibclusterDataFh($fh,%args)
+##  + %args:
+##      pdl => $pdl_2d   ##-- pdl to save
+sub saveLibclusterDataFh {
+  my ($lr,$fh,%args) = @_;
+
+  #require PDL::IO::Misc;
+  my $pdl = defined($args{pdl}) ? $args{pdl} : $lr->toPDL;
+  my $tgs = $lr->{targets};
+  my $bds = $lr->{bounds};
+
+  my @bsyms = map { $bds->symbol($_) } (0..($pdl->dim(0)/2 -1));
+  $fh->print(join("\t ", 'UNIQID', (map { ("$_:L","$_:R") } @bsyms)), "\n");
+  foreach $tid (0..($pdl->dim(1)-1)) {
+    $fh->print(join("\t ",
+		    $tgs->symbol($tid),
+		    $pdl->slice(",($tid)")->list),
+	       "\n");
+  }
+
+  return $lr;
+}
+
+
+##======================================================================
 ## Help
 
 ## $string = $class_or_obj->helpString()
