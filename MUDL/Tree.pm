@@ -44,6 +44,8 @@ sub VERSION {
 #      #index => {$key=>$index,...},
 #      #dindex => {$key=>$index},
 #      #current=>$node,
+#   + viewing
+#      encoding => $encoding
 ###############################################################
 sub new {
   my $that = shift;
@@ -530,7 +532,10 @@ sub canonicalString {
 #  + creates a MUDL::Tk::Tree from $tree
 sub toTk {
   require MUDL::Tk::Tree;
-  return MUDL::Tk::Tree->new(tree=>$_[0], enum=>$_[0]{enum}, @_[1..$#_]);
+  return MUDL::Tk::Tree->new(tree=>$_[0],
+			     enum=>$_[0]{enum},
+			     (defined($_[0]{encoding}) ? (encoding=>$_[0]{encoding}) : qw()),
+			     @_[1..$#_]);
 }
 
 # $tktree = $tree->view(%args)

@@ -10,6 +10,8 @@ package MUDL::Tk::Dendogram;
 use MUDL::Object;
 use Tk;
 use Tk::ROText;
+use Encode;
+use Text::Wrap;
 use PDL;
 
 our @ISA = qw(MUDL::Object);
@@ -28,6 +30,8 @@ our @ISA = qw(MUDL::Object);
 ##      dmult=>$distance_multiplier # default: 1
 ##      gcolor=>$groupHlColor,
 ##      gdepth=>$groupDepth,
+##   + additional args
+##      encoding=>$display_label_encoding,  # default: ISO-8859-1
 ##   + Assumptions:
 ##     - interior nodes of $tree are integer-labelled
 ##     - $tree may have {dists} member: used for computing distances: { $nonterm_nodid => $distance_at_nodid, ... }
@@ -55,6 +59,9 @@ sub new {
 			       gdepth=>50,
 			       gxpad=>2,
 			       gypad=>2,
+
+			       ##-- encoding
+			       encoding=>'ISO-8859-1',
 
 			       ##-- User options
 			       @_,
@@ -291,6 +298,7 @@ sub toCanvas {
   $dg->{tree}{groups}  = { map { $_=>0 } ($dg->{tree}->leaves) }
     if (!defined($dg->{tree}{groups}) || !%{$dg->{tree}{groups}});
   $dg->{tree}->traverse({dg=>$dg,
+			 encoding=>$dg->{encoding},
 			 canvas=>$c,
 			 sub=>\&_ddg_do_node,
 			 after=>\&_ddg_on_up,
@@ -339,6 +347,10 @@ sub _ddg_draw_node {
     #$labtxt = $tree->{enum}->symbol($lab) if (defined($tree->{enum}));
     #$labtxt = $lab if (!defined($labtxt));
     $labtxt = "key:".$keystr if (!defined($labtxt));
+
+    ##-- encode
+    $labtxt = Encode::encode($args->{encoding},$labtxt) if (defined($args->{encoding}));
+    $labtxt = wrap('',"\t",$labtxt);
 
     #print STDERR "LEAF: node=$node ; lab=$lab ; keystr=$keystr ; labtxt='$labtxt'\n";
     #print STDERR "    : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";

@@ -10,6 +10,7 @@ package MUDL::Tk::Tree;
 use MUDL::Object;
 use Tk;
 use utf8;
+use Encode;
 
 our @ISA = qw(MUDL::Object);
 
@@ -26,6 +27,7 @@ our @ISA = qw(MUDL::Object);
 ##      boxactive=>$bool,
 ##      node=>$root_node,
 ##      linepad=>$pixels,
+##      encoding=>$encoding,
 ##  + Description:
 #       xskip     : min horizontal space (pixels) between nodes
 #       yskip     : vertical space (pixels) between nodes
@@ -45,6 +47,9 @@ sub new {
 			       linepad=>2,
 			       font=>'helvetica -12 bold',
 			       boxactive=>1,
+
+			       encoding => 'ISO-8859-1', ##-- default encoding
+
 			       ##-- User options
 			       @_,
 			      );
@@ -115,6 +120,7 @@ sub toCanvas {
 
   my $pred = undef;
   $tkt->{tree}->traverse({tkt => $tkt,
+			  encoding => $tkt->{encoding},
 			  canvas=> $canvas,
 			  sub => \&dtk_do_node,
 			  after => \&dtk_on_up,
@@ -148,11 +154,13 @@ sub dtk_do_node {
     {
      key => $args->{node},
      str => ('n'.$args->{node}),
-     label => $args->{tree}->label($args->{node}),
+     label => Encode::encode($args->{encoding}, $args->{tree}->label($args->{node})),
      depth => $args->{depth},
      ancestors => [ @{$args->{ancestors}} ],
      pred => defined($args->{pred}) ? ${$args->{pred}} : undef,
     };
+
+
   push(@{$args->{ancestors}}, "d".$args->{nodeinfo}{$args->{node}}{str});
   # interior nodes are handled by dtk_on_up
   return qw() if (scalar($args->{tree}->children($args->{node})));

@@ -53,7 +53,7 @@ sub new {
   }
   else {
     $tc = $that->SUPER::new(
-			    data=>null,
+			    data=>undef,
 			    mask=>undef,
 			    weight=>undef,
 			    method=>'a',
@@ -68,6 +68,24 @@ sub new {
   }
 
   return $tc;
+}
+
+##======================================================================
+## $tree2 = $tree->shadow(%args)
+##   + return a new tree of same type:
+##     ~ no data
+##     ~ same distance-metric, link-method, nclusters
+##     ~ copied enum, if present
+##   + %args are passed to ref($tree)->new();
+sub shadow {
+  my $t1 = shift;
+  return ref($t1)->new(
+		       (defined($t1->{enum}) ? (enum=>$t1->{enum}->copy) : qw()),
+		       dist=>$t1->{dist},
+		       method=>$t1->{method},
+		       (defined($t1->{nclusters}) ? (nclusters=>$t1->{nclusters}) : qw()),
+		       @_
+		      );
 }
 
 
@@ -129,6 +147,8 @@ sub cut {
 ##     between each (cluster,leaf) pair.
 sub leafdistances {
   my ($tc,$pdl) = @_;
+
+  confess(ref($tc), "::leafdistances(): no data!") if (!defined($tc->{data}));
 
   $tc->cluster() if (!defined($tc->{ctree}) || !defined($tc->{linkdist}));
   $tc->cut() if (!defined($tc->{clusterids}));

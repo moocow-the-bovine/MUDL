@@ -6,6 +6,7 @@ use MUDL::CmdUtils;
 use PDL;
 use MUDL::PdlDist;
 use MUDL::Corpus::MetaProfile;
+use MUDL::Corpus::MetaProfile::Deep;
 
 BEGIN {
   $, = ' ';
@@ -206,8 +207,93 @@ sub showphat {
   }
 }
 
+
 ##------------------------------------------------------------------------
-## Real tests (new)
+## Deep tests
+##------------------------------------------------------------------------
+sub dptest3 {
+  #require MUDL::Corpus::MetaProfile::Deep;
+  use vars qw($bds2 $tgs2 $prf2 $mp2);
+  use vars qw($bds $tgs $prf $prof $tree $tc $mp);
+
+  $mp2  = load('stage2.mpd.bin');  loadModule(ref($mp2));
+  $prf2 = $mp2->{prof};            loadModule(ref($prf2));
+  $bds2 = $prf2->{bounds};
+  $tgs2 = $prf2->{targets};
+  $tc2  = $mp2->{tree};            loadModule(ref($tc2));
+
+  $bds = $bds2;
+  $tgs = $tgs2;
+  $prf = $prof = $prf2;
+  $tc = $tree = $tc2;
+  $mp  = $mp2;
+}
+
+sub dptest2 {
+  #require MUDL::Corpus::MetaProfile::Deep;
+  use vars qw($bds2 $tgs2 $prf2);
+
+  $prf2 = load('stage2.prf.bin');  loadModule(ref($prf2));
+  $bds2 = $prf1->{bounds};
+  $tgs2 = $prf1->{targets};
+
+  $bds = $bds2;
+  $tgs = $tgs2;
+  $prf = $prof = $prf2;
+
+  $mp->update($prf2);
+
+  ##-- properties
+  use vars qw($tenum $tenum_ltk $tenum_k $pprof);
+  $tenum = $mp->{tenum};
+  $tenum_ltk = $mp->{tenum_ltk};
+  $tenum_k = $mp->{tenum_k};
+  $pprof = $mp->{pprof};
+}
+
+sub dptest1 {
+  use vars qw($bds1 $tgs1 $prf1 $tc1 $mp1);
+  use vars qw($bds $tgs $prf $prof $tc $mp);
+  #require MUDL::Corpus::MetaProfile::Deep;
+
+  $mp1  = load('stage1.mpd.bin');  loadModule(ref($mp1));
+  $prf1 = $mp1->{prof};            loadModule(ref($prf1));
+  $bds1 = $prf1->{bounds};
+  $tgs1 = $prf1->{targets};
+  $tc1  = $mp1->{tree};            loadModule(ref($tc1));
+
+  $bds = $bds1;
+  $tgs = $tgs1;
+  $prf = $prof = $prf1;
+  $tc = $tree = $tc1;
+  $mp  = $mp1;
+}
+
+sub dptest1bs {
+  use vars qw($bds1 $tgs1 $prf1 $tc1 $mp1);
+  use vars qw($bds $tgs $prf $prof $tc $mp);
+  require MUDL::Corpus::MetaProfile::Deep;
+
+  $prf1 = load('stage1.prf.bin');  loadModule(ref($prf1));
+  $bds1 = $prf1->{bounds};
+  $tgs1 = $prf1->{targets};
+  $tc1  = load('stage1.tc.bin');   loadModule(ref($tc1));
+
+  $bds = $bds1;
+  $tgs = $tgs1;
+  $prf = $prof = $prf1;
+  $tc = $tree = $tc1;
+
+  $mp1 = MUDL::Corpus::MetaProfile::Deep->new();
+  $mp1->{d2p} = $d2p if (defined($d2p));
+  $mp  = $mp1;
+
+  $mp1->bootstrap($prf1,$tc1);
+}
+
+
+##------------------------------------------------------------------------
+## Real tests (newer / recluster)
 ##------------------------------------------------------------------------
 sub rctest {
   $phati=$mp->{phat};

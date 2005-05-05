@@ -107,7 +107,8 @@ sub toEnums {
 sub leafEnum {
   require MUDL::Enum;
   my ($cm,%args) = @_;
-  my $n = $cm->{data}->dim(1);
+  #my $n = $cm->{data}->dim(1);
+  my $n = defined($cm->{data}) ? $cm->{data}->dim(1) : $cm->{clusterids}->dim(0);
 
   ##-- generate enums
   my $lenum = $cm->{enum};
@@ -286,16 +287,23 @@ sub d2p_nbest_inverse {
   my $ldmin = $ld->where($ld!=0)->min;
 
   #my $pdls   = $cm->d2p_slicePdl($ld,$pdl);
-  my ($lds,$ipsum);
+  my ($lds,$ipsum,$pdl_ni);
 
   foreach $ni (0..($ld->dim(1)-1)) {
     $lds = $ld->slice(",($ni)");
     $lds->minimum_n_ind($ipdl);
+
+    ##-- ?? slow!
     #$ipsum = sum(pdl($ldmin) / ($lds->dice($ipdl) + $ldmin));
-    foreach $ki (0..($n-1)) {
-      $pdl->set($ipdl->at($ki), $ni, $ldmin / ($lds->at($ipdl->at($ki)) + $ldmin))
-    }
-    $pdl->slice(",($ni)") /= $pdl->slice(",($ni)")->sum;
+    #foreach $ki (0..($n-1)) {
+    #  $pdl->set($ipdl->at($ki), $ni, $ldmin / ($lds->at($ipdl->at($ki)) + $ldmin))
+    #}
+    #$pdl->slice(",($ni)") /= $pdl->slice(",($ni)")->sum;
+
+    ##-- ?? not quite so slow
+    $pdl_ni = $pdl->slice(",($ni)");
+    $pdl_ni->dice($ipdl) .= $ldmin / ($lds->dice($ipdl) + $ldmin);
+    $pdl_ni /= $pdl_ni->sum;
   }
 
   return $pdl;
@@ -454,7 +462,8 @@ sub toMap {
   require MUDL::Map;
   my $cm = shift;
 
-  my ($k,$n) = ($cm->{nclusters}, $cm->{data}->dim(1));
+  #my ($k,$n) = ($cm->{nclusters}, $cm->{data}->dim(1));
+  my ($k,$n) = ($cm->{nclusters}, $cm->{clusterids}->dim(0));
   my ($lenum,$cenum) = $cm->toEnums();
   my $cids = $cm->{clusterids};
 
@@ -476,7 +485,8 @@ sub toMetaMap {
   require MUDL::Map;
   my $cm = shift;
 
-  my ($k,$n) = ($cm->{nclusters}, $cm->{data}->dim(1));
+  #my ($k,$n) = ($cm->{nclusters}, $cm->{data}->dim(1));
+  my ($k,$n) = ($cm->{nclusters}, $cm->{clusterids}->dim(0));
   my $lenum  = $cm->leafEnum;
   my $cenum  = $cm->clusterEnumFull;
   my $cids   = $cm->{clusterids};
