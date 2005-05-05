@@ -11,17 +11,18 @@ use MUDL::Corpus::Profile;
 use MUDL::Cluster::Tree;
 use PDL;
 use PDL::Cluster;
+use MUDL::CmdUtils qw();
 use Carp;
 our @ISA = qw(MUDL::Object Exporter);
 
 ##======================================================================
 ## Corpus::MetaProfile: Globals
 
-our @EXPORT_OK = (map { $@_ } values(%EXPORT_TAGS));
 our %EXPORT_TAGS=
   (
-   vlevels=>[qw($vl_none $vl_error $vl_warn $vl_debug $vl_full $vl_default)],
+   vlevels=>[qw($vl_none $vl_error $vl_warn $vl_info $vl_debug $vl_full $vl_default)],
   );
+our @EXPORT_OK = (map { @$_ } values(%EXPORT_TAGS));
 
 ##-- verbosity levels
 our $vl_none  = 0;
@@ -34,11 +35,11 @@ our $vl_full  = 255;
 our $vl_default = $vl_debug;
 
 ##-- methods (subclass aliases)
-our %methods = {
+our %methods = (
 		full => __PACKAGE__ ,
 		DEFAULT => __PACKAGE__ ,
-		deep => MUDL::Corpus::MetaProfile::Deep,
-	       };
+		deep => 'MUDL::Corpus::MetaProfile::Deep',
+	       );
 
 ##======================================================================
 ## Corpus::MetaProfile: Constructor
@@ -56,9 +57,9 @@ our %methods = {
 ##  #ctenum => $enum,       ## (target-)class enum
 ##  cbenum => $enum,       ## (bound-)class enum: includes bos,eos
 ##  #cttenum => $enum_nary, ## ($target_class,$target_word) enum
-##  cbtenum => $enum_nary, ## ($bound_class,$target_word) enum
+##  #cbtenum => $enum_nary, ## ($bound_class,$target_word) enum
 ##  tree => $cluster_tree, ## MUDL::Cluster::Tree
-##  vtree => $viewing_tree, ## viewable tree
+##  #vtree => $viewing_tree, ## viewable tree
 ##  ##
 ##  ##-- previous data
 ##  pprof => $prev_prof,   ## ^f_{<=k}($dir, $bound_cluster, $target_word)
@@ -70,8 +71,12 @@ our %methods = {
 ##  prof => $profile,      ## current profile: ^f_{$dir}($dir, $bound_word, $target_word)
 ##  stage => $i,           ## stage number
 ##  d2p => {method=>'nbest_inverse',n=>8,b=>2},  ## distance-to-probability arguments
+##  ##
 ##  ##-- messages
 ##  verbose => $level
+##  ##
+##  ##-- viewing
+##  encoding => $encoding, ##-- for viewing
 ## }
 ## $mp = MUDL::Corpus::MetaProfile->new(%args)
 sub new {
@@ -92,8 +97,8 @@ sub new {
 			     verbose => $vl_default,
 			     %args);
   } else {
-    if (!eval qq(require $class qw();)) {
-      confess(__PACKAGE__, "::new(): 'require $class' failed: $@");
+    if (!MUDL::CmdUtils::loadModule($class)) {
+      confess(__PACKAGE__, "::new(): 'loadModule($class)' failed: $@");
       return undef;
     }
     return $class->new(%args);
@@ -135,7 +140,7 @@ sub bootstrap {
   ##--
   #$mp->{cbenum} = $mp->{cenum}->copy;
   $mp->{cbenum} = $tree->clusterEnum()->copy;
-  $mp->{cbtenum} = MUDL::Enum::Nary->new(nfields=>2, enums=>[@$mp{qw(cbenum tenum)}]);
+  #$mp->{cbtenum} = MUDL::Enum::Nary->new(nfields=>2, enums=>[@$mp{qw(cbenum tenum)}]);
   ##--
   #$mp->{ctenum} = $tree->clusterEnum();
   #$mp->{cttenum} = MUDL::Enum::Nary->new(nfields=>2, enums=>[@$mp{qw(cenum tenum)}]);
@@ -177,14 +182,16 @@ sub populatePprof {
   $prof = $mp->{prof} if (!defined($prof));
 
   ##-- copy profile
-  my (%nztmp);
-  foreach $dir (qw(left right)) {
-    ##-- save temp
-    $nztmp{$dir} = $prof->{$dir}{nz};
-    $prof->{$dir}{nz} = ref($nztmp{$dir})->new();
-  }
-  my $pprof = $mp->{pprof} = $prof->copy;
-  $prof->{$_}{nz} = $nztmp{$_} foreach (qw(left right));
+  my $pprof = $mp->{pprof} = $prof->shadow();
+  ##--
+  #my (%nztmp);
+  #foreach $dir (qw(left right)) {
+  #  ##-- save temp
+  #  $nztmp{$dir} = $prof->{$dir}{nz};
+  #  $prof->{$dir}{nz} = ref($nztmp{$dir})->new();
+  #}
+  #my $pprof = $mp->{pprof} = $prof->copy;
+  #$prof->{$_}{nz} = $nztmp{$_} foreach (qw(left right));
 
   ##-- pprof: step 1: tweak profile distributions
   $pprof->{left}  = $mp->bootstrapProfileDist($prof->{left});
@@ -652,7 +659,7 @@ sub attachProfileDist0 {
 ##   + %args : passed to $mp->{tree}->toTree();
 sub toTree {
   my $mp=shift;
-  return $mp->{tree}->toTree(@_);
+  return $mp->{tree}->toTree(encoding=>$mp->{encoding},@_);
 }
 
 ##------------------------------------------------------

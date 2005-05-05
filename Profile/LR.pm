@@ -57,6 +57,33 @@ sub new {
 }
 
 ##======================================================================
+## Shadow
+
+## $lr2 = $lr->shadow(%args)
+##  + return new profile of same form
+##    - empty {left},{right} distributions
+##    - everything else copied
+sub shadow {
+  my $lr = shift;
+
+  ##-- save temps
+  my (%nztmp);
+  foreach (qw(left right)) {
+    $nztmp{$_} = $lr->{$_}{nz};
+    $lr->{$_}{nz} = ref($nztmp{$_})->new();
+  }
+
+  ##-- copy
+  my $lr2 = $lr->copy(@_);
+
+  ##-- restore temps
+  $lr->{$_}{nz} = $nztmp{$_} foreach (qw(left right));
+
+  return $lr2;
+}
+
+
+##======================================================================
 ## Profiling
 
 ## undef = $profile->addSentence(\@sentence)
