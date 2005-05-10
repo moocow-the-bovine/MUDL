@@ -4,5 +4,6 @@
 *.indices
 *.ps
 *.xml
+*.save[0-9]
 plots
 avg
