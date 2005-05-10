@@ -11,7 +11,19 @@ use MUDL::XML;
 use IO::File;
 use IO::Scalar;
 use Storable;
+
+## PDL::IO::Storable
+##  + very tricky: can cause errors "%Config::Config is read-only"
+##    when 'require'-ing PDL::Core::Dev.
+##  + especially hairy when used in conjunction with Inline::Pdlpp
+##  + it seems that this module must load AFTER everything else
+##    PDL-related
+##
+##use PDL::IO::Storable; ##-- WARNING Will Robinson DANGER DANGER
+##
+
 use Carp;
+
 
 ##======================================================================
 ## Exports
@@ -508,6 +520,7 @@ sub newFromXMLFh {
 sub saveBinString {
   my $obj = shift;
   my $ref = ref($obj) ? $obj : \$obj;
+  require PDL::IO::Storable if ($ref && UNIVERSAL::isa($ref,'PDL')); ##-- HACK
   return Storable::freeze($ref);
 }
 
@@ -529,6 +542,7 @@ sub saveBinFile {
 sub saveBinFh {
   my ($obj,$fh) = splice(@_,0,2);
   my $ref = ref($obj) ? $obj : \$obj;
+  require PDL::IO::Storable if ($ref && UNIVERSAL::isa($ref,'PDL')); ##-- HACK
   if (!Storable::store_fd($ref, $fh)) {
     confess( __PACKAGE__ , "::saveBinFh(): Storable::store_fd() failed.\n");
     return undef;
@@ -543,6 +557,7 @@ sub saveBinFh {
 ## $obj_or_undef = $obj->loadBinString($str,@args)
 sub loadBinString {
   my $str = $_[1];
+  require PDL::IO::Storable; ##-- HACK
   return Storable::thaw($str);
 }
 
@@ -563,6 +578,7 @@ sub loadBinFile {
 ## $obj_or_undef = $obj->loadBinFh($fh,@args)
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
+  require PDL::IO::Storable; ##-- HACK
   if (!defined($obj=Storable::fd_retrieve($fh))) {
     confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;
@@ -705,7 +721,10 @@ sub registerIOMode {
   my $modes = {};
   %$modes = %{$that->ioModes()} if (UNIVERSAL::can($that,'ioModes'));
   $modes->{$modeString} = $modeInfo;
-  *{(ref($that)||$that)."::ioModes"} = sub { return $modes; }
+  eval {
+    no warnings 'redefine';
+    *{(ref($that)||$that)."::ioModes"} = sub { return $modes; }
+  }
 }
 
 
@@ -728,7 +747,10 @@ sub registerFileSuffix {
   my $suffixes = [];
   @$suffixes = @{$that->fileSuffixModes()} if (UNIVERSAL::can($that,'fileSuffixModes'));
   unshift(@$suffixes, {regex=>qr/${suffix}$/i, mode=>$modeString});
-  *{(ref($that)||$that)."::fileSuffixModes"} = sub { return $suffixes; }
+  eval {
+    no warnings 'redefine';
+    *{(ref($that)||$that)."::fileSuffixModes"} = sub { return $suffixes; }
+  }
 }
 
 

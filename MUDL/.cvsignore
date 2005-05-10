@@ -4,5 +4,10 @@
 *.indices
 *.ps
 *.xml
+*.123
+*.lex
+*.t
+tmp
+_Inline
 plots
 avg

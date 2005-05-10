@@ -11,7 +11,13 @@ use MUDL::EDist;
 use IO::File;
 use PDL;
 use PDL::Fit::Linfit;
-use PDL::IO::Storable; ##-- very tricky
+
+## PDL::IO::Storable
+##  + very tricky: can cause errors "%Config::Config is read-only"
+##    when require-ing PDL::Core::Dev.
+##  + especially hairy when used in conjunction with Inline::Pdlpp
+#require PDL::IO::Storable;
+
 use Carp;
 
 our @ISA = qw(MUDL::Object);

@@ -120,10 +120,10 @@ sub saveNativeFh {
   }
 }
 
-## $obj = $class_or_obj->saveNativeFh($fh,%args)
+## $obj = $class_or_obj->loadNativeFh($fh,%args)
 sub loadNativeFh {
-  my ($lx,$fh) = @_;
-  $lx = $lx->new() if (!ref($lx));
+  my ($lx,$fh,%args) = @_;
+  $lx = $lx->new(%args) if (!ref($lx));
 
   my ($line,$word,$count,@tagcts,$tag,$ct);
   while (defined($line=<$fh>)) {
