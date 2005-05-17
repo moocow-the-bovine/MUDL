@@ -10,15 +10,15 @@ package MUDL;
 our $VERSION = 0.01;
 
 ##-- just load all sub-modules
-
 use MUDL::Utils;    ##-- very old, needs work
-#use MUDL::FsaUtils; ##-- useful hacks: should update getArcs() to use perl-floats as weights
+##use MUDL::FsaUtils; ##-- useful hacks: should update getArcs() to use perl-floats as weights
 
 use MUDL::XML;
+use MUDL::Corpus::Buffer;
 use MUDL::Corpus;
 use MUDL::CorpusIO;
 
-#use MUDL::PDL;
+#use MUDL::PDL; ##-- pretty much obsolete
 
 use MUDL::Map;
 use MUDL::Enum;
@@ -38,7 +38,7 @@ use MUDL::Corpus::Profile;
 use MUDL::Corpus::Profile::LRBound;
 
 use MUDL::Unigrams;
-use MUDL::Bigrams; ##-- need a-fixin' (?)
+use MUDL::Bigrams;
 
 1;
 
