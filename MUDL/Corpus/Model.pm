@@ -9,31 +9,47 @@
 package MUDL::Corpus::Model;
 use MUDL::Object qw(dummy);
 use MUDL::CorpusIO;
+use MUDL::LogUtils qw(:all);
 use Carp;
 our @ISA = qw(MUDL::Object);
 
 ##======================================================================
 ## Corpus::Model: Abstract Methods
 
-## $logp = $profile->corpusProbability($Corpus,@args)
+## $log_sum_sentprobs = $model->fileProbability($filename,@args)
+##  + calls fileReader(), readerProbability()
+##  + returns log(sum(p($s))) for each sentence $s in $filename
+##  + @args are passed to MUDL::CorpusIO->fileReader()
+sub fileProbability {
+  return $_[0]->readerProbability(MUDL::CorpusIO->fileReader(@_[1..$#_]));
+}
+
+## $log_sum_sentprobs = $model->bufferProbability($buffer,@args)
 ##  + calls readerProbability()
-sub corpusProbability {
-  return $_[0]->readerProbability(MUDL::CorpusReader::Corpus->new(corpus=>$_[1]));
+##  + returns log(sum(p($s))) for each sentence $s in $buffer
+##  + @args are passed to $buffer->reader()
+sub bufferProbability {
+  return $_[0]->readerProbability($_[1]->reader(@_[2..$#_]));
 }
 
-## $logp = $profile->readerProbability($CorpusReader,@args)
-##  + returns sum of sentenceProbability($s,@args) for every sentence
+## $log_sum_sentprobs = $model->readerProbability($CorpusReader,@args)
+##  + returns log(sum(p($s))) for each sentence $s in $buffer
+##  + default version calls sentenceProbability($s,@args) for every sentence
+##  + @args are passed to $model->sentenceProbability() in default version
 sub readerProbability {
-  my ($pr,$cr) = splice(@_,0,2);
+  my ($model,$cr) = splice(@_,0,2);
   my ($s);
-  my $sum = 0;
-  $sum += $pr->sentenceProbability($s) while (defined($s=$cr->getSentence));
-  return $sum;
+  my $logp = $LOG_ZERO;
+  while (defined($s=$cr->getSentence)) {
+    $logp = plogadd($logp, $model->sentenceProbability($s,@_[2..$#_]));
+  }
+  return $logp;
 }
 
-## $logp = $profile->sentenceProbability(\@sentence,@args)
-##  + dummy
-*addSentence = dummy('sentenceProbability');
+## $log_psent = $model->sentenceProbability(\@sentence,@args)
+##  + returns log(p(\@sentence))
+##  + dummy method
+*sentenceProbability = dummy('sentenceProbability');
 
 1;
 
