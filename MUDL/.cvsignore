@@ -3,6 +3,8 @@
 .*~
 *.indices
 *.ps
+
+*.pdl
 *.xml
 *.123
 *.lex
