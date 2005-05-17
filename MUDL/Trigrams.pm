@@ -1,14 +1,15 @@
 ##-*- Mode: Perl -*-
 
-## File: MUDL::Bigrams.pm
+## File: MUDL::Trigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: bigram distribution
+##  + MUDL unsupervised dependency learner: trigram distribution
 ##======================================================================
 
-package MUDL::Bigrams;
+package MUDL::Trigrams;
 use MUDL::Dist::Nary;
 use MUDL::Unigrams;
+use MUDL::Bigrams;
 use MUDL::LogUtils qw(:all);
 use Carp;
 our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile MUDL::Corpus::Model);
@@ -18,112 +19,120 @@ our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile MUDL::Corpus::Model);
 ##   + new:
 ##      bos=>$bos_marker    # default "__$"
 ##      eos=>$eos_marker    # default "__$"
+##   + key structure:
+##      "$w1.$sep.$w2.$sep.$w3"
 sub new {
   my $that = shift;
   my $self = bless $that->SUPER::new(), ref($that)||$that;
-  @$self{qw(bos eos nfields)} = ('__$', '__$', 2);
+  @$self{qw(bos eos nfields)} = ('__$', '__$', 3);
   return $self;
 }
 
 ##======================================================================
 ## Accessors
 
-## @words = $bg->vocabulary()
+## @words = $tg->vocabulary()
 sub vocabulary {
-  my $bg = shift;
-  return $bg->unigrams->vocabulary();
+  my $tg = shift;
+  return $tg->unigrams->vocabulary();
 }
 
 ## size()
 ##   + returns potential number of bigrams
-sub getSize { return scalar($_[0]->vocabulary)**2; }
+sub getSize { return scalar($_[0]->vocabulary)**3; }
 
-## $unigrams = $bg->unigrams
+## $unigrams = $tg->unigrams
 sub unigrams {
   return bless $_[0]->project1(0), 'MUDL::Unigrams';
+}
+
+## $bigrams = $tg->bigrams
+sub bigrams {
+  return bless $_[0]->projectN(1,2), 'MUDL::Bigrams';
 }
 
 ##======================================================================
 ## conditionalize
 
-## $bg = $bg->conditionalize()
-## $bg = $bg->conditionalize($unigrams)
-## $bg = $bg->conditionalize($unigrams,$totalunigrams)
-##   + converts $bg->{nz} to { "$w1$fs$w2" => P($w2|$w1), ... }
+## $tg = $tg->conditionalize()
+## $tg = $tg->conditionalize($bigrams)
+## $tg = $tg->conditionalize($bigrams,$bgtotal)
+##   + converts $tg->{nz} to { "$w1$fs$w2$fs$w3" => P($w3|$w1,$w2), ... }
 sub conditionalize {
-  my ($bg,$ug,$total) = @_;
-  $ug = $bg->unigrams if (!$ug);
-  $total = $ug->total if (!$total);
-  my ($k,$f1,$w1,$w2);
-  foreach $k (keys(%{$bg->{nz}})) {
-    ($w1,$w2) = $bg->split($k);
-    $f1 = $ug->{$w1};
-    if ($f1) {
-      $bg->{nz}{$k} /= $f1;
+  my ($tg,$bg,$total) = @_;
+  $bg = $tg->bigrams if (!$bg);
+  $total = $bg->total if (!$total);
+  my ($k,$f12,$w1,$w2,$w3);
+  foreach $k (keys(%{$tg->{nz}})) {
+    ($w1,$w2,$w3) = $tg->split($k);
+    $f12 = $bg->{nz}{$w1.$bg->{sep}.$w2};
+    if ($f12) {
+      $tg->{nz}{$k} /= $f12;
     } else {
-      carp ( __PACKAGE__ , "::conditionalize(): no unigram probability for '$w1': set to zero.\n");
-      $bg->{nz}{$k} = 0;
+      carp (ref($tg), "::conditionalize(): no bigram probability for '$w1,$w2': set to zero.\n");
+      $tg->{nz}{$k} = 0;
     }
   }
-  return $bg;
+  return $tg;
 }
 
 ##======================================================================
 ## metrics, etc
 
-## $H = $bg->conditionalEntropy($unigrams)
-## $H = $bg->conditionalEntropy($unigrams,$ugtotal)
-## $H = $bg->conditionalEntropy($unigrams,$ugtotal,$bgtotal)
+## $H = $tg->conditionalEntropy($bigrams)
+## $H = $tg->conditionalEntropy($bigrams,$bgtotal)
+## $H = $tg->conditionalEntropy($bigrams,$bgtotal,$tgtotal)
 sub conditionalEntropy {
-  my ($bg,$ug,$ugtotal,$bgtotal) = @_;
-  $ug = $bg->unigrams if (!$ug);
-  my $Huni   = $ug->entropy($ugtotal);
-  my $Hjoint = $bg->entropy($bgtotal);
-  return $Hjoint - $Huni;
+  my ($tg,$bg,$bgtotal,$tgtotal) = @_;
+  $bg = $tg->bigrams if (!$bg);
+  my $Hbi    = $bg->entropy($bgtotal);
+  my $Hjoint = $tg->entropy($tgtotal);
+  return $Hjoint - $Hbi;
 }
 
 ##======================================================================
 ## Profiling
 
-## undef = $bg->addReader($reader,%args)
+## undef = $tg->addReader($reader,%args)
 sub addReader {
-  my ($bg,$cr) = @_;
-  my ($fs,$bos,$eos) = @$bg{qw(sep bos eos)};
-  my ($s,$wprev,$txt);
+  my ($tg,$cr) = @_;
+  my ($fs,$bos,$eos) = @$tg{qw(sep bos eos)};
+  my ($s,$wm1,$wm2,$txt);
   while (defined($s=$cr->getSentence)) {
     next if (!@$s);
-    $wprev = $bos;
+    $wm1 = $wm2 = $bos;
     foreach (@$s) {
       $txt = ref($_) ? $_->text : $_;
       if (!defined($txt)) {
-	warn( __PACKAGE__ , "::addReader(): undefined token text!");
+	warn(ref($tg), "::addReader(): undefined token text!");
 	next;
       }
-      ++$bg->{nz}{$wprev.$fs.$txt};
-      $wprev = $txt;
+      ++$tg->{nz}{$wm2.$fs.$wm1.$fs.$txt}; #if ($wm2 ne $bos);
+      ($wm2,$wm1) = ($wm1,$txt);
     }
-    ++$bg->{nz}{$wprev.$fs.$eos};
+    ++$tg->{nz}{$wm2.$fs.$wm1.$fs.$eos};
   }
-  return $bg;
+  return $tg;
 }
 
-## undef = $bg->addSentence($sent,%args)
+## undef = $tg->addSentence($sent,%args)
 sub addSentence {
-  my ($bg,$s) = @_;
+  my ($tg,$s) = @_;
   return if (!@$s);
-  my $wprev = $bg->{bos};
+  my $wm1 = $tg->{bos};
+  my $wm2 = $wm1;
   my ($txt);
   foreach (@$s) {
     $txt = ref($_) ? $_->text : $_;
     if (!defined($txt)) {
-      warn( __PACKAGE__ , "::addSentence(): undefined token text!");
+      warn(ref($tg), "::addSentence(): undefined token text!");
       next;
     }
-    ++$bg->{nz}{$wprev.$bg->{sep}.$txt};
-    $wprev = $txt;
+    ++$tg->{nz}{$wm2.$tg->{sep}.$wm1.$tg->{sep}.$txt}; #if ($wm2 ne $tg->{bos});
+    ($wm2,$wm1) = ($wm1,$txt);
   }
-  ++$bg->{nz}{$wprev.$bg->{sep}.$bg->{eos}};
-  return $bg;
+  ++$tg->{nz}{$wm2.$tg->{sep}.$wm1.$tg->{sep}.$tg->{eos}};
+  return $tg;
 }
 
 
@@ -146,54 +155,56 @@ sub addSentence {
 ##   + $model should have been conditionalized
 ##   + %args: zeroCount=>$zeroCount ##-- obsolete
 sub sentenceProbability {
-  my ($bg,$s,%args) = @_;
-  $args{zeroCount} = $bg->zeroCount if (!defined($args{zeroCount}));
+  my ($tg,$s,%args) = @_;
+  $args{zeroCount} = $tg->zeroCount if (!defined($args{zeroCount}));
 
   my $logp = $LOG_ONE;
 
-  my ($t1) = $bg->{bos};
-  my ($pbg,$txt);
+  my $tm2 = $tg->{bos};
+  my $tm1 = $tm2;
+  my ($ptg,$txt);
 
   foreach $tok (@$s) {
     $txt   = ref($tok) ? $tok->text : $tok;
-    $pbg   = $bg->{nz}{$t1.$bg->{sep}.$txt};
-    $pbg   = $args{zeroCount} if (!$pbg);
+    $ptg   = $tg->{nz}{$tm2.$tg->{sep}.$tm1.$tg->{sep}.$txt};
+    $ptg   = $args{zeroCount} if (!$ptg);
 
-    $logp += log($pbg);     ##-- independence: multiply
-    $t1    = $txt;
+    $logp += log($ptg);     ##-- independence: multiply
+    ($tm2,$tm1) = ($tm1,$txt);
   }
   ##-- eos
-  $pbg   = $bg->{nz}{$t1.$bg->{sep}.$bg->{eos}};
-  $pbg   = $args{zeroCount} if (!$pbg);
-  $logp += log($pbg);
+  $ptg   = $tg->{nz}{$tm2.$tg->{sep}.$tm1.$tg->{sep}.$tg->{eos}};
+  $ptg   = $args{zeroCount} if (!$pbg);
+  $logp += log($ptg);
 
   return $logp;
 }
 
 
 ## $logprob = readerProbability($corpusREader,%args)
-##   + $bg should have been conditionalized
+##   + $tg should have been conditionalized
 ##   + %args: zeroCount=>$zeroCount
 sub readerProbability {
-  my ($bg,$cr,%args) = @_;
-  $args{zeroCount} = $bg->zeroCount if (!defined($args{zeroCount}));
+  my ($tg,$cr,%args) = @_;
+  $args{zeroCount} = $tg->zeroCount if (!defined($args{zeroCount}));
 
   my $logsum = $LOG_ZERO;
-  my ($t1,$logp,$pbg,$txt,$s);
+  my ($tm1,$tm2,$logp,$ptg,$txt,$s);
+  my $fs = $tg->{sep};
 
   while (defined($s=$cr->getSentence)) {
-    $t1 = $bg->{bos};
+    $tm1 = $tm2 = $tg->{bos};
     $logp = $LOG_ONE;
     foreach $tok (@$s) {
       $txt   = ref($tok) ? $tok->text : $tok;
-      $pbg   = $bg->{nz}{$t1.$bg->{sep}.$txt};
-      $pbg   = $args{zeroCount} if (!$pbg);
-      $logp += log($pbg);
-      $t1 =   $txt;
+      $ptg   = $tg->{nz}{$tm2.$fs.$tm1.$fs.$txt};
+      $ptg   = $args{zeroCount} if (!$ptg);
+      $logp += log($ptg);
+      ($tm2,$tm1) = ($tm1,$txt);
     }
-    $pbg   = $bg->{nz}{$t1.$bg->{sep}.$bg->{eos}};
-    $pbg   = $args{zeroCount} if (!$pbg);
-    $logp += log($pbg);
+    $ptg   = $tg->{nz}{$tm2.$fs.$tm1.$fs.$tg->{eos}};
+    $ptg   = $args{zeroCount} if (!$ptg);
+    $logp += log($ptg);
 
     $logsum = plogadd($logsum, $logp);
   }
@@ -208,7 +219,7 @@ sub readerProbability {
 ## $string = $class_or_obj->helpString()
 sub helpString {
   my $that = shift;
-  return qq(Extract token-text bigrams.\n)
+  return qq(Extract token-text trigrams.\n)
 }
 
 

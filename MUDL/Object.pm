@@ -22,6 +22,12 @@ use Storable;
 ##use PDL::IO::Storable; ##-- WARNING Will Robinson DANGER DANGER
 ##
 
+##-- alt: ignore PDL::IO::Storable; use tempfile + copy hack instead
+##   + problem: converting old files (ack!)
+#use File::Copy qw();
+#use File::Temp qw(tempfile);
+#our $TMPDIR = (defined($ENV{TMPDIR}) ? $ENV{TMPDIR} : '.');
+
 use Carp;
 
 
@@ -33,6 +39,7 @@ our %EXPORT_TAGS =
   (
    parser => [qw($XMLPARSER)],
    utils  => [qw(newFromXMLNode dummy)],
+   #const  => [qw($TMPDIR)],
   );
 $EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
 our @EXPORT_OK = @{$EXPORT_TAGS{all}};
@@ -513,6 +520,43 @@ sub newFromXMLFh {
 
 
 ##======================================================================
+## I/O: PDL: Hacks
+##======================================================================
+
+## ($hdr,$tmpfilename) = pdl2tmp($pdl)
+##   + generates PDL header and a temporary data file
+sub pdl2tmp {
+  my $pdl = shift;
+
+  require PDL;
+  require PDL::IO::FastRaw;
+  require PDL::IO::FlexRaw;
+  require File::Temp;
+  require File::Copy;
+
+  my $TMPDIR = (defined($ENV{TMPDIR}) ? $ENV{TMPDIR} : '.');
+
+  my ($tmpfh,$tmpfilename) = File::Temp::tempfile('tmpXXXXX', DIR=>$TMPDIR, SUFFIX=>'.pdl');
+  my $hdr = writeflex($tmpfh, $pdl);
+  $tmpfh->close;
+
+  return ($hdr,$tempfilename);
+}
+
+## ($hdr,$string) = pdl2string($pdl)
+sub pdl2string {
+  my $pdl = shift;
+  my ($hdr,$tmpfilename) = pdl2tmp($pdl);
+  my $fh = IO::File->new("<$tmpfilename")
+    or confess(__PACKAGE__, "::pdl2string(): could not open temp file '$tmpfilename': $!");
+  binmode($fh);
+  local $/ = undef;
+  my $str = <$fh>;
+  $fh->close();
+  return ($hdr,$str);
+}
+
+##======================================================================
 ## I/O: Binary: Save
 ##======================================================================
 
@@ -520,7 +564,7 @@ sub newFromXMLFh {
 sub saveBinString {
   my $obj = shift;
   my $ref = ref($obj) ? $obj : \$obj;
-  require PDL::IO::Storable if ($ref && UNIVERSAL::isa($ref,'PDL')); ##-- HACK
+  require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
   return Storable::freeze($ref);
 }
 
@@ -533,6 +577,7 @@ sub saveBinFile {
     confess( __PACKAGE__ , "::saveBinFile(): open failed for '$file': $!");
     return undef;
   }
+  binmode($fh);
   my $rc = saveBinFh($obj,$fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
@@ -542,7 +587,7 @@ sub saveBinFile {
 sub saveBinFh {
   my ($obj,$fh) = splice(@_,0,2);
   my $ref = ref($obj) ? $obj : \$obj;
-  require PDL::IO::Storable if ($ref && UNIVERSAL::isa($ref,'PDL')); ##-- HACK
+  require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
   if (!Storable::store_fd($ref, $fh)) {
     confess( __PACKAGE__ , "::saveBinFh(): Storable::store_fd() failed.\n");
     return undef;
@@ -557,7 +602,7 @@ sub saveBinFh {
 ## $obj_or_undef = $obj->loadBinString($str,@args)
 sub loadBinString {
   my $str = $_[1];
-  require PDL::IO::Storable; ##-- HACK
+  require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
   return Storable::thaw($str);
 }
 
@@ -570,6 +615,7 @@ sub loadBinFile {
     confess( __PACKAGE__ , "::loadBinFile(): open failed for '$file': $!");
     return undef;
   }
+  binmode($fh);
   my $rc = loadBinFh($obj,$fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
@@ -578,7 +624,7 @@ sub loadBinFile {
 ## $obj_or_undef = $obj->loadBinFh($fh,@args)
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
-  require PDL::IO::Storable; ##-- HACK
+  require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
   if (!defined($obj=Storable::fd_retrieve($fh))) {
     confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;

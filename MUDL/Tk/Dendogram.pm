@@ -49,9 +49,9 @@ sub new {
 			       ypad=>5,
 			       dmult=>1,
 
-			       font=>'helvetica -12',
-			       ivfont=>'helvetica -12',
-			       ilfont=>'helvetica -12 bold',
+			       font=>'helvetica -14',
+			       ivfont=>'helvetica -14',
+			       ilfont=>'helvetica -14 bold',
 			       canvasWidth=>800,
 			       canvasHeight=>600,
 
@@ -829,6 +829,7 @@ sub savePs {
     return undef;
   }
   $dg->{canvas}->itemconfigure('selbox',-state=>'hidden');
+  $dg->{canvas}->itemconfigure('selected', -fill=>'black'); ##-- unhighlight group members
 
   $dg->{canvas}->update();
   $dg->{canvas}->postscript(-file=>$file,
@@ -839,6 +840,7 @@ sub savePs {
 			   );
 
   $dg->{canvas}->itemconfigure('selbox',-state=>'normal');
+  $dg->{canvas}->itemconfigure('selected', -fill=>$dg->{gcolor}); ##-- rehighlight group members
 }
 
 

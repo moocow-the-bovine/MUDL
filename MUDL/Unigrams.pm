@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::Unigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -9,6 +9,7 @@
 package MUDL::Unigrams;
 use MUDL::Corpus::Profile;
 use MUDL::Corpus::Model;
+use MUDL::LogUtils qw(:all);
 use MUDL::Dist;
 use Carp;
 our @ISA = qw(MUDL::Dist MUDL::Corpus::Profile MUDL::Corpus::Model);
@@ -33,55 +34,62 @@ sub getSize { return scalar($_[0]->vocabulary); }
 ## Corpus::Profile Methods
 
 ## undef = $ug->addSentence(\@sent)
-sub addSentence { ++$_[0]->{ref($_) ? $_->text : $_} foreach (@{$_[1]}); }
+sub addSentence {
+  ++$_[0]->{ref($_) ? $_->text : $_} foreach (@{$_[1]});
+}
 
 
 ##======================================================================
 ## I/O: Native
 ##
-## (not yet implemented)
+## (inherited from MUDL::Dist)
 
 ##======================================================================
 ## Modelling
 
-## $logprob = sentenceProbability(\@sent,%args)
+## $log_psent = $model->sentenceProbability(\@sent,%args)
 ##   + %args : 'unknown'=>$unknown_symbol
 ##             'punknown'=>p($unknown_symbol)
 sub sentenceProbability {
   my ($ug,$s,%args) = @_;
-  $args{unknown} = '__UNKNOWN__' if (!defined($args{unknown}));
+  $args{unknown} = '@UNKNOWN' if (!defined($args{unknown}));
   $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}}));  ##-- HACK
-  my $p = 0;
-  my ($tok,$txt);
+  my $logp = $LOG_ONE;
+  my ($tok,$txt,$txtp);
   foreach $tok (@$s) {
-    $txt = ref($tok) ? $tok->text : $tok;
-    $txt = $args{unknown} if (!defined($ug->{$txt}));
-    $p += log($ug->{$txt});
+    $txt   = ref($tok) ? $tok->text : $tok;
+    $txtp  = $ug->{$args{unknown}} if (!defined($txtp=$ug->{$txt}));
+    $txtp  = $LOG_ZERO if (!defined($txtp));
+    $logp += log($txtp);                     ##-- independent trials: multiply
   }
-  return $p;
+  return $logp;
 }
 
-## $logprob = readerProbability($corpusREader,%args)
-##   + %args : 'unknown'=>$unknown_symbol
+## $log_sum_psent = $model->readerProbability($corpusReader,%args)
+##   + %args : 'unknown'=>$unknown_symbol (default='@UNKNOWN')
 *readerp = *readerP = *readerrob = *readerProb = \&readerProbability;
 sub readerProbability {
   my ($ug,$cr,%args) = @_;
-  $args{unknown} = '__UNKNOWN__' if (!defined($args{unknown}));
+  $args{unknown} = '@UNKNOWN' if (!defined($args{unknown}));
   $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}})); ##-- HACK
-  my $p = 0;
-  my ($s,$tok,$txt);
+
+  my $logpsum = $LOG_ZERO;
+  my ($s,$logp,$tok,$txt,$txtp);
   while (defined($s=$cr->getSentence)) {
+    $logp = $LOG_ONE;
     foreach $tok (@$s) {
-      $txt = ref($tok) ? $tok->text : $tok;
-      $txt = $args{unknown} if (!defined($ug->{$txt}));
-      $p += log($ug->{$txt});
+      $txt   = ref($tok) ? $tok->text : $tok;
+      $txtp  = $ug->{$args{unknown}} if (!defined($txtp=$ug->{$txt}));
+      $txtp  = $LOG_ZERO if (!defined($txtp));
+      $logp += log($txtp);                     ##-- independent trials: multiply
     }
+    $logpsum = plogadd($logpsum, $logp);
   }
-  return $p;
+  return $logpsum;
 }
 
 ##======================================================================
-## Help
+## Profile: Help
 
 ## $string = $class_or_obj->helpString()
 sub helpString {

@@ -73,7 +73,8 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  my $pdl = zeroes(double, max(pdl([keys %{$de->{nz}}]))+1);
+  #my $pdl = zeroes(double, max(pdl([keys %{$de->{nz}}]))+1);
+  my $pdl = zeroes(double, $de->{enum}->size);
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
 }
@@ -138,7 +139,7 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  my $pdl = zeroes(double, scalar(@{$de->{enum}{id2sym}}));
+  my $pdl = zeroes(double, $de->enum->size);
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
 }

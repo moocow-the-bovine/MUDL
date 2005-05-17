@@ -3,10 +3,11 @@
 ## File: MUDL::Corpus.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpora
+##  + MUDL unsupervised dependency learner: corpora: DEPRECATED
 ##======================================================================
 
 package MUDL::Corpus;
+use MUDL::Corpus::Buffer;
 use MUDL::CorpusIO;
 use MUDL::Object;
 use IO::File;
@@ -14,13 +15,18 @@ use Carp;
 
 our $VERSION = 0.01;
 
-our @ISA = qw(MUDL::Object);
+our @ISA = qw(MUDL::Corpus::Buffer);
 
 ##======================================================================
 ## Constructor
+##
+## $corpus = MUDL::Corpus->new(%args)
+##  + %args:
+##    see MUDL::Corpus::Buffer
+##  + deprecated: use MUDL::Corpus::Buffer instead
 sub new {
   my $that = shift;
-  return bless { sents=>[] }, ref($that)||$that;
+  return $that->SUPER::new(@_);
 }
 
 ##======================================================================
@@ -29,16 +35,10 @@ sub new {
 ## \@sentences = $corpus->sentences()
 sub sentences { return $_[0]->{sents}; }
 
-## $corpus = $corpus->clear()
-sub clear {
-  my $c = shift;
-  @{$c->{sents}} = qw();
-  return $c;
-}
-
 ##======================================================================
 ## I/O: TT
-
+##
+##  - OBSOLETE
 
 ## $corpus = $corpus->loadTTFile($filename_or_fh)
 *loadNativeFile = *loadNativeFh = \&loadTTFile;
@@ -69,6 +69,8 @@ sub saveTTFile {
 
 ##======================================================================
 ## I/O: XML
+##
+##  - OBSOLETE
 
 ## $corpus = $corpus->loadXMLFile($filename_or_fh)
 *loadXMLFh = \&loadXMLFile;

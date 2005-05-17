@@ -51,7 +51,13 @@ sub nfields {
 sub sanitize {
   my ($ngs) = @_;
   my $nf = $ngs->nfields;
-  delete @{$ngs->{nz}}{grep { scalar($ngs->split($_)) != $nf } keys(%{$ngs->{nz}})};
+
+  my @tmp; ##-- alleviates warning: 'Use of implicit split to @_ is deprecated at ../MUDL/Ngrams.pm line *HERE*+3.'
+  delete @{$ngs->{nz}}{
+    grep {
+      scalar(@tmp=CORE::split(/\Q$ngs->{sep}\E/, $_)) != $nf
+    } keys(%{$ngs->{nz}})};
+
   return $ngs;
 }
 
@@ -80,17 +86,17 @@ sub saveNativeFh {
   my ($ngs,$fh,%args) = @_;
 
   ##-- plain ol plain ol
-  return $ngs->SUPER::saveNativeFh($fh,%args) if ($ngs->{verbose} || $args{verbose});
+  my $ngx = $ngs->expand;
+  return $ngx->SUPER::saveNativeFh($fh,%args) if ($ngs->{verbose} || $args{verbose});
 
   ##-- brief
-  my $ngx = $ngs->expand;
   my $ngxnz = $ngx->{nz};
   my ($k,$f, @ng,@png);
   foreach $k (sort keys %$ngxnz) {
     $f = $ngxnz->{$k};
     @ng = $ngx->split($k);
     foreach $i (0..($#ng >= $#png ? $#ng : $#png)) {
-      last if ($ng[$i] ne $png[$i]);
+      last if (!defined($png[$i]) || $ng[$i] ne $png[$i]);
       $ng[$i] = '';
     }
     $fh->print(join("\t", @ng, $f), "\n");

@@ -190,7 +190,7 @@ sub perplexity { return 2**$_[0]->entropy($_[1]); }
 ##    bashto => $event, # event to bash pruned symbols to
 sub prune {
   my ($d,%args) = @_;
-  %args = (which=>$d->pruneByZeroSub, bash=>0, bashto=>'__UNKNOWN__', keep=>1, %args);
+  %args = (which=>$d->pruneByZeroSub, bash=>0, bashto=>'@UNKNOWN', keep=>1, %args);
   my ($k,$v);
   my $bashval = 0;
   while (($k,$v) = each(%$d)) {
@@ -328,6 +328,9 @@ sub toEDist {
 sub DEFAULT_SORT {
   my $d = shift;
   return sub { $d->{$b} <=> $d->{$a}; };
+}
+sub ALPHA_SORT {
+  return sub { $a cmp $b };
 }
 
 ## $obj = $obj->saveNativeFh($fh,%args)

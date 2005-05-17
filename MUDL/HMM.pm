@@ -11,7 +11,7 @@ use Carp;
 use MUDL::Corpus::Model;
 use MUDL::Enum;
 use PDL;
-use Inline Pdlpp;
+use PDL::HMM;
 
 our @ISA = qw(MUDL::Corpus::Model);
 
@@ -21,7 +21,8 @@ our @ISA = qw(MUDL::Corpus::Model);
 ## limit values
 #our $EPS = 1.19209290E-06F
 our $EPS = 1E-06;
-our $ZERO = -1E+38;
+#our $ZERO = -1E+38;
+our $ZERO = logzero;
 our $NEG  = -3E+38;
 our $ONE  = 0;
 #our $NONE = 1;
@@ -37,47 +38,54 @@ our $ONE  = 0;
 ##   {
 ##    ##
 ##    ##-- alphabet
-##    bos => $bos_str,     ## bos-string (__$)
-##    eos => $eos_str      ## eos-string (__$)
-#     unknown => $unk_str, ## unknown-string (__UNKNOWN__)
+##    bos => $bos_str,     ## bos-string (__$) : used only for native I/O
+##    eos => $eos_str      ## eos-string (__$) : used only for native I/O
+#     unknown => $unk_str, ## unknown-string ('@UNKNOWN')
 ##    oenum => $enum,      ## observation-alphabet enum
 ##    qenum => $enum,      ## state-label enum
 ##    ##
 ##    ##-- properties
 ##    N => number of states
-##    K => alphabet size
-##    atotal => total A count ## (for native I/O)
-##    btotal => total B count ## (for native I/O)
-##    type=>PDL::Type,        ## computation datatype (default=double)
-##    smooth=>$which,         ## how to smooth for unknowns ('hapax' or 'all' : default='all')
+##    M => alphabet size
+##    atotal => total a count  ## (for native I/O) (includes omega)
+##    btotal => total b count  ## (for native I/O)
+##    pitotal => total pi count ## (for native I/O)
+##    type=>PDL::Type,         ## computation datatype (default=double)
+##    ##
+##    ##-- smoothing
+##    smoothb=>$which,        ## how to smooth B for unknowns on compile ('hapax','all','uniform' : default='uniform')
+##    smoothbmin=>$cutoff,    ## for smoothb=>'hapax', minimum value (default=1.1*min($bf))
 ##    ##
 ##    ##-- parameters
-##    A1 => $unigram_prob_pdl ## pdl (N)  : $A1->at($i)   ~ log(p($i)) [arc] # for smoothing, lex save, etc.
-##    B1 => $unigram_prob_pdl ## pdl (N)  : $B1->at($i)   ~ log(p($i)) [lex] # for smoothing, lex save, etc.
-##    A => $arc_prob_pdl,     ## pdl (N,N): $A->at($i,$j) ~ log(p($i --> $j))
-##    B => $obs_prob_pdl,     ## pdl (N,K): $B->at($i,$k) ~ log(p($k  @  $i))
+##    a1 => $unigram_prob_pdl ## pdl (N)  : $a1->at($i)   ~ log(p($i)) [arc] # for smoothing, lex save, etc.
+##    b1 => $unigram_prob_pdl ## pdl (N)  : $b1->at($i)   ~ log(p($i)) [lex] # for smoothing, lex save, etc.
+##    a => $arc_prob_pdl,     ## pdl (N,N): $a->at($i,$j) ~ log(p($i --> $j))
+##    b => $obs_prob_pdl,     ## pdl (N,M): $b->at($i,$k) ~ log(p($k  @  $i))
+##    pi => $init_prob_pdl,   ## pdl (N)  : $pi->at($i)   ~ log(p($i | init)) # uses 'bos' marker in text model
+##    omega => $final_probs,  ## pdl (N)  : $omega->at($i)~ log(p(eos | $i))  # uses 'eos' marker in text model
 ##    ##
 ##    ##-- Native I/O
-##    Bfd => $dist_nary,      ## source for B
-##    Afd => $dist_nary,      ## source for A
+##    afd => $dist_nary,      ## source for A: may use bos,eos
+##    bfd => $dist_nary,      ## source for b
 ##   }
 ##
 sub new {
   my ($that,%args) = @_;
   my $hmm = $that->SUPER::new(bos=>'__$',
 			      eos=>'__$',
-			      unknown=>'__UNKNOWN__',
+			      unknown=>'@UNKNOWN',
 			      atotal=>100000,
 			      btotal=>100000,
 			      verbose=>0,
-			      smooth=>'all',
+			      smoothb=>'uniform',
+			      smoothbmin=>undef,
 			      %args);
   return $hmm->resize(%args);
 }
 
 ##--------------------------------------------------------------
 ## $hmm = $hmm->resize(%args)
-##   + %args: N=>$N, K=>$K, oenum=>$oenum, qenum=>$qenum
+##   + %args: N=>$N, M=>$M, oenum=>$oenum, qenum=>$qenum
 ##   + eliminates any previously stored information
 sub resize {
   my ($hmm,%args) = @_;
@@ -88,18 +96,35 @@ sub resize {
   $oenum = $hmm->{oenum} = MUDL::Enum->new() if (!defined($oenum));
   $qenum = $hmm->{qenum} = MUDL::Enum->new() if (!defined($qenum));
 
-  $oenum->addSymbol($_) foreach (@$hmm{qw(bos eos unknown)});
-  $qenum->addSymbol($_) foreach (@$hmm{qw(bos eos)});
+  #$oenum->addSymbol($_) foreach (@$hmm{qw(bos eos unknown)});
+  #$qenum->addSymbol($_) foreach (@$hmm{qw(bos eos)});
+  ##--
+  $oenum->addSymbol($_) foreach (@$hmm{qw(unknown)});
 
   my $type  = defined($args{type})  ? $args{type} : double;
-  my $N     = defined($args{N})     ? $args{N}    : $qenum->size;
-  my $K     = defined($args{K})     ? $args{K}    : $oenum->size;
-  my $A     = defined($args{A})     ? $args{A}    : zeroes($type, $N, $N);
-  my $B     = defined($args{B})     ? $args{B}    : zeroes($type, $N, $K);
-  my $A1    = defined($args{A1})    ? $args{A1}   : zeroes($type, $N);
-  my $B1    = defined($args{B1})    ? $args{B1}   : zeroes($type, $N);
+  my $N     = defined($args{N})     ? $args{N}    : ($qenum->size ? $qenum->size : 1);
+  my $M     = defined($args{M})     ? $args{M}    : ($oenum->size ? $oenum->size : 1);
+  my $a     = defined($args{a})     ? $args{a}    : zeroes($type, $N, $N);
+  my $b     = defined($args{b})     ? $args{b}    : zeroes($type, $N, $M);
+  my $pi    = defined($args{pi})    ? $args{pi}   : zeroes($type, $N);
+  my $omega = defined($args{omega}) ? $args{omega}: zeroes($type, $N);
+  my $a1    = defined($args{a1})    ? $args{a1}   : zeroes($type, $N);
+  my $b1    = defined($args{b1})    ? $args{b1}   : zeroes($type, $N);
 
-  @$hmm{qw(type N K A1 A B B1)} = ($type,$N,$K,$A1,$A,$B,$B1);
+
+  delete($hmm->{ea})
+    if (defined($hmm->{ea}) && $hmm->{ea}->dim(0) != $N);
+
+  delete($hmm->{eb})
+    if (defined($hmm->{eb}) && ($hmm->{eb}->dim(0) != $N || $hmm->{eb}->dim(1) != $M));
+
+  delete($hmm->{epi})
+    if (defined($hmm->{epi}) && $hmm->{epi}->dim(0) != $N);
+
+  delete($hmm->{eomega})
+    if (defined($hmm->{eomega}) && $hmm->{eomega}->dim(0) != $N);
+
+  @$hmm{qw(type N M a a1 b b1 pi omega)} = ($type,$N,$M,$a,$a1,$b,$b1,$pi,$omega);
   return $hmm;
 }
 
@@ -115,21 +140,24 @@ sub clear {
 }
 
 ##======================================================================
-## Accessors
+## accessors
 ##======================================================================
 
 ##--------------------------------------------------------------
-## $af = $hmm->Af(%args)
+## $af = $hmm->af(%args)
 ##   + get n-gram joint frequency pdl ($N,$N)
+##   + returns $hmm->{af} if defined
 ##   + %args:
 ##      total=>$total (default=$hmm->{atotal})
 ##      round=>$bool, (round to integer?)
 ##      type=>$type,  (output datatype)
-sub Af {
+sub af {
   my ($hmm,%args) = @_;
+  return $hmm->{af} if (defined($hmm->{af}));
+
   my $total = pdl($hmm->{type}, log($args{total} ? $args{total} : $hmm->{atotal}));
-  my $af    = zeroes($hmm->{type}, $hmm->{A}->dims);
-  ($hmm->{A} + $hmm->{A1} + $total)->exp($af);
+  my $af    = zeroes($hmm->{type}, $hmm->{a}->dims);
+  ($hmm->{a} + $hmm->{a1} + $total)->exp($af);
   $af->inplace->setnantobad->inplace->setbadtoval(0);
   $af->where(approx($af,0,$EPS)) .= 0;
   $af->inplace->rint if ($args{round});                       ##-- round
@@ -138,22 +166,71 @@ sub Af {
 }
 
 ##--------------------------------------------------------------
-## $bf = $hmm->Bf(%args)
-##   + get observation join frequency pdl ($N,$K)
+## $bf = $hmm->bf(%args)
+##   + get observation join frequency pdl ($N,$M)
+##   + returns $hmm->{bf} if defined
 ##   + %args:
 ##      total=>$total, (default=$hmm->{btotal})
 ##      round=>$bool,  (round to integer?)
 ##      type=>$type,   (output datatype)
-sub Bf {
+sub bf {
   my ($hmm,%args) = @_;
+  return $hmm->{bf} if (defined($hmm->{bf}));
+
   my $total = pdl($hmm->{type}, log($args{total} ? $args{total} : $hmm->{btotal}));
-  my $bf    = zeroes($hmm->{type}, $hmm->{B}->dims);
-  ($hmm->{B} + $hmm->{B1} + $total)->exp($bf);
+  my $bf    = zeroes($hmm->{type}, $hmm->{b}->dims);
+  ($hmm->{b} + $hmm->{b1} + $total)->exp($bf);
   $bf->inplace->setnantobad->inplace->setbadtoval(0);
   $bf->where(approx($bf,0,$EPS)) .= 0;
   $bf->inplace->rint if ($args{round});                       ##-- round
   return $bf->convert($args{type}) if (defined($args{type})); ##-- convert
   return $bf;
+}
+
+
+##--------------------------------------------------------------
+## $pif = $hmm->pif(%args)
+##   + get initial frequency pdl ($N)
+##   + returns $hmm->{pif} if defined
+##   + %args:
+##      total=>$total (default=$hmm->{pitotal})
+##      round=>$bool, (round to integer?)
+##      type=>$type,  (output datatype)
+sub pif {
+  my ($hmm,%args) = @_;
+  return $hmm->{pif} if (defined($hmm->{pif}));
+
+  my $total = pdl($hmm->{type}, log($args{total} ? $args{total} : $hmm->{pitotal}));
+  my $pif   = zeroes($hmm->{type}, $hmm->{pi}->dims);
+  ($hmm->{pi} + $total)->exp($pif);
+  $pif->inplace->setnantobad->inplace->setbadtoval(0);
+  $pif->where(approx($pif,0,$EPS)) .= 0;
+  $pif->inplace->rint if ($args{round});                      ##-- round
+  return $pif->convert($args{type}) if (defined($args{type})); ##-- convert
+  return $pif;
+}
+
+
+##--------------------------------------------------------------
+## $omegaf = $hmm->omegaf(%args)
+##   + get final frequency pdl ($N)
+##   + returns $hmm->{omegaf} if defined
+##   + %args:
+##      total=>$total (default=$hmm->{pitotal})
+##      round=>$bool, (round to integer?)
+##      type=>$type,  (output datatype)
+sub omegaf {
+  my ($hmm,%args) = @_;
+  return $hmm->{omegaf} if (defined($hmm->{omegaf}));
+
+  my $total  = pdl($hmm->{type}, log($args{total} ? $args{total} : $hmm->{atotal}));
+  my $omegaf = zeroes($hmm->{type}, $hmm->{omega}->dims);
+  ($hmm->{omega} + $hmm->{a1} + $total)->exp($omegaf);
+  $omegaf->inplace->setnantobad->inplace->setbadtoval(0);
+  $omegaf->where(approx($omegaf,0,$EPS)) .= 0;
+  $omegaf->inplace->rint if ($args{round});                       ##-- round
+  return $omegaf->convert($args{type}) if (defined($args{type})); ##-- convert
+  return $omegaf;
 }
 
 
@@ -163,143 +240,377 @@ sub Bf {
 ##======================================================================
 
 ##--------------------------------------------------------------
-## $hmm = $hmm->compilePdls($Af,$Bf,%args)
-##  + $Af: pdl($N,$N) : $Af->at($i,$j) = f($i --> $j)
-##  + $Bf: pdl($N,$K) : $Bf->at($i,$k) = f($k  @  $i)
+## $hmm = $hmm->compilePdls($af,$bf,$pif,$omegaf,%args)
+##  + $af : pdl($N,$N)  : $af    ->at($i,$j) = f($i --> $j)
+##  + $bf : pdl($N,$M)  : $bf    ->at($i,$k) = f($k  @  $i)
+##  + $pif    : pdl($N) : $pif   ->at($i)    = f(BOS--> $i)
+##  + $omegaf : pdl($N) : $omegaf->at($i)    = f($i --> $EOS)
 ##  + %args
-##    + smooth=>$bool,  ##-- whether to smooth unknown values (default=true)
+##    + smoothb=>$which, smoothbmin=>$cutoff,
 sub compilePdls {
-  my ($hmm,$Af,$Bf,%args) = @_;
+  my ($hmm,$af,$bf,$pif,$omegaf,%args) = @_;
 
-  $hmm->resize( N=>$Af->dim(0), K=>$Bf->dim(1) )
-    if ($Af->dim(0) != $hmm->{N} || $Bf->dim(1) != $hmm->{K});
+  $hmm->compileArcs($af,$omegaf,%args)
+  && $hmm->compileB($bf,%args)
+  && $hmm->compilePi($pif,%args)
+  && return $hmm;
 
-  my $smooth = exists($args{smooth}) ? $args{smooth} : $hmm->{smooth};
-  my ($A,$B,$A1,$B1) = @$hmm{qw(A B A1 B1)};
+  return undef;
+}
 
-  $hmm->{atotal} = $Af->sum;
-  $hmm->{btotal} = $Bf->sum;
+
+##--------------------------------------------------------------
+## $hmm = $hmm->compileArcs($af,$omegaf,%args)
+##  + $af : pdl($N,$N)  : $af    ->at($i,$j) = f($i --> $j)
+##  + $omegaf : pdl($N) : $omegaf->at($i)    = f($i --> $EOS)
+##  + %args: (none)
+sub compileArcs {
+  my ($hmm,$af,$omegaf,%args) = @_;
+
+  $hmm->resize(N=>$af->dim(0)) if ($af->dim(0) != $hmm->{N});
+
+  my ($a,$a1,$omega) = @$hmm{qw(a a1 omega)};
+
+  $hmm->{atotal} = $af->sum + $omegaf->sum;
+  my $afsumover = ($omegaf + $af->xchg(0,1)->sumover)->inplace->log;
+
+  ##-- a
+  $a1    .= $afsumover   - log($hmm->{atotal});
+  $a     .= log($af)     - $afsumover;
+  $omega .= log($omegaf) - $afsumover;
+
+  ##-- log-transform
+  #$a1->inplace->log;
+  #$a->inplace->log;
+
+  ##-- pseudo-zero
+  $a->inplace->setnantobad->inplace->setbadtoval($ZERO);
+  $omega->inplace->setnantobad->inplace->setbadtoval($ZERO);
+
+  return $hmm;
+}
+
+
+##--------------------------------------------------------------
+## $hmm = $hmm->compileB($bf,%args)
+##  + $bf: pdl($N,$M) : $bf->at($i,$k) = f($k  @  $i)
+##  + %args
+##     smoothb=>$type,       ##-- how to smooth unknown values (default=$hmm->{smoothb})
+##     smoothbmin=>$cutoff,  ##-- cutoff value for smoothing
+sub compileB {
+  my ($hmm,$bf,%args) = @_;
+
+  $hmm->resize( N=>$bf->dim(0), M=>$bf->dim(1) )
+    if ($bf->dim(0) != $hmm->{N} || $bf->dim(1) != $hmm->{M});
+
+  my $smooth = exists($args{smoothb}) ? $args{smoothb} : $hmm->{smoothb};
+  $args{smoothbmin} = $hmm->{smoothbmin} if (!defined($args{smoothbmin}));
+
+  my ($b,$b1) = @$hmm{qw(b b1)};
+  $hmm->{btotal} = $bf->sum;
 
   ##-- special handling for unknown
+  my ($ui,$fmin,$Fw,$hapax_i,$fwtnz_i,$fwtnz_n,$fwtnz_v,$fwtnz_which);
   if (defined($smooth) && defined($hmm->{unknown})) {
-    my $ui = $hmm->{oenum}->index($hmm->{unknown});
-    if ($smooth eq 'hapax') {
+    $ui = $hmm->{oenum}->index($hmm->{unknown});
+
+    if ($smooth eq 'uniform') {
+      ##-- unknown-handling: use uniform *counts*
+      $fmin = 0.5*min($bf->where($bf>0));
+      $bf->slice(",($ui)") .= $fmin;
+    }
+    elsif ($smooth eq 'hapax') {
       ##-- unknown-handling: use hapax legomena: f(state,unknown) = sum_{w:f(w)=min(f(w))} f(state,w)
-      my $Fw      = $Bf->sumover;
-      my $hapax_i = which($Fw->approx(min($Fw->where($Fw>0))));
-      $Bf->slice(",($ui)") .= $Bf->dice_axis(1,$hapax_i)->xchg(0,1)->sumover;
+      $Fw      = $bf->sumover;
+      $fmin    = defined($args{smoothbmin}) ? $args{smoothbmin} : (1.1*min($Fw->where($Fw>0)));
+      #print STDERR "smooth: hapax: fmin=$fmin\n";
+      $hapax_i = which( ($Fw > 0) & ($Fw <= $fmin) );
+      $bf->slice(",($ui)") .= $bf->dice_axis(1,$hapax_i)->xchg(0,1)->sumover;
+      #print STDERR "smooth: bf(:,ui)=", $bf->slice(",($ui)"), "\n";
     }
     elsif ($smooth eq 'all') {
       ##-- unknown-handling: use all data: f(state,unknown) = |{w : f(w,state)!=0}|
-      my $fwtnz_i = $Bf->whichND;
-      my ($fwtnz_n,$fwtnz_v) = $fwtnz_i->slice("(0)")->qsort->rle;
-      my $fwtnz_which = $fwtnz_n->which;
-      $Bf->slice(",($ui)")->index($fwtnz_v->index($fwtnz_which)) .= $fwtnz_n->index($fwtnz_which);
+      $fwtnz_i = $bf->whichND;
+      ($fwtnz_n,$fwtnz_v) = $fwtnz_i->slice("(0)")->qsort->rle;
+      $fwtnz_which = $fwtnz_n->which;
+      $bf->slice(",($ui)")->index($fwtnz_v->index($fwtnz_which)) .= $fwtnz_n->index($fwtnz_which);
     }
     elsif ($smooth && $smooth ne 'none') {
-      carp(ref($hmm)."::compilePdls(): ignoring unknown smooth flag '$smooth'\n");
+      carp(ref($hmm)."::compileB(): ignoring unknown B-smoothing flag '$smooth'\n");
     }
   }
 
-  my $Afsumover = $Af->xchg(0,1)->sumover->inplace->log;
-  my $Bfsumover = $Bf->xchg(0,1)->sumover->inplace->log;
+  my $bfsumover = $bf->xchg(0,1)->sumover->inplace->log;
 
-  $A1 .= $Afsumover - log($hmm->{atotal});
-  $B1 .= $Bfsumover - log($hmm->{btotal});
-  $A  .= log($Af) - $Afsumover;
-  $B  .= log($Bf) - $Bfsumover;
+  $b1 .= $bfsumover - log($hmm->{btotal});
+  $b  .= log($bf) - $bfsumover;
 
   ##-- special handling for bos,eos
-  my ($sym,$oid,$qid);
-  foreach $sym (@$hmm{qw(bos eos)}) {
-    $oid = $hmm->{oenum}->index($sym);
-    $qid = $hmm->{qenum}->index($sym);
-    $B->slice(",$oid") .= $ZERO;
-    $B->slice("$qid,") .= $ZERO;
-    $B->set($qid,$oid, $ONE);
-  }
+  #my ($sym,$oid,$qid);
+  #foreach $sym (@$hmm{qw(bos eos)}) {
+  #  $oid = $hmm->{oenum}->index($sym);
+  #  $qid = $hmm->{qenum}->index($sym);
+  #  $b->slice(",$oid") .= $ZERO;
+  #  $b->slice("$qid,") .= $ZERO;
+  #  $b->set($qid,$oid, $ONE);
+  #}
 
   ##-- log-transform
-  #$A1->inplace->log;
-  #$B1->inplace->log;
-  #$A->inplace->log;
-  #$B->inplace->log;
+  #$a1->inplace->log;
+  #$b1->inplace->log;
+  #$a->inplace->log;
+  #$b->inplace->log;
 
   ##-- pseudo-zero
-  $A->inplace->setnantobad->inplace->setbadtoval($ZERO);
-  $B->inplace->setnantobad->inplace->setbadtoval($ZERO);
+  $b->inplace->setnantobad->inplace->setbadtoval($ZERO);
 
   return $hmm;
 }
 
 ##--------------------------------------------------------------
-## $hmm = $hmm->compileEDists($Aed,$Bed,%args)
-##  + $Aed: MUDL::EDist::Nary:
-##      $Aed->{nz}{"$i\t$j"} == f($i --> $j)
-##  + $Bed: MUDL::EDist::Nary
-##      $Bed->{nz}{"$i\t$k"} == f($k  @  $i)
-##  + $Aed and $Bed should use $hmm->{qenum} and $hmm->{oenum} enums, respectively
-sub compileEDists {
-  my ($hmm,$Aed,$Bed,%args) = @_;
-  return $hmm->compilePdls($Aed->toPDL, $Bed->toPDL,%args);
+## $hmm = $hmm->compilePi($pif,%args)
+##  + %args: (none)
+##  + $pif    : pdl($N) : $pif   ->at($i)    = f(BOS--> $i)
+sub compilePi {
+  my ($hmm,$pif,%args) = @_;
+
+  ##-- old
+  #my $bosid = $hmm->{qenum}->index($hmm->{bos});
+  #$hmm->{pi} .= logzero;
+  #$hmm->{pi}->set($bosid, $ONE);
+
+  $hmm->{pitotal} = $pif->sum;
+  $hmm->{pi}     .= log($pif) - log($hmm->{pitotal});
+
+  return $hmm;
 }
 
 
 ##--------------------------------------------------------------
-## $hmm = $hmm->compileDists($Ad,$Bd,%args)
-##  + $Ad: Dist::Nary:
-##      $Af->{nz}{"$ilab\t$jlab"} == f( $hmm->{qenum}->indices($ilab,$jlab) ) == f($ilab --> $jlab)
-##  + $Bd: Dist::Nary
-##      $Bf->{nz}{"$ilab\t$klab"} == f( $hmm->{oenum}->indices($ilab,$klab) ) == f($klab  @  $ilab)
+## $hmm = $hmm->compileEDists($aed,$bed,%args)
+##  + $aed: MUDL::EDist::Nary:
+##      $aed->{nz}{"$i\t$j"} == f($i --> $j)
+##  + $bed: MUDL::EDist::Nary
+##      $bed->{nz}{"$i\t$k"} == f($k  @  $i)
+##  + $pied: MUDL::EDist
+##      $pied->{nz}{"$i"} == f(BOS --> $i)
+##  + $omegaed: MUDL::EDist
+##      $omegaed->{nz}{"$i"} == f($i --> EOS)
+##  + edists should use $hmm->{qenum} and $hmm->{oenum} enums as appropriate
+sub compileEDists {
+  my ($hmm,$aed,$bed,$pied,$omegaed,%args) = @_;
+  return $hmm->compilePdls($aed->toPDL,
+			   $bed->toPDL,
+			   $pied->toPDL,
+			   $omegaed->toPDL,
+			   %args);
+}
+
+
+##--------------------------------------------------------------
+## $hmm = $hmm->compileDists($ad,$bd,%args)
+##  + $ad: Dist::Nary:
+##      $af->{nz}{"$ilab\t$jlab"} == f( $hmm->{qenum}->indices($ilab,$jlab) ) == f($ilab --> $jlab)
+##  + $bd: Dist::Nary
+##      $bf->{nz}{"$ilab\t$klab"} == f( $hmm->{oenum}->indices($ilab,$klab) ) == f($klab  @  $ilab)
+##  + $pid: MUDL::Dist
+##      $pid->{nz}{"$ilab"}       == f( BOS , $hmm->{qenum}->indices($ilab) ) == f( BOS  --> $ilab)
+##  + $omegad: MUDL::Dist
+##      $omegad->{nz}{"$ilab"}    == f( $hmm->{qenum}->indices($ilab) , EOS ) == f($ilab --> EOS)
 sub compileDists {
-  my ($hmm,$Ad,$Bd,%args) = @_;
-  my $Aed = $Ad->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$hmm->{qenum},$hmm->{qenum}]));
-  my $Bed = $Bd->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$hmm->{qenum},$hmm->{oenum}]));
-  return $hmm->compileEDists($Aed,$Bed,%args);
+  my ($hmm,$ad,$bd,$pid,$omegad,%args) = @_;
+  my $aed = $ad->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$hmm->{qenum},$hmm->{qenum}]));
+  my $bed = $bd->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$hmm->{qenum},$hmm->{oenum}]));
+  my $pied = $pid->toEDist($hmm->{qenum});
+  my $omegaed = $omegad->toEDist($hmm->{qenum});
+  return $hmm->compileEDists($aed,$bed,$pied,$omegaed,%args);
 }
 
 
+##--------------------------------------------------------------
+## ($ad,$pid,$omegad) = $hmm->separateArcDist($ad,%args)
+##  + $ad: Dist::Nary:
+##      $af->{nz}{"$ilab\t$jlab"} == f( $hmm->{qenum}->indices($ilab,$jlab) ) == f($ilab --> $jlab)
+##  + $pid: MUDL::Dist
+##      $pied->{nz}{"$ilab"}      == f( BOS , $hmm->{qenum}->indices($ilab) ) == f( BOS  --> $ilab)
+##  + $omegad: MUDL::Dist
+##      $omegaed->{nz}{"$ilab"}   == f( $hmm->{qenum}->indices($ilab) , EOS ) == f($ilab --> EOS)
+##
+##  + separates BOS,EOS entries out of $ad into new dists $pid and $omegad.
+##  + destructively alters $ad in the process, unless $args{keep} is set
+sub separateArcDist {
+  my ($hmm,$ad,%args) = @_;
 
-##======================================================================
-## Text-probability (MUDL::Corpus::Model overrides)
-##======================================================================
+  my $pid    = MUDL::Dist->new();
+  my $omegad = MUDL::Dist->new();
+  my ($bos,$eos) = @$hmm{qw(bos eos)};
 
-## $logp = $hmm->sentenceProbability(\@sentence,@args)
-##   + returns log-probability of \@sentence given model
-sub sentenceProbability {
-  my ($hmm,$sent) = @_;
-
-  my ($wi);
-  my $ui   = $hmm->{oenum}->index($hmm->{unknown});
-  my $sids = pdl(long, [$hmm->{oenum}->index($hmm->{bos}),
-			(map { defined($wi=$hmm->{oenum}->index($_->text)) ? $wi : $ui } @$sent),
-			$hmm->{oenum}->index($hmm->{eos})]);
-  my $alpha = $hmm->alpha($sids);
-
-  return log(exp($alpha->slice($alpha->dim(1)-1)))->sum;
-}
-
-
-## $alpha = $hmm->alpha($sids_pdl)
-##   + computes forward-probabilities $alpha [dims=($N,$T)]
-##     for observations $sids_pdl, a vector observations of length $T,
-##     where: 0 <= $q < $hmm->{N}, 0 <= $t < $T
-sub alpha {
-  my ($hmm,$sids) = @_;
-  my ($A,$B) = @$hmm{qw(A B)};
-  my $alpha = zeroes($hmm->{type}, $hmm->{N}, $sids->dim(0));
-
-  $alpha->slice(",(0)") .= $B->slice(",(".$sids->at(0).")"); ##-- should be bos
-  foreach $t (0..($alpha->dim(1)-2)) {
-    foreach $j (0..($alpha->dim(0)-1)) {
-      foreach $i (0..($alpha->dim(0)-1)) {
-	$alpha->slice("$j,".($t+1)) += exp($alpha->at($i,$t) + $A->at($i,$j) + $B->at($i,$sids->at($t)));
-      }
+  my @badkeys = qw();
+  my ($k,$f,$q1,$q2);
+  while (($k,$f)=each(%{$ad->{nz}})) {
+    ($q1,$q2) = $ad->split($k);
+    if ($q1 eq $bos && $q2 ne $eos) {
+      ##-- BOS-->$q2
+      $pid->{$q2} += $f;
+      push(@badkeys,$k);
     }
-    $alpha->slice(",".($t+1))->inplace->log;
+    elsif ($q1 ne $bos && $q2 eq $eos) {
+      ##-- $q1-->$EOS
+      $omegad->{$q1} += $f;
+      push(@badkeys,$k);
+    }
+    elsif ($q1 eq $bos || $q1 eq $eos || $q2 eq $bos || $q2 eq $eos) {
+      push(@badkeys,$k);
+    }
   }
 
-  return $alpha;
+  delete(@{$ad->{nz}}{@badkeys}) if (!$args{keep});
+
+  return ($ad,$pid,$omegad);
+}
+
+
+##======================================================================
+## Utilities: Buffering / Compatibility
+##======================================================================
+
+## $pdlBuffer = $hmm->_buffer(%args)
+##  + creates and returns a new MUDL::Corpus::Buffer::Pdl using
+##    $hmm->{oenum} and bashing unknowns to $hmm->{unknown}.
+##  + %args are passed to MUDL::Corpus::Buffer::Pdl->new()
+sub _buffer {
+  my $hmm = shift;
+  require MUDL::Corpus::Buffer::Pdl;
+  return MUDL::Corpus::Buffer::Pdl->new(txtenum=>$hmm->{oenum},
+					dobash=>1,
+					bashto=>$hmm->{unknown},
+					dobos=>0,
+					doeos=>0,
+					@_);
+}
+
+## $sequencePdl = $hmm->sentence2sequence($mudl_sentence)
+##   + converts $mudl_sentence to a valid pdl sequence
+##   + adds pseudo-elements bos, eos to sequence
+sub sentence2sequence {
+  my ($hmm,$s) = @_;
+  my ($id);
+  return pdl(long, [
+		    #$hmm->{oenum}->index($hmm->{bos}),
+		    (map {
+		      (defined($id=$hmm->{oenum}->index(ref($_) ? $_->text : $_))
+		       ? $id
+		       : $hmm->{oenum}->index($hmm->{unknown}))
+		    } @$s),
+		    #$hmm->{oenum}->index($hmm->{eos}),
+		   ]);
+}
+
+##======================================================================
+## Text-probability
+##======================================================================
+
+##--------------------------------------------------------------
+## Text-probability: Sequences
+
+## $alpha = $hmm->alpha($seq)
+##   + no bos/eos are added
+sub alpha {
+  my ($hmm,$o) = @_;
+  return hmmalpha(@$hmm{qw(a b pi)}, $o);
+}
+## $beta = $hmm->beta($seq)
+##   + no bos/eos are added
+sub beta {
+  my ($hmm,$o) = @_;
+  return hmmbeta(@$hmm{qw(a b omega)}, $o);
+}
+
+## $logprob = $hmm->sequenceProbability($seq)
+##   + no bos/eos are added
+*seqprob = \&sequenceProbability;
+sub sequenceProbability {
+  my ($hmm,$o) = @_;
+  my $alpha = hmmalpha(@$hmm{qw(a b pi)}, $o);
+  return logsumover($alpha->slice(':,-1') + $hmm->{omega});
+}
+
+
+##--------------------------------------------------------------
+## Text-probability: MUDL::Corpus::Model overrides
+
+## $log_sentprob = $hmm->sentenceProbability($mudl_sentence)
+sub sentenceProbability {
+  return $_[0]->sequenceProbability($_[0]->sentence2sequence($_[1]));
+}
+
+## $log_sum_sentprobs = $hmm->readerProbability($corpusReader)
+##  + sentence probabilities are added with logadd()
+##  + returns total log(sum(p($s))) for each $s in $corpusReader
+sub readerProbability {
+  my ($hmm,$cr) = @_;
+
+  my ($a,$b,$pi,$omega) = @$hmm{qw(a b pi omega)};
+  my $alpha = zeroes($hmm->{type},1,1);
+  my $logp = logzero;
+  my ($o,$id);
+
+  while (defined($s=$cr->getSentence)) {
+    $o = $hmm->sentence2sequence($s);
+    $alpha->reshape($hmm->{N}, $o->dim(0));
+    hmmalpha($a,$b,$pi, $o, $alpha);
+    $logp->inplace->logadd(logsumover($alpha->slice(":,-1") + $omega));
+  }
+
+  return $logp;
+}
+
+## $log_sum_sentprobs = $hmm->fileProbability($file,%args)
+##   + %args are passed to MUDL::CorpusIO::fileReader()
+##
+##-- inherited from MUDL::Corpus::Model
+
+
+## $log_sum_sentprobs = $model->bufferProbability($buffer,@args)
+##  + returns log(sum(p($s))) for each sentence $s in $buffer
+sub bufferProbability {
+  my ($hmm,$buf) = splice(@_,0,2);
+  if (UNIVERSAL::isa($buf,'MUDL::Corpus::Buffer::Pdl')) {
+    ##-- special handling for pdl-ized buffers
+    return $hmm->pdlBufferProbability($buf,@_);
+  }
+  ##-- use inherited method otherwise
+  return $hmm->SUPER::bufferProbability($buf,@_);
+}
+
+
+##--------------------------------------------------------------
+## Text-probability: from MUDL::Corpus::Buffer::Pdl
+
+## $log_sum_sentprobs = $hmm->pdlBufferProbability($pdl_buffer)
+##  + returns log(sum(p($s))) for each sentence $s in $pdl_buffer
+##  + no limit-checking is performed, i.e. buffer is assumed
+##    already to have bashed unknown tokens to $hmm->{unknown},
+##    and to have accounted for {bos} and {eos} elements.
+sub pdlBufferProbability {
+  my ($hmm,$buf) = @_;
+  require MUDL::Corpus::Buffer::Pdl;
+
+  my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
+  #my $eos = $hmm->{qenum}->index($hmm->{eos});
+
+  my ($o);
+  my $alpha = zeroes($hmm->{type},1,1);
+  my $logp = logzero;
+  foreach $o (@{$buf->{sents}}) {
+    $alpha->reshape($N, $o->dim(0));
+    hmmalpha($a,$b,$pi, $o, $alpha);
+
+    #$logp->inplace->logadd($alpha->at($eos, -1));
+    $logp->inplace->logadd(logsumover($alpha->slice(",-1") + $omega));
+  }
+
+  return $logp;
 }
 
 
@@ -307,13 +618,175 @@ sub alpha {
 ## Re-estimation
 ##======================================================================
 
-##-- TODO
+## ($ea,$eb,$epi,$eomega) = $hmm->expect0()
+##   + initializes @$hmm{qw(ea eb epi eomega)} for re-estimation
+sub expect0 {
+  my $hmm = shift;
+  if (!(defined($hmm->{ea}) && defined($hmm->{eb}) && defined($hmm->{epi}) && defined($hmm->{eomega}))) {
+    @$hmm{qw(ea eb epi eomega)} = hmmexpect0(@$hmm{qw(a b pi omega)});
+  } else {
+    $hmm->{ea}  .= logzero;
+    $hmm->{eb}  .= logzero;
+    $hmm->{epi} .= logzero;
+    $hmm->{eomega} .= logzero;
+  }
+  return @$hmm{qw(ea eb epi eomega)};
+}
+
+## ($ea,$eb,$epi,$eomega) = $hmm->expect($seq)
+##   + (partial) re-estimation for input $seq
+sub expect {
+  my ($hmm,$o) = @_;
+  my ($a,$b,$pi,$omega, $ea,$eb,$epi,$eomega) = @$hmm{qw(a b pi omega ea eb epi eomega)};
+  my $alpha = hmmalpha($a,$b,$pi,    $o);
+  my $beta  = hmmbeta ($a,$b,$omega, $o);
+  hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+  return ($ea,$eb,$epi,$eomega);
+}
+
+## ($ahat,$bhat,$pihat,$omegahat) = $hmm->maximize(%args)
+##   + maximization step for Baum-Welch re-estimation
+##   + uses expectation values in @$hmm{qw(ea eb epi eomega)}
+##   + %args:
+##     - maxa  => $bool,    ## maximize $a ? default=$hmm->{maxa}  || 1
+##     - maxb  => $bool,    ## maximize $b ? default=$hmm->{maxb}  || 1
+##     - maxpi => $bool,    ## maximize $pi? default=$hmm->{maxpi} || 1
+##     - maxomega => $bool, ## maximize $omega? default=$hmm->{maxomega} || 1
+sub maximize {
+  my ($hmm,%args) = @_;
+  foreach (qw(maxa maxb maxpi maxomega)) {
+    next if (defined($args{$_}));
+    $args{$_} = defined($hmm->{$_}) ? $hmm->{$_} : 1;
+  }
+  my ($ea,$eb,$epi,$eomega) = @$hmm{qw(ea eb epi eomega)};
+  my ($ahat,$bhat,$pihat,$omegahat) = hmmmaximize(@$hmm{qw(ea eb epi eomega)});
+
+  $hmm->{a}     = $ahat     if ($args{maxa});
+  $hmm->{b}     = $bhat     if ($args{maxb});
+  $hmm->{pi}    = $pihat    if ($args{maxpi});
+  $hmm->{omega} = $omegahat if ($args{maxomega});
+
+  return ($ahat,$bhat,$pihat,$omegahat);
+}
+
+
+##--------------------------------------------------------------
+## Reestimation: CorpusIO style / MUDL::Corpus::Profile stuff
+
+## ($ea,$eb,$epi,$eomega) = $hmm->expectReader($corpusReader,%args)
+##  + run a single E- part of an EM-iteration on the sentences from $corpusReader
+##  + %args: (none)
+sub expectReader {
+  my ($hmm,$cr,%args) = @_;
+
+  my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
+  my ($ea,$eb,$epi,$eomega) = $hmm->expect0();
+
+  my ($s,$o);
+  my $alpha = zeroes($hmm->{type}, $N,1);
+  my $beta  = zeroes($hmm->{type}, $N,1);
+  while (defined($s=$cr->getSentence)) {
+    $o = $hmm->sentence2sequence($s);
+
+    $alpha->reshape($N,$o->dim(0));
+    $beta ->reshape($N,$o->dim(0));
+
+    hmmalpha($a,$b,$pi,    $o, $alpha);
+    hmmbeta ($a,$b,$omega, $o, $beta);
+
+    hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+  }
+
+  return ($ea,$eb,$epi,$eomega);
+}
+
+## $hmm = $hmm->emReader($corpusReader,%args)
+##  + run a single EM iteration on the sentences from $corpusReader
+##  + %args:
+##     - maxa  => $bool,    ## maximize $a ? default=$hmm->{maxa}  || 1
+##     - maxb  => $bool,    ## maximize $b ? default=$hmm->{maxb}  || 1
+##     - maxpi => $bool,    ## maximize $pi? default=$hmm->{maxpi} || 1
+##     - maxomega => $bool, ## maximize $omega? default=$hmm->{maxomega} || 1
+sub emReader {
+  my ($hmm,$cr,%args) = @_;
+
+  my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
+  my ($ea,$eb,$epi,$eomega) = $hmm->expect0();
+
+  my ($s,$o);
+  my $alpha = zeroes($hmm->{type}, $N,1);
+  my $beta  = zeroes($hmm->{type}, $N,1);
+  while (defined($s=$cr->getSentence)) {
+    $o = $hmm->sentence2sequence($s);
+
+    $alpha->reshape($N,$o->dim(0));
+    $beta ->reshape($N,$o->dim(0));
+
+    hmmalpha($a,$b,$pi,    $o, $alpha);
+    hmmbeta ($a,$b,$omega, $o, $beta);
+
+    hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+  }
+  $hmm->maximize(%args);
+  return $hmm;
+}
+
 
 ##======================================================================
 ## Viterbi
 ##======================================================================
 
-##-- TODO
+## ($delta,$psi) = $hmm->viterbi($seq)
+sub viterbi {
+  my ($hmm,$o) = @_;
+  my $delta = zeroes(double, $hmm->{N}, $o->dim(0));
+  my $psi   = zeroes(long,   $delta->dims);
+  hmmviterbi(@$hmm{qw(a b pi)}, $o, $delta, $psi);
+  return ($delta,$psi);
+}
+
+## $bestpath = $hmm->bestpath($psi)
+## $bestpath = $hmm->bestpath($psi, $qfinal)
+sub bestpath {
+  my ($hmm,$psi,$qfinal) = @_;
+  #$qfinal = $hmm->{qenum}->index($hmm->{eos}) if (!defined($qfinal));
+  $qfinal = maximum_ind($delta->slice(":,(-1)") + $hmm->{omega})->at(0) if (!defined($qfinal));
+  return hmmpath($psi, $qfinal);
+}
+
+## $bestpath = $hmm->viterbiPath($seq)
+sub viterbiPath {
+  my ($hmm,$o) = @_;
+  my $delta = zeroes(double, $hmm->{N}, $o->dim(0));
+  my $psi   = zeroes(long,   $delta->dims);
+  hmmviterbi(@$hmm{qw(a b pi)}, $o, $delta, $psi);
+  my $qfinal = maximum_ind($delta->slice(":,-1") + $hmm->{omega})->at(0);
+  return hmmpath($psi, $qfinal);
+}
+
+
+##--------------------------------------------------------------
+## Viterbi: CorpusIO style / MUDL::Corpus::Filter overrides
+
+## $filter = $hmm->viterbiFilter(%args)
+#   + returns a MUDL::Corpus::Filter::Viterbi for this HMM, shared
+sub viterbiFilter {
+  my $hmm = shift;
+  require MUDL::Corpus::Filter::Viterbi;
+  return MUDL::Corpus::Filter::Viterbi->new(%$hmm,@_);
+}
+
+## \@sentence = $hmm->viterbiTagSentence(\@sentence)
+sub viterbiTagSentence {
+  my ($hmm,$s) = @_;
+  my $path = $hmm->viterbiPath($hmm->sentence2sequence($s));
+  foreach $i (0..$#$s) {
+    #$s->[$i]->tag($hmm->{qenum}->symbol($path->at($i+1)));
+    $s->[$i]->tag($hmm->{qenum}->symbol($path->at($i)));
+  }
+  return $s;
+}
+
 
 ##======================================================================
 ## I/O: Native: Lex
@@ -328,7 +801,7 @@ __PACKAGE__->registerFileSuffix('.lex','lex');
 sub saveLexFh {
   my ($hmm,$fh,%args) = @_;
   my ($oenum,$qenum) = @$hmm{qw(oenum qenum)};
-  my $bf = $hmm->Bf(%args);
+  my $bf = $hmm->bf(%args);
   my $bt = $bf->sumover;
 
   my ($ws,$qi);
@@ -350,14 +823,14 @@ sub saveLexFh {
 }
 
 ## $obj = $class_or_obj->loadLexFh($fh,%args)
-##   + really just populates $obj->{Bfd} with the dist
+##   + really just populates $obj->{bfd} with the dist
 sub loadLexFh {
   my ($hmm,$fh,%args) = @_;
   $hmm = $hmm->new(%args) if (!ref($hmm));
 
   require MUDL::Lex;
   my $lex = MUDL::Lex->loadNativeFh($fh);
-  $hmm->{Bfd} = $lex->toDist->projectN(1,0);
+  $hmm->{bfd} = $lex->toDist->projectN(1,0);
 
   return $hmm;
 }
@@ -376,19 +849,47 @@ __PACKAGE__->registerFileSuffix('.123','123');
 ##      verbose=>$bool,
 sub save123Fh {
   my ($hmm,$fh,%args) = @_;
+
   my ($oenum,$qenum) = @$hmm{qw(oenum qenum)};
-  my $af  = $hmm->Af(%args);
-  my $af1 = $af->sumover;
-  $af1->set(0, $af->slice("0")->sum * 2); ##-- BOS hack
+  my $af  = $hmm->af(%args);
+  my $pif = $hmm->pif(%args);
+  my $omegaf = $hmm->omegaf(%args);
+  my $af1 = $af->xchg(0,1)->sumover + $omegaf;
+
   my $verbose = defined($args{verbose}) ? $args{verbose} : $hmm->{verbose};
 
   my ($qi,$qj, $qis);
   local $, = '';
+
+  ##-- print initial arcs: f(BOS-->$qi) [pi]
+  if ($hmm->{pitotal} > 0) {
+    $fh->print($hmm->{bos}, "\t",
+	       $hmm->{pitotal} + $omegaf->sum, ##-- bos hack
+	       "\n");
+    foreach $qi ($pif->which->list) {
+      $qis = $qenum->symbol($qi);
+      $fh->print(($verbose ? $hmm->{bos} : ''), "\t",
+		 $qis, "\t",
+		 $pif->at($qi), "\n");
+    }
+  }
+
+  ##-- print non-initial arcs [a,omega]
   foreach $qi (0..($af->dim(0)-1)) {
     $qis = $qenum->symbol($qi);
     next if (!$af1->at($qi));  ##-- ignore zero-frequency unigrams
 
+    ##-- print unigram frequency
     $fh->print($qis, "\t", $af1->at($qi), "\n");
+
+
+    ##-- print final arcs: f($qi --> EOS) [omega]
+    $fh->print(($verbose ? $qis : ''), "\t",
+	       $hmm->{eos}, "\t",
+	       $omegaf->at($qi), "\n")
+      if ($omegaf->at($qi) > 0);
+
+    ##-- print internal arcs f($qi --> $qj) [a]
     foreach $qj ($af->slice("($qi)")->which->list) {
       $fh->print(($verbose ? $qis : ''), "\t",
 		 $qenum->symbol($qj), "\t",
@@ -400,13 +901,13 @@ sub save123Fh {
 }
 
 ## $obj = $class_or_obj->load123Fh($fh,%args)
-##   + really just populates $obj->{Afd} with the dist
+##   + really just populates $obj->{afd} with the dist
 sub load123Fh {
   my ($hmm,$fh,%args) = @_;
   $hmm = $hmm->new(%args) if (!ref($hmm));
 
   require MUDL::Ngrams;
-  $hmm->{Afd} = MUDL::Ngrams->loadNativeFh($fh,%args)->projectN(0,1);
+  $hmm->{afd} = MUDL::Ngrams->loadNativeFh($fh,nfields=>2,%args);
 
   return $hmm;
 }
@@ -414,7 +915,8 @@ sub load123Fh {
 ##======================================================================
 ## I/O: Native: model (lex & n-grams)
 ##======================================================================
-__PACKAGE__->registerIOMode('model',{saveFile=>'saveModelFile',loadFile=>'loadModelFile'});
+__PACKAGE__->registerIOMode('model', {saveFile=>'saveModelFile',loadFile=>'loadModelFile'});
+__PACKAGE__->registerIOMode('native',{saveFile=>'saveModelFile',loadFile=>'loadModelFile'});
 __PACKAGE__->registerFileSuffix('.model','model');
 
 
@@ -439,37 +941,30 @@ sub saveModelFile {
 ##     * lexicon "${filename}.lex"
 ##     * n-grams "${filename}.123"
 ##   + compiles
-##   + deletes temporary distributions $hmm->{Afd,Bfd} unless $args{debug} is true
+##   + deletes temporary distributions $hmm->{afd,bfd} unless $args{debug} is true
 sub loadModelFile {
   my ($hmm,$filename,%args) = @_;
 
-  $hmm->loadFile("$filename.lex", %args, mode=>'lex')
+  $hmm = $hmm->new(%args) if (!ref($hmm));
+
+  $hmm = $hmm->loadFile("$filename.lex", %args, mode=>'lex')
     or confess(ref($hmm),"::loadModelFile(): load failed for lexicon file '$filename.lex': $!");
-  $hmm->loadFile("$filename.123", %args, mode=>'123')
+  $hmm = $hmm->loadFile("$filename.123", %args, mode=>'123')
     or confess(ref($hmm),"::loadModelFile(): load failed for n-gram file '$filename.123': $!");
 
-  $hmm->compileDists(@$hmm{qw(Afd Bfd)},%args)
+  my ($afd,$pifd,$omegafd) = $hmm->separateArcDist($hmm->{afd})
+    or confess(ref($hmm),"::loadModelFile(): separateArcDist() failed for model '$filename': $!");
+
+  $hmm = $hmm->compileDists($afd, $hmm->{bfd}, $pifd, $omegafd, %args)
     or confess(ref($hmm),"::loadModelFile(): compile() failed for model '$filename': $!");
 
-  delete(@$hmm{qw(Afd Bfd)}) if (!$args{debug});
+  delete(@$hmm{qw(afd bfd)}) if (!$args{debug});
 
   return $hmm;
 }
 
 
 1;
-
-__DATA__
-
-__Pdlpp__
-
-pp_def('alpha2',
-       Pars => 'A(n,n); B(n,k); O(t); [o]alpha(n,t)',
-       Code =>(''
-	       ##-- initialize alpha(:,0)
-	       .q(loop(n) %{ $alpha(t=>0) = $B(k=>$O(t=>0)); %})
-	      ),
-      );
 
 __END__
 

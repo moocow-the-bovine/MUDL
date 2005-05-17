@@ -181,7 +181,7 @@ sub loadNativeString {
 sub toCorpusXMLNode {
   my $node = XML::LibXML::Element->new('token');
   $node->appendTextChild('text',$_[0][0]);
-  $node->appendTextChild('tag',$_[0][1]);
+  $node->appendTextChild('tag',$_[0][1]) if (defined($_[0][1]));
   $node->appendTextChild('detail',$_) foreach (@{$_[0]}[2..$#{$_[0]}]);
   return $node;
 }

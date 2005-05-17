@@ -1,5 +1,5 @@
 ##-*- Mode: Perl -*-
-
+##
 ## File: MUDL::CorpusIO.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
@@ -543,7 +543,7 @@ sub new {
 ## $bool = $cw->flush
 sub flush {
   my $cw = shift;
-  return $cw->{flush} ? &{$cw->{flush}}($cw) : undef;
+  return $cw->{flush} ? $cw->{flush}->($cw) : undef;
 }
 
 ## undef = $cw->toString(\$str)
@@ -571,7 +571,7 @@ sub toFile {
       my $cw = shift;
       if (defined($cw->{doc})) {
 	$cw->{doc}->setCompression($cw->{compress}) if (defined($cw->{compress}));
-	$cw->{doc}->toFile($file, $cw->{format});
+	$cw->{doc}->toFile($file, $cw->{format} || 0);
       }
     };
 }
@@ -630,72 +630,18 @@ sub putSentenceOld {
 ## undef = $cw->putToken($text_or_hashref)
 #sub putToken
 
+
 ########################################################################
 ## I/O : Memory : CorpusReader
 ########################################################################
 
-package MUDL::CorpusIO::Corpus;
-use MUDL::Corpus;
-use MUDL::Object;
-use Carp;
-our @ISA = qw(MUDL::CorpusReader MUDL::CorpusWriter);
+##-- OBSOLETE
+##   + use MUDL::CorpusIO::BufReader, MUDL::CorpusIO::BufWriter
+##   + defined in MUDL::Corpus::Buffer;
 
-## $cr = $cr->fromCorpus($mudl_corpus)
-*toCorpus = \&fromCorpus;
-sub fromCorpus { $_[0]{corpus} = $_[1]; }
-
-## undef = $cr->reset
-sub reset {
-  @{$_[0]}{qw(pos nsents ntoks)} = (0,0,0);
-  #$_[0]{corpus} = undef;
-}
-
-## $n = $cr->nSentences
-*nSents = *nsents = \&nSentences;
-sub nSentences { return $_[0]{nsents}; }
-
-## $n = $cr->nTokens
-*nToks = *ntoks = \&nTokens;
-sub nTokens { return $_[0]{ntoks}; }
-
-## $bool = $cr->eof;
-sub eof {
-  my $cr = shift;
-  return (!$cr->{corpus} || $cr->{pos} == @{$cr->{corpus}{sents}});
-}
-
-## $s = $cr->getSentence
-sub getSentence {
-  my $cr = shift;
-  return undef if ($cr->eof);
-  my $s = $cr->{corpus}{sents}[$cr->{pos}++];
-  ++$cr->{nsents};
-  $cr->{ntoks} += @$s;
-  return $s;
-}
-
-## $t = $cr->getToken
-##-- not implemented
-
-##--------------------
-## Writer Methods
-
-## $bool = $cw->flush
-sub flush { ; }
-
-## undef = $cw->putSentence
-sub putSentence {
-  my ($cw,$s) = @_;
-  $cw->{corpus} = MUDL::Corpus->new() if (!$cw->{corpus});
-  push(@{$cw->{corpus}{sents}}, $s);
-}
-
-## undef = $cw->putToken
-##-- not implemented
-
-##-- aliases
-package MUDL::CorpusReader::Corpus;  our @ISA=qw(MUDL::CorpusIO::Corpus);
-package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusIO::Corpus);
+package MUDL::CorpusIO::Corpus;      our @ISA = qw(MUDL::CorpusIO::BufReader MUDL::CorpusIO::BufWriter);
+package MUDL::CorpusReader::Corpus;  our @ISA=qw(MUDL::CorpusIO::BufReader);
+package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusIO::BufWriter);
 
 1;
 

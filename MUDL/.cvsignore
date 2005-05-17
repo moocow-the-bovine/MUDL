@@ -6,7 +6,15 @@
 *.xml
 *.123
 *.lex
+
 *.t
+*.tt
+*.ttt
+
+*.save[0-9]
+*.save.*
+*.save-*
+
 tmp
 _Inline
 plots
