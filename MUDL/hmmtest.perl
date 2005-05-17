@@ -185,6 +185,30 @@ sub test1b {
 }
 
 
+sub test1c {
+  $n = 2;
+  $m = 3;
+
+  ##-- frequency pdls
+  $af = pdl(double, [[0,1],[1,0]]);
+  $bf = pdl(double, [[1,1],[1,0],[0,1]]);
+  $pif = pdl(double,[1,1]);      ## initial probability: bos
+  $omegaf = pdl(double,[1,1]);
+
+  ##-- hmm, enums
+  $hmm = MUDL::HMM->new();
+  $qenum = $hmm->{qenum}; $qenum->addSymbol($_) foreach (qw(A B));
+  $oenum = $hmm->{oenum}; $oenum->addSymbol($_) foreach (qw(a b));
+  $hmm->compilePdls($af,$bf,$pif,$omegaf);
+
+  ##-- params
+  ($a,$b,$pi,$omega) = @$hmm{qw(a b pi omega)};
+  ($ap,$bp,$pip,$omegap) = map { exp($_) } ($a,$b,$pi,$omega);
+
+  return;
+}
+
+
 ##----------------------------------------------------------------------
 ## Big test
 ##----------------------------------------------------------------------

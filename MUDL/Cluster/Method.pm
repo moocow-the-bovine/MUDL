@@ -184,6 +184,7 @@ our %d2pMethods =
    nbest_hughes => \&d2p_nbest_hughes,
    nbest_base   => \&d2p_nbest_base,
    nbest_inverse=> \&d2p_nbest_inverse,
+   nbest_linear => \&d2p_nbest_linear,
    linear       => \&d2p_linear,
    inverse      => \&d2p_inverse,
    #DEFAULT      => \&d2p_nbest_base,
@@ -248,7 +249,7 @@ sub d2p_linear {
   my ($cm,$ld,%args) = @_;
   my $pdl   = $cm->d2p_getPdl($ld,$args{pdl});
   my $pdls  = $cm->d2p_slicePdl($ld,$pdl);
-  $pdls    .= $ld->max - $ld; # (+1?) ??? (+ $ld->where($ld!=0)->min ???);
+  $pdls    .= $ld->max - $ld + $ld->where($ld!=0)->min; # (+1?) ??? (+ $ld->where($ld!=0)->min ???);
   $pdls    /= $pdls->sumover->transpose;
   return $pdl;
 }
@@ -303,6 +304,36 @@ sub d2p_nbest_inverse {
     ##-- ?? not quite so slow
     $pdl_ni = $pdl->slice(",($ni)");
     $pdl_ni->dice($ipdl) .= $ldmin / ($lds->dice($ipdl) + $ldmin);
+    $pdl_ni /= $pdl_ni->sum;
+  }
+
+  return $pdl;
+}
+
+##------------------------------------------------------
+## $probPdl = $cm->d2p_nbest_linear($leafdists,%args)
+##  + %args:
+##    n => $nbest,
+##    pdl => $probPdl,
+sub d2p_nbest_linear {
+  my ($cm,$ld,%args) = @_;
+  my $n = $args{n} || 1;
+
+  my $pdl   = $cm->d2p_getPdl($ld,$args{pdl});
+  my $ipdl  = zeroes(long, $n);
+  my $ldmin = $ld->where($ld!=0)->min;
+  my $ldmax = $ld->max;
+
+  #my $pdls   = $cm->d2p_slicePdl($ld,$pdl);
+  my ($lds,$ipsum,$pdl_ni);
+
+  foreach $ni (0..($ld->dim(1)-1)) {
+    $lds = $ld->slice(",($ni)");
+    $lds->minimum_n_ind($ipdl);
+
+    ##-- ?? not quite so slow
+    $pdl_ni = $pdl->slice(",($ni)");
+    $pdl_ni->dice($ipdl) .= $ldmin + $ldmax - $lds->dice($ipdl);
     $pdl_ni /= $pdl_ni->sum;
   }
 

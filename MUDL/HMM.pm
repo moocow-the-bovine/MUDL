@@ -128,6 +128,49 @@ sub resize {
   return $hmm;
 }
 
+
+##--------------------------------------------------------------
+## $hmm = $hmm->grow(%args)
+##   + %args:
+##      M=>$M,  ##-- default: $hmm->{oenum}->size
+##   + does not alter any previously stored information
+##   + initializes new observation probabilities to match those of
+##     $hmm->{unknown}
+##   + normalizes unknown and new probabilities in {b} to ensure
+##     consistency (sum-to-one over states)
+sub grow {
+  my ($hmm,%args) = @_;
+
+  my $oenum = $hmm->{oenum};
+
+  my $Mold   = $hmm->{M};
+  my $Mnew   = defined($args{M}) ? $args{M} : $oenum->size;
+
+  return $hmm if ($Mnew-$Mold <= 0);
+
+  my $unk = $oenum->index($hmm->{unknown});
+  my $b   = $hmm->{b} = $hmm->{b}->reshape($hmm->{b}->dim(0), $Mnew);
+  my $bu  = $b->slice(":,$unk");
+
+  ##-- normalize and assign:
+  ##     p'(unk|q) = p'(w_new|q) = p(unk|q) / (1+M'-M) , \forall q \in Q
+  $bu -= log(1+$Mnew-$Mold);
+  $b->slice(":,$Mold:-1") .= $bu;
+
+  ##-- update expectation matrix, if applicable
+  if (defined($hmm->{eb})) {
+    my $eb   = $hmm->{eb} = $hmm->{eb}->reshape($hmm->{b}->dim(0), $Mnew);
+    my $ebu  = $eb->slice(":,$unk");
+
+    ##-- normalize and assign: E(f'(unk,q)) = E(f'(w_new,q)) = E(f(unk,q)) / (1+M'-M) , \forall q \in Q
+    $ebu -= log(1+$Mnew-$Mold);
+    $eb->slice(":,$Mold:-1") .= $ebu;
+  }
+
+  $hmm->{M} = $Mnew;
+  return $hmm;
+}
+
 ##======================================================================
 ## clear
 
@@ -506,6 +549,23 @@ sub sentence2sequence {
 		   ]);
 }
 
+## $hmm = $hmm->growFromReader($cr,%args)
+##  + adds unknown tokens from reader to $hmm->{oenum} and (possibly) calls grow()
+##  + %args are passed to $hmm->grow(), except for:
+##    dogrow=>$bool,  ##-- grow() is called iff $bool is true (default=1)
+sub growFromReader {
+  my ($hmm,$cr,%args) = @_;
+  my $oenum = $hmm->{oenum};
+  my ($s,$w);
+  while (defined($s=$cr->getSentence)) {
+    foreach $w (@$s) {
+      $oenum->addSymbol(ref($w) ? $w->text : $w);
+    }
+  }
+  $hmm->grow(%args) if (!defined($args{dogrow}) || $args{dogrow});
+  return $hmm;
+}
+
 ##======================================================================
 ## Text-probability
 ##======================================================================
@@ -671,20 +731,25 @@ sub maximize {
 
 
 ##--------------------------------------------------------------
-## Reestimation: CorpusIO style / MUDL::Corpus::Profile stuff
+## Reestimation: CorpusIO / MUDL::Corpus::Profile stuff
 
-## ($ea,$eb,$epi,$eomega) = $hmm->expectReader($corpusReader,%args)
+## ($log_prod_ps, $ea,$eb,$epi,$eomega) = $hmm->expectReader($corpusReader,%args)
 ##  + run a single E- part of an EM-iteration on the sentences from $corpusReader
-##  + %args: (none)
+##  + calls $hmm->expect0() unless all $hmm->{eX} members are defined
+##  + %args:
 sub expectReader {
   my ($hmm,$cr,%args) = @_;
 
   my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
-  my ($ea,$eb,$epi,$eomega) = $hmm->expect0();
+  my ($ea,$eb,$epi,$eomega) = @$hmm{qw(ea eb epi eomega)};
+
+  ($ea,$eb,$epi,$eomgega) = $hmm->expect0()
+    unless (defined($ea) && defined($eb) && defined($epi) && defined($eomega));
 
   my ($s,$o);
-  my $alpha = zeroes($hmm->{type}, $N,1);
-  my $beta  = zeroes($hmm->{type}, $N,1);
+  my $alpha = zeroes($hmm->{type}, $N,128);
+  my $beta  = zeroes($hmm->{type}, $N,128);
+  my $log_prod_ps  = 0;
   while (defined($s=$cr->getSentence)) {
     $o = $hmm->sentence2sequence($s);
 
@@ -695,30 +760,83 @@ sub expectReader {
     hmmbeta ($a,$b,$omega, $o, $beta);
 
     hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+
+    ##-- save text probability (multiply)
+    $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
   }
 
-  return ($ea,$eb,$epi,$eomega);
+  return ($log_prod_ps, $ea,$eb,$epi,$eomega);
+}
+
+## ($log_prod_ps, $ea,$eb,$epi,$eomega) = $hmm->expectFiles(\@files,%args)
+##  + run a single E- part of an EM-iteration on the sentences from \@files
+##  + just calls $hmm->expectReader() for each file
+##  + %args: (none)
+sub expectFiles {
+  my ($hmm,$files,%args) = @_;
+
+  my $log_prod_ps = 0;
+  my $log_prod_ps_file = 0;
+
+  my ($cr,@expect);
+  foreach $file (@$files) {
+    $cr = MUDL::CorpusReader->fromFile($file);
+
+    ($log_prod_ps_file,@expect) = $hmm->expectReader($cr,%args);
+    $log_prod_ps += $log_prod_ps_file;
+  }
+
+  return ($log_prod_ps, $ea,$eb,$epi,$eomega);
 }
 
 ## $hmm = $hmm->emReader($corpusReader,%args)
 ##  + run a single EM iteration on the sentences from $corpusReader
-##  + %args:
+##  + %args: passed to $hmm->expectReader() and to $hmm->maximize()
 ##     - maxa  => $bool,    ## maximize $a ? default=$hmm->{maxa}  || 1
 ##     - maxb  => $bool,    ## maximize $b ? default=$hmm->{maxb}  || 1
 ##     - maxpi => $bool,    ## maximize $pi? default=$hmm->{maxpi} || 1
 ##     - maxomega => $bool, ## maximize $omega? default=$hmm->{maxomega} || 1
 sub emReader {
   my ($hmm,$cr,%args) = @_;
+  $hmm->expectReader($cr,%args);
+  $hmm->maximize(%args);
+  return $hmm;
+}
+
+
+##--------------------------------------------------------------
+## Reestimation: Corpus::Buffer
+
+## ($log_prod_ps, $ea,$eb,$epi,$eomega) = $hmm->expectBuffer($corpusBuffer,%args)
+##  + run a single E- part of an EM-iteration on the sentences from $corpusBuffer
+##  + %args: (none)
+sub expectBuffer {
+  my ($hmm,$buf,%args) = @_;
+  if (UNIVERSAL::isa($buf,'MUDL::Corpus::Buffer::Pdl')) {
+    ##-- special handling for pdl-ized buffers
+    return $hmm->expectPdlBuffer($buf,@_);
+  }
+  ##-- use inherited method otherwise
+  return $hmm->expectReader($buf->reader());
+}
+
+## ($log_prod_ps, $ea,$eb,$epi,$eomega) = $hmm->expectPdlBuffer($corpusBufferPdl,%args)
+##  + run a single E- part of an EM-iteration on the sentences from $corpusBufferPdl,
+##    which should use hmm's enums and bash to $hmm->{unknown}
+##  + %args: (none)
+sub expectPdlBuffer {
+  my ($hmm,$buf,%args) = @_;
 
   my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
   my ($ea,$eb,$epi,$eomega) = $hmm->expect0();
 
-  my ($s,$o);
-  my $alpha = zeroes($hmm->{type}, $N,1);
-  my $beta  = zeroes($hmm->{type}, $N,1);
-  while (defined($s=$cr->getSentence)) {
-    $o = $hmm->sentence2sequence($s);
+  my ($o);
+  my $alpha = zeroes($hmm->{type}, $N, 128);
+  my $beta  = zeroes($hmm->{type}, $N, 128);
 
+  my $log_prod_ps = 0;
+
+  foreach $o (@{$buf->{sents}}) {
     $alpha->reshape($N,$o->dim(0));
     $beta ->reshape($N,$o->dim(0));
 
@@ -726,7 +844,24 @@ sub emReader {
     hmmbeta ($a,$b,$omega, $o, $beta);
 
     hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+
+    ##-- save text probability (multiply)
+    $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
   }
+
+  return ($log_prod_ps, $ea,$eb,$epi,$eomega);
+}
+
+## $hmm = $hmm->emBuffer($corpusBuffer,%args)
+##  + run a single EM iteration on the sentences in $corpusBuffer
+##  + %args: passed to $hmm->expectBuffer() and to $hmm->maximize()
+##     - maxa  => $bool,    ## maximize $a ? default=$hmm->{maxa}  || 1
+##     - maxb  => $bool,    ## maximize $b ? default=$hmm->{maxb}  || 1
+##     - maxpi => $bool,    ## maximize $pi? default=$hmm->{maxpi} || 1
+##     - maxomega => $bool, ## maximize $omega? default=$hmm->{maxomega} || 1
+sub emBuffer {
+  my ($hmm,$buf,%args) = @_;
+  my ($logp,@expect) = $hmm->expectBuffer($buf,%args);
   $hmm->maximize(%args);
   return $hmm;
 }
@@ -962,6 +1097,44 @@ sub loadModelFile {
 
   return $hmm;
 }
+
+
+##======================================================================
+## I/O: Tapas Kanungo style
+##======================================================================
+
+__PACKAGE__->registerIOMode('kanungo', {saveFh=>'saveKanungoFh',loadFh=>'loadKanungoFh'});
+__PACKAGE__->registerFileSuffix('.kanungo','kanungo');
+
+## $bool = $obj->saveKanungoFh($fh,%args)
+sub saveKanungoFh {
+  my ($hmm,$fh) = @_;
+  $fh->print("M= ", $hmm->{M}+1, "\n", ##-- +eos pseudo-observation
+	     "N= ", $hmm->{N}+1, "\n", ##-- +eos-sink state
+	    );
+
+  $fh->print("A:\n");
+  my $ap = $hmm->{a}->exp;
+  foreach $i (0..($hmm->{N}-1)) {
+    $fh->print(join(' ', $ap->slice("($i)")->list, $hmm->{omega}->at($i)), "\n");
+  }
+  $fh->print(join(' ', (map { 0 } (1..$hmm->{N})), 1), "\n"); ##-- +eos pseudo-state
+
+  $fh->print("B:\n");
+  my $bp = $hmm->{b}->exp;
+  foreach $i (0..($hmm->{N}-1)) {
+    $fh->print(join(' ', $bp->slice("($i)")->list, 0), "\n");
+  }
+  $fh->print(join(' ', (map { 0 } (1..($hmm->{M}))), 1), "\n"); ##-- +eos pseudo-observation
+
+  $fh->print("pi:\n",
+	     join(' ', $hmm->{pi}->exp->list, 0), "\n");
+
+  return $hmm;
+}
+
+## $bool = $obj->saveKanungoFh($fh,%args)
+*loadKanungoFh = MUDL::Object::dummy('loadKanungoFh');
 
 
 1;
