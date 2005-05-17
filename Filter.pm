@@ -51,11 +51,12 @@ sub fileWriter {
 ##----------------------------------------------------------------------
 ## Abstractions
 
-## $s_or_undef = $cr->doSentence(\@sentence)
+## $s_or_undef = $cf->doSentence(\@sentence)
 ##  + should be overridden by child classes
 *doSentence = \&dummy('doSentence');
 
-## \@sentence = $cr->processSentence(%args)
+## \@sentence = $cf->processSentence(%args)
+##   + calls getSentence(), $cf->doSentence(), putSentence()
 sub processSentence {
   my $f = shift;
   my $s = $f->{reader}->getSentence();
