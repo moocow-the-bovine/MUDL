@@ -44,6 +44,7 @@ our $LONG_CLUSTER_LABELS = 1; ##-- provide full cluster labels on itermediate tr
 ##  c2tk => \%idmap,       ## maps previous cluster-ids to current target-ids: {$cid_lek => $tid_k,   ...}
 ##  tk2t => \%idmap,       ## maps current target-ids to global target-ids:    {$tid_k   => $tid_lek, ...}
 ##  t2tk => \%idmap,       ## maps global target-ids to current target-ids:    {$tid_lek => $tid_k,   ...}
+##  ugs_k => $pdl,         ## pdl($n): expected unigram pseudo-frequency (targets_k u clusters_{k-1})
 ##  ##
 ##  ##-- messages
 ##  verbose => $level
@@ -95,6 +96,19 @@ sub bootstrap {
   $mp->vmsg($vl_info, "bootstrap(): clusterids ~ w => argmax_c ( p(c|w) )\n");
   $mp->{clusterids} = $tree->{clusterids};
 
+  ##-- populate ugs_k
+  $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
+  $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
+  foreach $dir (qw(right left)) {
+    my $d = $mp->{prof}{$dir};
+    my ($k,$t,$b,$f);
+    while (($k,$f)=each(%{$d->{nz}})) {
+      ($w,$b) = $d->split($k);
+      $mp->{ugs_k}->slice("$w") += $f;
+    }
+  }
+  $mp->{ugs_k} /= 2;
+
   ##-- populate {phat}: p(class|word)
   $mp->vmsg($vl_info, "bootstrap(): phat ~ ^p(c|w)\n");
   $mp->populatePhat(%args);
@@ -112,7 +126,10 @@ sub populatePhat {
   my $mp = shift;
 
   my $phat = zeroes(double, $mp->{cbenum}->size, $mp->{tenum}->size);
-  $mp->{tree}->membershipProbPdl( %{$mp->{d2p}}, @_, pdl=>$phat );
+  $mp->{tree}->membershipProbPdl( %{$mp->{d2p}},
+				  beta=>$mp->{ugs_k},
+				  @_,
+				  pdl=>$phat );
 
   ##-- class-probability membership hack: bos,eos
   foreach (@$mp{qw(bos eos)}) {
@@ -291,6 +308,9 @@ sub populatePprof {
 
   #return $mp; ##-- DEBUG
 
+  ##-- pprof: step 0: allocate unigram dist
+  $mp->{ugs_k} = zeroes(double, $mp->{tenum_k}->size);
+
   ##-- pprof: step 1: tweak profile distributions
   $pprof->{left}  = $mp->addProfileDist($prof->{left});
   $pprof->{right} = $mp->addProfileDist($prof->{right});
@@ -364,6 +384,8 @@ sub addProfileDist {
     }
   }
 
+  $mp->{ugs_k} += $fwb_pdl->xchg(0,1)->sumover; ##-- new target unigrams, may be needed later
+
   my $fwb_ed = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
 				      sep=>$wvdist->{sep},
 				      enum=>MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
@@ -393,7 +415,10 @@ sub updatePhat {
   ##-- get ^p_k( c_k | t_k + c_{k-1} )  ~ current iteration
   $mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
   my $phat_k   = zeroes(double, $mp->{cbenum}->size, $mp->{tenum_k}->size);
-  $mp->{tree_k}->membershipProbPdl( %{$mp->{d2p}}, @_, pdl=>$phat_k );
+  $mp->{tree_k}->membershipProbPdl( %{$mp->{d2p}},
+				    @_,
+				    beta=>$mp->{ugs_k},
+				    pdl=>$phat_k );
 
   ##-- allocate new ^p_{<=k}()
   $mp->vmsg($vl_info, "updatePhat(): adjust ~ ^p_{<=k}( c_k | t_{<=k} )\n");
