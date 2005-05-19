@@ -183,10 +183,12 @@ our %d2pMethods =
   (
    nbest_hughes => \&d2p_nbest_hughes,
    nbest_base   => \&d2p_nbest_base,
+   nbest_pinsker=> \&d2p_nbest_pinsker,
    nbest_inverse=> \&d2p_nbest_inverse,
    nbest_linear => \&d2p_nbest_linear,
    linear       => \&d2p_linear,
    inverse      => \&d2p_inverse,
+   pinsker      => \&d2p_pinsker,
    #DEFAULT      => \&d2p_nbest_base,
    DEFAULT      => \&d2p_nbest_inverse,
   );
@@ -239,7 +241,7 @@ sub d2p_getPdl {
 ## $pdl_slice = $cm->d2p_slicePdl($leafdists,$pdl)
 sub d2p_slicePdl {
   my ($cm,$ld,$pdl) = @_;
-  return $pdl->slice("0:".($ld->dims(0)-1).",0:".($ld->dims(1)-1));
+  return $pdl->slice("0:".($ld->dim(0)-1).",0:".($ld->dim(1)-1));
 }
 
 ## $probPdl = $cm->d2p_linear($leafdists,%args)
@@ -265,6 +267,32 @@ sub d2p_inverse {
 
   $pdls     .= $ldmin / ($ldmin + $ld);
   $pdls     /= $pdls->sumover->transpose;
+
+  return $pdl;
+}
+
+## $probPdl = $cm->d2p_pinsker($leafdists,%args)
+##  + %args:
+##     pdl => $probPdl,
+##     b   => $base,       ##-- default=2
+##     beta => $beta_pdl,  ##-- pdl ($n): exp coefficients (sample sizes by target index)
+##  + theoretically motivated for L1 distance between probability distributions
+sub d2p_pinsker {
+  my ($cm,$ld,%args) = @_;
+  my $pdl    = $cm->d2p_getPdl($ld,$args{pdl});
+  my $pdls   = $cm->d2p_slicePdl($ld,$pdl);
+  my $beta   = defined($args{beta}) ? $args{beta} : ones($pdl->type, $pdls->dim(1));
+  my $b      = defined($args{b}) ? $args{b} : 2;
+
+
+  ##-- compute P(c|w) = b^( -beta/2 * d(c,w)^2 )
+  ##   + for L1 distance, this is Pinsker's inequality
+  $pdls .= $ld * $cm->{data}->dim(0); ##-- factor out contribution of *weights*...
+  $pdls->inplace->pow(2);
+  $pdls *= (-$beta/2)->dummy(1)->xchg(0,1);
+  PDL::pow($b, $pdls, $pdls);
+
+  $pdls /= $pdls->xchg(0,1)->sumover;
 
   return $pdl;
 }
@@ -309,6 +337,50 @@ sub d2p_nbest_inverse {
 
   return $pdl;
 }
+
+## $probPdl = $cm->d2p_nbest_pinsker($leafdists,%args)
+##  + %args:
+##     pdl => $probPdl,
+##     b   => $base,       ##-- default=2
+##     beta => $beta_pdl,  ##-- pdl ($n): exp coefficients (sample sizes by target index)
+##  + theoretically motivated for L1 distance between probability distributions
+sub d2p_nbest_pinsker {
+  my ($cm,$ld,%args) = @_;
+
+  my $n    = $args{n} || 1;
+  my $pdl  = $cm->d2p_getPdl($ld,$args{pdl});
+  $pdl .= 0;
+  my $ipdl = zeroes(long, $n);
+
+  my $beta = defined($args{beta}) ? $args{beta} : ones($pdl->type, $ld->dim(1));
+  my $b    = defined($args{b})    ? $args{b}    : 2;
+
+  my $wsum = (defined($cm->{weight})
+	      ? $cm->{weight}->sum
+	      : (defined($cm->{data})
+		 ? $cm->{data}->dim(0)
+		 : 1));
+
+  my ($lds,$pdl_ni, $lds_ni);
+  foreach $ni (0..($ld->dim(1)-1)) {
+    ##-- get indices
+    $lds = $ld->slice(",($ni)");
+    $lds->minimum_n_ind($ipdl);
+
+    $lds_ni = $lds->dice($ipdl);
+    $pdl_ni = $pdl->slice(",($ni)")->dice($ipdl);
+
+    $pdl_ni .= $lds_ni * $wsum;
+    $pdl_ni->inplace->pow(2);
+    $pdl_ni *= -$beta->slice("($ni)")/2;
+    PDL::pow($b, $pdl_ni, $pdl_ni);
+
+    $pdl_ni /= $pdl_ni->sum;
+  }
+
+  return $pdl;
+}
+
 
 ##------------------------------------------------------
 ## $probPdl = $cm->d2p_nbest_linear($leafdists,%args)
