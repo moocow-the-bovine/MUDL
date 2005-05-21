@@ -172,6 +172,7 @@ sub leafdistances {
 			       $tc->{dist},
 			       $tc->{method});
   }
+  $pdl /= $tc->{weight}->sum if (defined($tc->{weight}));
 
   return $tc->{leafdist}=$pdl;
 }

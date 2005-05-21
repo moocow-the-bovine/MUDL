@@ -241,6 +241,84 @@ sub toEDist {
 ##======================================================================
 
 ## nyi
+*saveNativeFh = \&saveTextFh;
+*loadNativeFh = \&loadTextFh;
+
+##======================================================================
+## I/O: Dense text
+##======================================================================
+__PACKAGE__->registerIOMode('txt',{saveFh=>'saveTextFh',loadFh=>'loadTextFh'});
+__PACKAGE__->registerFileSuffix('.txt','txt');
+
+## $bool = $obj->saveTextFh($fh,%args)
+##   + %args:
+##      dims => $bool, ##-- print header-line @dims
+##      fmt  => $fmt,  ##-- save format (%g)
+##      sep  => $str,  ##-- separator string (default=TAB)
+##   + only works for 2d matrices
+sub saveTextFh {
+  my ($pd,$fh,%args) = @_;
+
+  my $pdl = $pd->{pdl};
+  $args{dims} = 1 if (!defined($args{dims}));
+  $args{sep} = "\t" if (!defined($args{sep}));
+  $args{fmt} = "%g" if (!defined($args{fmt}));
+
+  #require PDL::IO::Misc;
+  #wcols((map { $pdl->sdlice("($_),:") } (0..($pdl->dim(0)-1))),
+	#$fh,
+	#{
+	# HEADER=>join($args{sep}, $pdl->dims),
+	#});
+
+ $fh->print(join($args{sep}, $pdl->dims), "\n") if ($args{dims});
+
+  my $template = join($args{sep}, map { $args{fmt} } (1..($pdl->dim(1))))."\n";
+  my ($row,$col);
+  foreach $row (0..($pdl->dim(0)-1)) {
+    $fh->printf($template, $pdl->slice("($row)")->list);
+  }
+
+  return $pd;
+}
+
+## $obj = $class_or_obj->loadTextFh($fh,%args)
+##   + %args:
+##      sep  => $str,  ##-- separator string (default=TAB)
+##   + only works for 2d matrices
+sub loadTextFh {
+  my ($pd,$fh,%args) = @_;
+  $pd = $pd->new() if (!ref($pd));
+
+  my $pdl = $pd->{pdl};
+  my $sep = defined($args{sep}) ? $args{sep} : "\t";
+
+  ##-- header
+  my $line = $fh->getline;
+  chomp($line);
+  my @vals = CORE::split(/\Q${sep}\E+/,$line);
+  $pd->{pdl} = $pdl->reshape(@vals);
+
+  ##-- read data
+  my $i=0;
+  while (defined($line=$fh->getline)) {
+    chomp($line);
+    @vals = CORE::split(/\Q${sep}\E+/,$line);
+    $pdl->slice("($i),") .= pdl($pdl->type, \@vals);
+    $i++;
+  }
+
+  return $pd;
+}
+
+
+##======================================================================
+## I/O: Sparse text (CCS)
+##======================================================================
+#__PACKAGE__->registerIOMode('ccs',{saveFh=>'saveCcsFh',loadFh=>'loadCcsFh'});
+#__PACKAGE__->registerFileSuffix('.ccs','ccs');
+
+##-- todo
 
 ##======================================================================
 ## I/O: XML

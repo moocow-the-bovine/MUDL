@@ -22,6 +22,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LR);
 ##       targets => $targets_enum,
 ##       left=>$left_bigrams,       ## ($target,$lneighbor)
 ##       right=>$right_bigrams,     ## ($target,$rneighbor)
+##       smoothgt=>$bool,           ## whether to apply Good-Turing smoothing (addBigrams() only!)
 sub new {
   my ($that,%args) = @_; 
   return $that->SUPER::new(nfields=>1,donorm=>1,%args);
@@ -77,6 +78,50 @@ sub addSentence {
 }
 
 
+##======================================================================
+## Profiling: special: addBigrams($bg)
+
+## $lr = $lr->addBigrams($bg,%args);
+##   + %args or $lr flags:
+##      smoothgt => $bool,  ##-- call smoothGTLogLin on bigrams, sets $lr->{norm_zero_f}
+sub addBigrams {
+  my ($lr,$bg,%args) = @_;
+  require MUDL::Bigrams;
+
+  ##-- sanity checks: bos/eos
+  if (defined($lr->{bos})) {
+    $lr->{bounds}->addSymbol($lr->{bos});
+  }
+  if (defined($lr->{eos})) {
+    $lr->{bounds}->addSymbol($lr->{eos});
+  }
+
+  ##-- smoothing
+  $lr->{smoothgt} = $args->{smoothgt} if (defined($args{smoothgt}));
+  if ($lr->{smoothgt}) {
+    $bg->smoothGTLogLin;
+    $lr->{norm_zero_f} += $bg->zeroCount;
+  }
+
+  my ($tgs,$bds,$lbg,$rbg) = @$lr{qw(targets bounds left right)};
+  my ($w12,$f12,$w1,$w2, $tid,$bid);
+  while (($w12,$f12)=each(%{$bg->{nz}})) {
+    ##-- split
+    my ($w1,$w2) = $bg->split($w12);
+
+    ##-- left-bound
+    if (defined($bid=$bds->{sym2id}{$w1}) && defined($tid=$tgs->{sym2id}{$w2})) {
+      $lbg->{nz}{$tid.$lbg->{sep}.$bid} += $f12;
+    }
+
+    ##-- right-bound
+    if (defined($tid=$tgs->{sym2id}{$w1}) && defined($bid=$bds->{sym2id}{$w2})) {
+      $rbg->{nz}{$tid.$rbg->{sep}.$bid} += $f12;
+    }
+  }
+
+  return $lr;
+}
 
 
 ##======================================================================

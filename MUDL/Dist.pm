@@ -275,7 +275,8 @@ sub pruneByRankSub {
 ##   + returns sub to prune events not matching $re
 sub pruneByRegexSub {
   my ($d,%args) = @_;
-  my $re = qr/$args{re}/o;
+  #my $re = qr/$args{re}/o;
+  my $re = qr/$args{re}/;
   return sub { $_[0] =~ $re; };
 }
 

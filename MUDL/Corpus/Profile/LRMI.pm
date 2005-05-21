@@ -77,6 +77,9 @@ sub dist2mi {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
+## $pdl3d = $lr->smoothPdl($pdl3d);
+##-- inherited
+
 ## $pdl3d = $lr->finishPdl($pdl3d);
 sub finishPdl {
   my ($lr,$pdl) = @_;

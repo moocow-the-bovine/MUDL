@@ -108,6 +108,7 @@ sub bootstrap {
     }
   }
   $mp->{ugs_k} /= 2;
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: min(f_0(w))=%.2f\n", $mp->{ugs_k}->min));
 
   ##-- populate {phat}: p(class|word)
   $mp->vmsg($vl_info, "bootstrap(): phat ~ ^p(c|w)\n");
@@ -255,6 +256,8 @@ sub update {
   ##-- update: pprof
   $mp->vmsg($vl_info, "update(): pprof ~ f_{<=k}(d, c_b, t_k + c_<k)\n");
   my $pprof = $mp->populatePprof($prof);
+
+  $mp->vmsg($vl_info, sprintf("update(): unigrams: min(f_{<=k}(w))=%.2f\n", $mp->{ugs_k}->min));
 
   ##-- update: cluster: toPDL
   $mp->vmsg($vl_info, "update(): toPDL()\n");
