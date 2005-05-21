@@ -151,6 +151,11 @@ sub toPDL3d {
     }
   }
 
+  return $pdl; ##-- debug
+
+  ##-- smoothing
+  $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));
+
   ##-- data munging
   $lr->finishPdl($pdl) if ($lr->can('finishPdl'));
 
@@ -160,27 +165,70 @@ sub toPDL3d {
   return $pdl;
 }
 
+## $pdl_3d = $lr->smoothPdl($pdl_3d)
+##  + smooth a frequency pdl (3d)
+##  + relevant flags in $lr:
+##     norm_zero_f      => $value, ##-- unnormalized zero value
+##     norm_zero_zero   => $zero,  ##-- zero value to normalize
+sub smoothPdl {
+  my ($lr,$pdl) = @_;
+
+  ##-- smooth zeros (by frequency)
+  my $zero = $lr->{norm_zero_zero};
+  $zero = 0 if (!$zero);
+  if (defined($lr->{norm_zero_f})) {
+    $pdl->where($pdl==$zero) .= $lr->{norm_zero_f};
+  }
+
+  return $pdl;
+}
+
 
 ## $pdl_3d = $lr->normalizePdl($pdl_3d)
 ##  + normalize a pdl (3d)
+##  + relevant flags in $lr:
+##     norm_independent => $bool,  ##-- whether to normalize left and right subvectors independently
+##     norm_zero_p      => $value, ##-- pre-normalized zero value
+##     norm_zero_zero   => $zero,  ##-- zero value to normalize
+##     norm_min         => $min,   ##-- subtracted value: default=$pdl->min
 sub normalizePdl {
   my ($lr,$pdl) = @_;
   my ($sum);
 
-  $pdl -= $pdl->min;
-  foreach $ni (0..$pdl->dim(2)-1) {
+  my $min = $lr->{norm_min};
+  $min  = $pdl->min if (!defined($min));
+  $pdl -= $min      if ($min != 0);
+
+  ##-- normalization
+  my $norm_ind = !defined($lr->{norm_independent}) || $lr->{norm_independent};
+  foreach $ni (0..($pdl->dim(2)-1)) {
     ##-- normalize left- & right- subvectors independently
 
-    ##-- : left subvector
-    $v    = $pdl->slice("0,:,$ni");
-    $sum  = $v->sum;
-    $v   /= $sum if ($sum != 0);
+    if ($norm_ind) {
+      ##-- : left subvector
+      $v    = $pdl->slice("0,:,$ni");
+      $sum  = $v->sum;
+      $v   /= $sum if ($sum != 0);
 
-    ##-- : right subvector
-    $v    = $pdl->slice("1,:,$ni");
-    $sum  = $v->sum;
-    $v   /= $sum if ($sum != 0);
+      ##-- : right subvector
+      $v    = $pdl->slice("1,:,$ni");
+      $sum  = $v->sum;
+      $v   /= $sum if ($sum != 0);
+    }
+    else {
+      $v    = $pdl->slice(":,:,$ni");
+      $sum  = $v->sum;
+      $v   /= $sum if ($sum != 0);
+    }
   }
+
+  ##-- zero (pre-normalized)
+  if (defined($lr->{norm_zero_p})) {
+    my $zero = $lr->{norm_zero_zero};
+    $zero = 0 if (!$zero);
+    $pdl->where($pdl==$zero) .= $lr->{norm_zero_p};
+  }
+
   return $pdl;
 }
 
