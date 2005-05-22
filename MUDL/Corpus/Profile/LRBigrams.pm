@@ -22,7 +22,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LR);
 ##       targets => $targets_enum,
 ##       left=>$left_bigrams,       ## ($target,$lneighbor)
 ##       right=>$right_bigrams,     ## ($target,$rneighbor)
-##       smoothgt=>$bool,           ## whether to apply Good-Turing smoothing (addBigrams() only!)
+##       smoothgt=>$which,          ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
 sub new {
   my ($that,%args) = @_; 
   return $that->SUPER::new(nfields=>1,donorm=>1,%args);
@@ -83,7 +83,7 @@ sub addSentence {
 
 ## $lr = $lr->addBigrams($bg,%args);
 ##   + %args or $lr flags:
-##      smoothgt => $bool,  ##-- call smoothGTLogLin on bigrams, sets $lr->{norm_zero_f}
+##      #smoothgt => $which,  ##-- call smoothGTLogLin on bigrams, sets $lr->{norm_zero_f} if $which eq 'bigrams'
 sub addBigrams {
   my ($lr,$bg,%args) = @_;
   require MUDL::Bigrams;
@@ -98,7 +98,7 @@ sub addBigrams {
 
   ##-- smoothing
   $lr->{smoothgt} = $args->{smoothgt} if (defined($args{smoothgt}));
-  if ($lr->{smoothgt}) {
+  if ($lr->{smoothgt} && $lr->{smoothgt} eq 'bigrams') {
     $bg->smoothGTLogLin;
     $lr->{norm_zero_f} += $bg->zeroCount;
   }
@@ -132,6 +132,8 @@ sub addBigrams {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
+## undef = $lr->smoothPdl($pdl);
+
 ## undef = $lr->finishPdl($pdl);
 
 ## undef = $lr->normalizePdl($pdl);
@@ -149,6 +151,7 @@ sub helpString {
      .qq(  targets=ENUM     [default=empty]\n)
      .qq(  eos=EOS_STRING   [default='__\$']\n)
      .qq(  bos=BOS_STRING   [default='__\$']\n)
+     .qq(  smoothgt=WHICH   [default=0] : one of 'bigrams','pdl',0\n)
      .qq(  donorm=BOOL      [default=1]\n)
     );
 }

@@ -127,8 +127,10 @@ sub populatePhat {
   my $mp = shift;
 
   my $phat = zeroes(double, $mp->{cbenum}->size, $mp->{tenum}->size);
+  my $beta = $mp->beta;
+  $mp->vmsg($vl_info, "populatePhat(): avg(beta) = ", $beta->avg, "\n");
   $mp->{tree}->membershipProbPdl( %{$mp->{d2p}},
-				  beta=>$mp->{ugs_k},
+				  beta=>$beta,
 				  @_,
 				  pdl=>$phat );
 
@@ -315,8 +317,9 @@ sub populatePprof {
   $mp->{ugs_k} = zeroes(double, $mp->{tenum_k}->size);
 
   ##-- pprof: step 1: tweak profile distributions
-  $pprof->{left}  = $mp->addProfileDist($prof->{left});
-  $pprof->{right} = $mp->addProfileDist($prof->{right});
+  $pprof->{left}   = $mp->addProfileDist($prof->{left});
+  $pprof->{right}  = $mp->addProfileDist($prof->{right});
+  $mp->{ugs_k}    /= 2; ##-- factor out l,r doubling
 
   ##-- pprof: step 2: replace enums
   foreach (@{$pprof->{enum}{enums}}) {
@@ -398,6 +401,16 @@ sub addProfileDist {
   return MUDL::PdlDist->new(pdl=>$fwb_pdl, enum=>$fwb_ed->{enum})->toEDist($fwb_ed);
 }
 
+## $beta_pdl = $mp->beta()
+##  + for pinsker dist-to-probability conversion
+sub beta {
+  my $mp = shift;
+  return
+    $mp->{ugs_k};
+    #$mp->{ugs_k}->minimum;
+    #$mp->{ugs_k}->average;
+    #$mp->{ugs_k}->sum/($mp->{tenum}->size);
+}
 
 ##--------------------------------------------------------------
 ## $phatPdl = $mp->updatePhat(%args)
@@ -417,10 +430,12 @@ sub updatePhat {
 
   ##-- get ^p_k( c_k | t_k + c_{k-1} )  ~ current iteration
   $mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
+  my $beta = $mp->beta;
+  $mp->vmsg($vl_info, "updatePhat(): avg(beta) = ", $beta->avg, "\n");
   my $phat_k   = zeroes(double, $mp->{cbenum}->size, $mp->{tenum_k}->size);
   $mp->{tree_k}->membershipProbPdl( %{$mp->{d2p}},
 				    @_,
-				    beta=>$mp->{ugs_k},
+				    beta=>$beta,
 				    pdl=>$phat_k );
 
   ##-- allocate new ^p_{<=k}()
@@ -484,7 +499,7 @@ sub updateTree {
   #}
 
   ##-- create new tree
-  $mp->vmsg($vl_info, "updateTree(): tree\n");
+  $mp->vmsg($vl_debug, "updateTree(): tree\n");
   my $tree_k   = $mp->{tree_k};
   my $tree_ltk = $mp->{tree_ltk} = $mp->{tree};
   my $tree     = $mp->{tree} = $tree_ltk->shadow(
@@ -495,7 +510,7 @@ sub updateTree {
 						);
 
   ##-- populate new tree
-  $mp->vmsg($vl_info, "updateTree(): tree: index (<k)\n");
+  $mp->vmsg($vl_debug, "updateTree(): tree: index (<k)\n");
   my $ct_k   = $tree_k->{ctree};
   my $ct_ltk = $tree_ltk->{ctree};
   my $ct     = $tree->{ctree} = zeroes(long, 2, $tenum->size);
@@ -546,12 +561,12 @@ sub updateTree {
   }
 
   ##-- populate: add old nodes
-  $mp->vmsg($vl_info, "updateTree(): tree: adopt (<k)\n");
+  $mp->vmsg($vl_debug, "updateTree(): tree: adopt (<k)\n");
   $ct->slice(",0:".($njoin_ltk-1)) .= $ct_ltk->slice(",0:".($njoin_ltk-1));
 
 
   ##-- populate: add new nodes
-  $mp->vmsg($vl_info, "updateTree(): tree: adopt (=k)\n");
+  $mp->vmsg($vl_debug, "updateTree(): tree: adopt (=k)\n");
   my ($ii,$tid);
   my $tk2c = $mp->{tk2c};
   foreach $i (0..($ct_k->dim(1)-2)) {
@@ -577,7 +592,7 @@ sub updateTree {
   }
 
   ##-- populate: link distances
-  $mp->vmsg($vl_info, "updateTree(): tree: link distances\n");
+  $mp->vmsg($vl_debug, "updateTree(): tree: link distances\n");
   my $linkdist = zeroes(double, $ct->dim(1));
 
   $linkdist->slice("0:".($njoin_ltk-1))
@@ -587,7 +602,7 @@ sub updateTree {
     .= $tree_k->{linkdist}->slice("0:".($tree_k->{linkdist}->dim(0)-1));
 
   ##-- update: finalize
-  $mp->vmsg($vl_info, "updateTree(): cut()\n");
+  $mp->vmsg($vl_debug, "updateTree(): cut()\n");
   $tree->{ctree} = $ct;
   $tree->{linkdist} = $linkdist;
   $tree->cut();

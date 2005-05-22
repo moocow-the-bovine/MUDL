@@ -53,8 +53,11 @@ our $ONE  = 0;
 ##    type=>PDL::Type,         ## computation datatype (default=double)
 ##    ##
 ##    ##-- smoothing
-##    smoothb=>$which,        ## how to smooth B for unknowns on compile ('hapax','all','uniform' : default='uniform')
+##    smoothb=>$which,        ## how to smooth B for unknowns on compile:
+##                             #  known values: qw(hapax all uniform_c uniform none)
+##                             #  default='uniform'
 ##    smoothbmin=>$cutoff,    ## for smoothb=>'hapax', minimum value (default=1.1*min($bf))
+##    smoothbval=>$prob,      ## for smoothb=>'uniform', probability value p(u|c) [default=0.5*min(f(w,c))/max(f(c))]
 ##    ##
 ##    ##-- parameters
 ##    a1 => $unigram_prob_pdl ## pdl (N)  : $a1->at($i)   ~ log(p($i)) [arc] # for smoothing, lex save, etc.
@@ -78,6 +81,7 @@ sub new {
 			      btotal=>100000,
 			      verbose=>0,
 			      smoothb=>'uniform',
+			      smoothbval=>undef,
 			      smoothbmin=>undef,
 			      %args);
   return $hmm->resize(%args);
@@ -340,6 +344,7 @@ sub compileArcs {
 ##  + %args
 ##     smoothb=>$type,       ##-- how to smooth unknown values (default=$hmm->{smoothb})
 ##     smoothbmin=>$cutoff,  ##-- cutoff value for smoothing
+##     smoothbval=>$prob,    ##-- for smoothb='uniform'
 sub compileB {
   my ($hmm,$bf,%args) = @_;
 
@@ -352,12 +357,27 @@ sub compileB {
   my ($b,$b1) = @$hmm{qw(b b1)};
   $hmm->{btotal} = $bf->sum;
 
-  ##-- special handling for unknown
+  ##-- special handling for 'unknown' token
   my ($ui,$fmin,$Fw,$hapax_i,$fwtnz_i,$fwtnz_n,$fwtnz_v,$fwtnz_which);
   if (defined($smooth) && defined($hmm->{unknown})) {
     $ui = $hmm->{oenum}->index($hmm->{unknown});
 
     if ($smooth eq 'uniform') {
+      my $smoothbval = defined($args{smoothbval}) ? $args{smoothbval} : $hmm->{smoothbval};
+
+      ##-- double-computation hack
+      my $sbf1 = $bf->xchg(0,1)->sumover; ## f(q)
+
+      if (!defined($smoothbval)) {
+	##-- p(u|c) ~= 0.5 * min f(w,c) / max f(c)
+	my $bfmin = $bf->where($bf!=0)->minimum;
+	$smoothbval = 0.5 * $bfmin / $sbf1->maximum;
+      }
+
+      ##-- assign: f(u,c) = p(u|c) * f(c)
+      $bf->slice(",($ui)") .= $sbf1 * $smoothbval;
+    }
+    elsif ($smooth eq 'uniform_c') {
       ##-- unknown-handling: use uniform *counts*
       $fmin = 0.5*min($bf->where($bf>0));
       $bf->slice(",($ui)") .= $fmin;
@@ -388,21 +408,16 @@ sub compileB {
   $b1 .= $bfsumover - log($hmm->{btotal});
   $b  .= log($bf) - $bfsumover;
 
-  ##-- special handling for bos,eos
-  #my ($sym,$oid,$qid);
-  #foreach $sym (@$hmm{qw(bos eos)}) {
-  #  $oid = $hmm->{oenum}->index($sym);
-  #  $qid = $hmm->{qenum}->index($sym);
-  #  $b->slice(",$oid") .= $ZERO;
-  #  $b->slice("$qid,") .= $ZERO;
-  #  $b->set($qid,$oid, $ONE);
+  ##-- uniform b smoothing
+  #if (defined($smooth) && defined($hmm->{unknown}) && $smooth eq 'uniform') {
+  #  my $bnz = $b->where($b>logzero);
+  #  my $smoothbval = defined($args{smoothbval}) ? $args{smoothbval} : $hmm->{smoothbval};
+  #  $smoothbval = $bnz->minimum + log(0.5) if (!defined($smoothbval));
+  #  ##-- remove N*p(u|c)/N_nonzero from known values p(w|c) [w!=u]
+  #  $bnz->inplace->logdiff($smoothbval + log($b->dim(0)) - log($bnz->nelem));
+  #  ##-- assign
+  #  $b->slice(",($ui)") .= $smoothbval;
   #}
-
-  ##-- log-transform
-  #$a1->inplace->log;
-  #$b1->inplace->log;
-  #$a->inplace->log;
-  #$b->inplace->log;
 
   ##-- pseudo-zero
   $b->inplace->setnantobad->inplace->setbadtoval($ZERO);

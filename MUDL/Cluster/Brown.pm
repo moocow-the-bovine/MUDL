@@ -41,7 +41,7 @@ our $vl_default = $vl_debug;
 ##       cenum    => $enum,    # cluster-id enumerator
 ##   + output data:
 ##       clusterids=>undef,
-##       nclusters=>2,
+##       nclusters=>1,
 ##   + iteration data:
 ##       k     => 0,           # iteration number
 ##       #pk    => $edist_nary, # MUDL::EDist::Nary (class bigrams)
@@ -51,7 +51,7 @@ our $vl_default = $vl_debug;
 ##       plk   => undef,       # left-probabilities:   plk($l) = sum_m (p_k($l,$r))
 ##       prk   => undef,       # right-probabilities:  prk($r) = sum_m (p_k($l,$r))
 ##       qk    => undef,       # class code-lengths: qk($l,$r) = pk($l,$r) * log(pk($l,$r)/($plk($l)*$prk($r)))
-##       tree  => $pdl_tree,   # as for PDL::Cluster (?)
+##       ctree => $pdl_tree,   # as for PDL::Cluster (?)
 ##       nodids => \%hash,     # cluster-id => $node_id_in_tree
 ##       clusterids => $pdl,   # cluster-id assingment map
 ##       enum2    => $enum_nary, # (targets,targets)
@@ -77,9 +77,9 @@ sub new {
 			   qk    => undef,
 
 			   ##-- output data
-			   nclusters=>2,
+			   nclusters=>1,
 			   verbose=>$vl_default,
-			   tree=>pdl(long,[]),
+			   ctree=>pdl(long,[]),
 			   %args
 			  );
 
@@ -133,7 +133,8 @@ sub initialize {
   ##-- clear clusterids, tree, nodids
   %{$mic->{nodids}} = qw();
   $mic->{clusterids} = pdl(long,[]);
-  $mic->{tree}       = pdl(long,[]);
+  $mic->{linkdist}   = pdl(double,[]);
+  $mic->{ctree}      = pdl(long,[]);
 
   ##-- enum, p_k
   $mic->vmsg($vl_info, "initialize(): p_k ~ p(w_1,w_2)\n");
@@ -322,14 +323,14 @@ sub findBestMerge {
   my $Lk = $mic->{Lk};
   my $Ck = $mic->{Ck};
   my ($ii,$jj, $i,$j,$L_ij);
-  my ($ibest,$jbest,$Lbest) = (0,1,$Lk->{nz}{"0$Lk->{sep}1"});
-  foreach $jj (2..$#$Ck) {
+  my ($ibest,$jbest,$Lbest);
+  foreach $jj (1..$#$Ck) {
     $j = $Ck->[$jj];
     foreach $ii (0..($jj-1)) {
       $i = $Ck->[$ii];
       $L_ij = $Lk->{nz}{$i.$Lk->{sep}.$j};
 
-      ($ibest,$jbest,$Lbest) = ($i,$j,$L_ij) if ($L_ij < $Lbest);
+      ($ibest,$jbest,$Lbest) = ($i,$j,$L_ij) if (!defined($L_best) || $L_ij < $Lbest);
     }
   }
 
@@ -349,7 +350,7 @@ sub mergePair {
 
   ##--------------------------------------------
   ## update: pl_k, pr_k
-  $mic->vmsg($vl_info, "mergePair(): update pl_k, pr_k\n");
+  $mic->vmsg($vl_info, "mergePair(): compute: pl_{k+1}(i+j), pr_{k+1}(i+j)\n");
   my ($plk,$prk) = @$mic{qw(plk prk)};
   my $plk_ipj = $plk->{nz}{$i} + $plk->{nz}{$j};
   my $prk_ipj = $prk->{nz}{$i} + $prk->{nz}{$j};
@@ -358,7 +359,7 @@ sub mergePair {
   ##--------------------------------------------
   ## update: p_k
 
-  $mic->vmsg($vl_info, "mergePair(): update p_k\n");
+  $mic->vmsg($vl_info, "mergePair(): compute: p_{k+1}(i+j)\n");
   my ($pk_l2r,$pk_r2l) = @$mic{qw(pk_l2r pk_r2l)};
 
   ##-- get right- and left-contexts p_k(i+j,r) and p_k(l,i+j)
@@ -379,7 +380,7 @@ sub mergePair {
 
   ##--------------------------------------------
   ## update: q_k
-  $mic->vmsg($vl_info, "mergePair(): update q_k\n");
+  $mic->vmsg($vl_info, "mergePair(): compute: q_{k+1}(i+j,r) & q_{k+1}(l,i+j)\n");
   my %qk_ipj_r = qw();
   my %qk_l_ipj = qw();
   while (($r,$pk_lr)=each(%pk_ipj_r)) {
@@ -396,7 +397,7 @@ sub mergePair {
       if ($pk_lr)
       ;
   }
-  $qk_ipj_l{$i} = $qk_ipj_r{$i} =
+  $qk_l_ipj{$i} = $qk_ipj_r{$i} =
     $pk_l_ipj{$i} * log ( $pk_l_ipj{$i} / ($plk_ipj * $prk_ipj) )
       #if ($pk_l_ipj{$i} && $plk_ipj && $prk_ipj)
       if ($pk_l_ipj{$i})
@@ -405,7 +406,7 @@ sub mergePair {
 
   ##--------------------------------------------
   ## update: s_k
-  $mic->vmsg($vl_info, "mergePair(): update s_k\n");
+  $mic->vmsg($vl_info, "mergePair(): compute: s_{k+1}(l,m)\n");
   my %sk_new = qw();
   my ($sk_l, $q_tmp);
   my ($qk,$sk) = @$mic{qw(qk sk)};
@@ -415,21 +416,14 @@ sub mergePair {
     $sk_l -= $q_tmp if ($q_tmp=$qk->{nz}{"$i\t$l"});
     $sk_l -= $q_tmp if ($q_tmp=$qk->{nz}{"$l\t$j"});
     $sk_l -= $q_tmp if ($q_tmp=$qk->{nz}{"$j\t$l"});
-    $sk_l += $q_tmp if ($q_tmp=$qk_ipj_l{$l});
+    $sk_l += $q_tmp if ($q_tmp=$qk_l_ipj{$l});
     $sk_l += $q_tmp if ($q_tmp=$qk_ipj_r{$l});
     $sk_new{$l} = $sk_l;
   }
 
-  ##-- update: s_k for youngest cluster i+j (i)
-  my ($qk_l_ipj, $qk_ipj_r);
-  my $sk_i = 0;
-  while (($l,$qk_l_ipj)=each(%qk_l_ipj)) {                   $sk_i += $qk_l_ipj;  }
-  while (($r,$qk_ipj_r)=each(%qk_ipj_r)) { next if ($r==$i); $sk_i += $qk_ipj_r;  }
-  $sk_new{$i} = $sk_i;
-
   ##--------------------------------------------
   ## update: L_k
-  $mic->vmsg($vl_info,"mergePair(): update L_k (inplace)\n");
+  $mic->vmsg($vl_info,"mergePair(): update: L_{k+1}(l,m) (inplace)\n");
   my $Lk = $mic->{Lk};
   my ($Lk_lm,$ln, $ll,$rr);
   my ($plk_lpm, $prk_lpm);
@@ -547,8 +541,17 @@ sub mergePair {
   ##--------------------------------------------
   ## update: L_k (i+j)
 
+  $mic->vmsg($vl_info, "mergePair(): update: L_{k+1}(i+j,i+m)\n");
+
+  ##-- update: s_k for youngest cluster i+j (i)
+  my ($qk_l_ipj, $qk_ipj_r);
+  my $sk_i = 0;
+  while (($l,$qk_l_ipj)=each(%qk_l_ipj)) {                   $sk_i += $qk_l_ipj;  }
+  while (($r,$qk_ipj_r)=each(%qk_ipj_r)) { next if ($r==$i); $sk_i += $qk_ipj_r;  }
+  $sk->{nz}{$i} = $sk_i;
+
+
   ##-- update: L_k for youngest cluster i+j (i)
-  $mic->vmsg($vl_info, "mergePair(): update L_k for new cluster i+j\n");
   my $Ck = $mic->{Ck};
   my ($Ik_im, $plk_ipm,$prk_ipm, $qk_im, $qk_mi, %pk_ipm_r,%pk_l_ipm, $pk_ipm_ipm);
   foreach $m (@$Ck) {
@@ -609,18 +612,40 @@ sub mergePair {
   my ($nodid_i,$nodid_j) = @{$mic->{nodids}}{$i,$j};
   $nodid_i = $i if (!defined($nodid_i));
   $nodid_j = $j if (!defined($nodid_j));
-  if (!$mic->{tree}->isempty) {
-    $mic->{tree}->reshape(2,$mic->{tree}->dim(1)+1);
-    $mic->{tree}->slice(",-1") .= pdl(long, [$nodid_i, $nodid_j]);
+  if (!$mic->{ctree}->isempty) {
+    $mic->{ctree}->reshape(2,$mic->{ctree}->dim(1)+1);
+    $mic->{ctree}->slice(",-1") .= pdl(long, [$nodid_i, $nodid_j]);
+    $mic->{linkdist} = pdl(double, [$L_ij]);
   } else {
-    $mic->{tree} = pdl(long, [$nodid_i, $nodid_j]);
+    $mic->{ctree} = pdl(long, [$nodid_i, $nodid_j]);
+    $mic->{linkdist}->reshape($mic->{linkdist}->dim(0)+1);
+    $mic->{linkdist}->set(-1, $L_ij);
   }
   $mic->{nodids}{$i} = -$mic->{k}-1;
+
 
   return $mic;
 }
 
+########################################################################
+## Cut
+########################################################################
+sub cut {
+  my ($mic,$nclusters) = @_;
+  #$mic->{nclusters} = $nclusters if (defined($nclusters)); ##-- no!
 
+  ##-- add dummy element(s) to end of tree
+  $mic->{ctree}->reshape(2,$mic->{enum}->size);
+
+  if (!defined($mic->{clusterids}) || $mic->{clusterids}->dim(0) != $mic->{ctree}->dim(1)) {
+    $mic->{clusterids} = zeroes(long, $mic->{ctree}->dim(1));
+  }
+
+  require PDL::Cluster;
+  PDL::Cluster::cuttree($mic->{ctree}, $nclusters, $mic->{clusterids});
+
+  return $mic->{clusterids};
+}
 
 ########################################################################
 ## Conversion
@@ -637,14 +662,14 @@ sub mergePair {
 ## $tree = $tc->toTree(%args)
 ##  + returns a MUDL::Tree representing the clusters
 ##  + %args are passed to MUDL::Tree->fromClusters()
-##  + BROKEN
+##  + INCOMPLETE (need clusterids) (?)
 sub toTree {
-  my $tc = shift;
+  my $mic = shift;
   require MUDL::Tree;
-  return MUDL::Tree->fromClusterPDL($tc->{ctree},
-				    enum=>$tc->{enum},
-				    dists=>$tc->{linkdist},
-				    groups=>$tc->{clusterids},
+  return MUDL::Tree->fromClusterPDL($mic->{ctree},
+				    enum=>$mic->{enum},
+				    dists=>$mic->{linkdist},
+				    groups=>$mic->{clusterids},
 				    #dmult=>100,
 				    @_);
 }

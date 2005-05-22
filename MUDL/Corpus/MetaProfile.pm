@@ -673,6 +673,7 @@ sub toHMM {
 
   my $arcmode = defined($args{arcmode}) ? $args{arcmode} : 'uniform';
   $args{arcmode} = 'uniform' if (!defined($args{arcmode}));
+  $args{smoothb} = $mp->{smoothb} if (!defined($args{smoothb}) && defined($mp->{smoothb}));
 
   my $phat = $mp->{phat};
   my $N    = $phat->dim(0);

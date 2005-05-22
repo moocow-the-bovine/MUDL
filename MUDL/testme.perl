@@ -31,12 +31,12 @@ sub btest1b {
 sub btest2 {
   ($i,$j,$L)=$mic->findBestMerge;
   print "   i=$i ($mic->{enum}{id2sym}[$i]) ; j=$j ($mic->{enum}{id2sym}[$j]) ; L=$L\n";
-  $mic->mergePair($i,$j); ##-- bad: iter1: i=152(samstag), j=194(sonntag), m=57(am)
+  $mic->mergePair($i,$j); ##-- bad: iter1: i=152(samstag), j=194(sonntag), m=57(am) [OK]
   ++$mic->{k};
 }
 #btest1b; btest2; btest2;
 #btest1; btest2; btest2;
-if (!defined($mic)) { btest1b; } else { btest1; } btest2; btest2;
+#if (defined($mic)) { btest1b; } else { btest1; } btest2; btest2;
 
 
 ##----------------------------------------------------------------------
