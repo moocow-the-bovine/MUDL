@@ -12,6 +12,7 @@ use MUDL::Dist::Nary;
 use MUDL::EDist;
 use MUDL::Object;
 use PDL;
+use PDL::Fit::Linfit;
 use Carp;
 our @ISA = qw(MUDL::Corpus::Profile);
 
@@ -151,8 +152,6 @@ sub toPDL3d {
     }
   }
 
-  return $pdl; ##-- debug
-
   ##-- smoothing
   $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));
 
@@ -168,16 +167,76 @@ sub toPDL3d {
 ## $pdl_3d = $lr->smoothPdl($pdl_3d)
 ##  + smooth a frequency pdl (3d)
 ##  + relevant flags in $lr:
-##     norm_zero_f      => $value, ##-- unnormalized zero value
-##     norm_zero_zero   => $zero,  ##-- zero value to normalize
+##     smoothgt          => $which, ##-- perform Good-Turing smoothing here if $which eq 'pdl'
+##     norm_zero_f       => $value, ##-- unnormalized zero value
+##     norm_zero_zero    => $zero,  ##-- zero value to normalize
 sub smoothPdl {
   my ($lr,$pdl) = @_;
 
-  ##-- smooth zeros (by frequency)
-  my $zero = $lr->{norm_zero_zero};
-  $zero = 0 if (!$zero);
-  if (defined($lr->{norm_zero_f})) {
-    $pdl->where($pdl==$zero) .= $lr->{norm_zero_f};
+  if ($lr->{smoothgt} && $lr->{smoothgt} eq 'pdl') {
+    my ($dpdl, $dnz,$dnzi, $dnr,$dr, $dnrwi, $N);
+    my ($r,$nr, $r_hi,$r_lo, $zr);
+    my ($logr, $logz, $nrfit,$coeffs);
+    my ($S_a,$S_e, $nzrp1,$Enzr,$Enzrp1);
+    my ($nrzero);
+    foreach $dim (0,1) {
+      ##-- get count-counts
+      $dpdl  = $pdl->slice("$dim,:,:");        ##-- direction pdl
+      $dnz   = $dpdl->where($dpdl!=0);       ##-- flat non-zero counts
+      $dnzi  = $dnz->qsorti;                 ##-- flat non-zero count indices, sorted
+      $N     = $dnz->sum;
+      ($dnr,$dr) = $dnz->index($dnzi)->rle;  ##-- $dnr(i) = count(f=$dr(i))
+
+      ##-- smear count-counts: Zr ~ E(Nr)
+      $dnrwi = $dnr->which;                  ##-- indices of non-zero count-counts
+      $nr    = $dnr->index($dnrwi);
+      $r     = $dr->index($dnrwi);
+      $r_lo  = zeroes(double, $r->dims);
+      $r_hi  = zeroes(double, $r->dims);
+
+      $r_lo .= $r->rotate(1);
+      $r_lo->set(0,0);
+
+      $r_hi .= $r->rotate(-1);
+      $r_hi->set(-1, $r->at(-1)+($r->at(-1)-$r_lo->at(-1)));
+
+      $zr    = pdl(double,2)*$nr;
+      $r_hi -= $r_lo;
+      $zr   /= $r_hi;
+
+      ##-- smooth: fit
+      $logr = $r->log;
+      $logz = $zr->log;
+      ($nrfit,$coeffs) = linfit1d($logz, cat(ones($logr->nelem), $logr));
+
+      ##-- smooth: assign
+      $S_a = $coeffs->slice('(0)')->exp;
+      $S_e = $coeffs->slice('(1)');
+
+      ##-- smoothing: denominator: E(N_r) = $S_a * $r**$S_e
+      $Enzr = $S_a * $dnz;
+      $Enzr->inplace->pow($S_e);
+
+      ##-- smoothing: numerator: E(N_{r+1}): ($S_a * ($r+1)**$S_e)
+      #$nzrp1   = $dnz + 1;
+      $nzrp1   = $dnz + $dnz->minimum; ##-- HACK
+      $Enzrp1  = $nzrp1->pow($S_e);
+      $Enzrp1 *= $S_a;
+
+      ##-- smoothing: smoothed values: r* = (r+1) * E(N_{r+1}) / E(N_r)
+      $dnz .= $Enzrp1 / $Enzr;
+      $dnz *= $nzrp1;
+
+      ##-- smoothing: zero values
+      $nrzero = $S_a * $nrfit->slice('(0)') / $N;
+      $dpdl->where($dpdl==0) .= $nrzero / ($dpdl->nelem - $dnz->nelem);
+    }
+  }
+  elsif (defined($lr->{norm_zero_f})) {
+    ##-- direct value smoothing (used by LRBigrams descendendants with $smoothgt eq 'bigrams'
+    my $zeroval = $lr->{norm_zero_zero};
+    $zeroval = 0 if (!defined($zeroval));
+    $pdl->where($pdl==$zeroval) .= $lr->{norm_zero_f};
   }
 
   return $pdl;
