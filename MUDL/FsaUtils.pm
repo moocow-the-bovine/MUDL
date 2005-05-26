@@ -111,8 +111,12 @@ sub getStateArcs {
 sub setStateArcs {
   my ($q,$arcs) = @_;
   $q->truncate(0);
+  $_->{weight} = $_->{weight}->asFloat foreach (@$arcs);
   foreach my $arc (@$arcs) {
-    $q->newArc(int $arc->{target}, $arc->{weight}, int $arc->{input}, int $arc->{output});
+    $q->newArc(int $arc->{target},
+	       RWTH::Fsa::Weight->new($arc->{weight}),
+	       int $arc->{input},
+	       int $arc->{output});
   }
   return $arcs;
 }
