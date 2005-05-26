@@ -292,7 +292,7 @@ sub update {
 }
 
 ##--------------------------------------------------------------
-## $pprof = $mp->populatePprof()
+## $pprof = $mp->populatePprof)
 ## $pprof = $mp->populatePprof($prof)
 ##  + populate
 ##      $mp->{pprof} ~ f_{k}(d, c_b, w_k + c_<k)
@@ -370,7 +370,7 @@ sub addProfileDist {
     ##-- get target-index ($wi)
     $ws = $wenum->symbol($w);
     $wi = $tenum_k->index($ws);
-    if (!defined($wi=$tenum_k->index($ws))) {
+    if (!defined($wi)) {
       ##-- whoa: target looks like a pseudo-class  (hack: no smearing)
       $wi = $c2tk->{ $cids_ltk->at($tenum->index($ws)) };
     }
