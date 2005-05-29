@@ -171,34 +171,41 @@ sub sentenceProbability {
 }
 
 
-## $logprob = readerProbability($corpusREader,%args)
+## \%info = readerProbability($corpusREader,%args)
 ##   + $bg should have been conditionalized
 ##   + %args: zeroCount=>$zeroCount
 sub readerProbability {
   my ($bg,$cr,%args) = @_;
   $args{zeroCount} = $bg->zeroCount if (!defined($args{zeroCount}));
 
-  my $logsum = $LOG_ZERO;
+  my $logsum  = $LOG_ZERO;
+  my $logprod = $LOG_ONE;
   my ($t1,$logp,$pbg,$txt,$s);
+  my $nsents = 0;
 
   while (defined($s=$cr->getSentence)) {
+    ++$nsents;
     $t1 = $bg->{bos};
     $logp = $LOG_ONE;
     foreach $tok (@$s) {
       $txt   = ref($tok) ? $tok->text : $tok;
       $pbg   = $bg->{nz}{$t1.$bg->{sep}.$txt};
       $pbg   = $args{zeroCount} if (!$pbg);
-      $logp += log($pbg);
-      $t1 =   $txt;
+
+      $logp  += log($pbg);
+
+      $t1 = $txt;
     }
     $pbg   = $bg->{nz}{$t1.$bg->{sep}.$bg->{eos}};
     $pbg   = $args{zeroCount} if (!$pbg);
     $logp += log($pbg);
 
-    $logsum = plogadd($logsum, $logp);
+    ##-- sum, prod
+    $logsum   = plogadd($logsum, $logp);
+    $logprod += $logp;
   }
 
-  return $logsum;
+  return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents};
 }
 
 

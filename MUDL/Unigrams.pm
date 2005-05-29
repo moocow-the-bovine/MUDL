@@ -65,7 +65,7 @@ sub sentenceProbability {
   return $logp;
 }
 
-## $log_sum_psent = $model->readerProbability($corpusReader,%args)
+## \%info = $model->readerProbability($corpusReader,%args)
 ##   + %args : 'unknown'=>$unknown_symbol (default='@UNKNOWN')
 *readerp = *readerP = *readerrob = *readerProb = \&readerProbability;
 sub readerProbability {
@@ -73,19 +73,24 @@ sub readerProbability {
   $args{unknown} = '@UNKNOWN' if (!defined($args{unknown}));
   $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}})); ##-- HACK
 
-  my $logpsum = $LOG_ZERO;
+  my $logsum = $LOG_ZERO;
+  my $logprod = $LOG_ONE;
   my ($s,$logp,$tok,$txt,$txtp);
+  my $nsents = 0;
   while (defined($s=$cr->getSentence)) {
     $logp = $LOG_ONE;
     foreach $tok (@$s) {
       $txt   = ref($tok) ? $tok->text : $tok;
       $txtp  = $ug->{$args{unknown}} if (!defined($txtp=$ug->{$txt}));
       $txtp  = $LOG_ZERO if (!defined($txtp));
+
       $logp += log($txtp);                     ##-- independent trials: multiply
     }
-    $logpsum = plogadd($logpsum, $logp);
+    $logsum = plogadd($logsum, $logp);
+    $logprod += $logsum;
+    ++$nsents;
   }
-  return $logpsum;
+  return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents};
 }
 
 ##======================================================================

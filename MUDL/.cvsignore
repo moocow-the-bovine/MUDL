@@ -16,6 +16,7 @@
 *.save[0-9]
 *.save.*
 *.save-*
+mic
 
 tmp
 _Inline

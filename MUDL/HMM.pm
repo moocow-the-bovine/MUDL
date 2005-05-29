@@ -619,7 +619,8 @@ sub sentenceProbability {
   return $_[0]->sequenceProbability($_[0]->sentence2sequence($_[1]));
 }
 
-## $log_sum_sentprobs = $hmm->readerProbability($corpusReader)
+###### $log_sum_sentprobs = $hmm->readerProbability($corpusReader)
+## \%info = $hmm->readerProbability($corpusReader)
 ##  + sentence probabilities are added with logadd()
 ##  + returns total log(sum(p($s))) for each $s in $corpusReader
 sub readerProbability {
@@ -627,17 +628,23 @@ sub readerProbability {
 
   my ($a,$b,$pi,$omega) = @$hmm{qw(a b pi omega)};
   my $alpha = zeroes($hmm->{type},1,1);
-  my $logp = logzero;
-  my ($o,$id);
+
+  my $logsum  = logzero;
+  my $logprod = pdl(double,0); ##-- log(1)
+  my ($o,$id,$logp);
+  my $nsents = 0;
 
   while (defined($s=$cr->getSentence)) {
+    ++$nsents;
     $o = $hmm->sentence2sequence($s);
     $alpha->reshape($hmm->{N}, $o->dim(0));
     hmmalpha($a,$b,$pi, $o, $alpha);
-    $logp->inplace->logadd(logsumover($alpha->slice(":,-1") + $omega));
+    $logp = logsumover($alpha->slice(":,-1") + $omega);
+    $logprod += $logp;
+    $logsum->inplace->logadd($logp);
   }
 
-  return $logp;
+  return {logprod=>$logprod, logsum=>$logsum, nsents=>$nsents};
 }
 
 ## $log_sum_sentprobs = $hmm->fileProbability($file,%args)
@@ -646,7 +653,8 @@ sub readerProbability {
 ##-- inherited from MUDL::Corpus::Model
 
 
-## $log_sum_sentprobs = $model->bufferProbability($buffer,@args)
+###### $log_sum_sentprobs = $model->bufferProbability($buffer,@args)
+## \%info = $model->bufferProbability($buffer,@args)
 ##  + returns log(sum(p($s))) for each sentence $s in $buffer
 sub bufferProbability {
   my ($hmm,$buf) = splice(@_,0,2);
@@ -662,7 +670,8 @@ sub bufferProbability {
 ##--------------------------------------------------------------
 ## Text-probability: from MUDL::Corpus::Buffer::Pdl
 
-## $log_sum_sentprobs = $hmm->pdlBufferProbability($pdl_buffer)
+##### $log_sum_sentprobs = $hmm->pdlBufferProbability($pdl_buffer)
+## \%info = $hmm->pdlBufferProbability($pdl_buffer)
 ##  + returns log(sum(p($s))) for each sentence $s in $pdl_buffer
 ##  + no limit-checking is performed, i.e. buffer is assumed
 ##    already to have bashed unknown tokens to $hmm->{unknown},
@@ -672,20 +681,21 @@ sub pdlBufferProbability {
   require MUDL::Corpus::Buffer::Pdl;
 
   my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
-  #my $eos = $hmm->{qenum}->index($hmm->{eos});
+  my $logsum = logzero;
+  my $logprod = pdl(double,0);
 
-  my ($o);
+  my ($o,$logp);
   my $alpha = zeroes($hmm->{type},1,1);
-  my $logp = logzero;
   foreach $o (@{$buf->{sents}}) {
     $alpha->reshape($N, $o->dim(0));
     hmmalpha($a,$b,$pi, $o, $alpha);
 
-    #$logp->inplace->logadd($alpha->at($eos, -1));
-    $logp->inplace->logadd(logsumover($alpha->slice(",-1") + $omega));
+    $logp = logsumover($alpha->slice(",-1") + $omega);
+    $logsum->inplace->logadd($logp);
+    $logprod += $logp;
   }
 
-  return $logp;
+  return { logprod=>$logprod, logsum=>$logsum, nsents=>scalar(@{$buf->{sents}}) };
 }
 
 
