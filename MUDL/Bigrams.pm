@@ -13,6 +13,8 @@ use MUDL::LogUtils qw(:all);
 use Carp;
 our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile MUDL::Corpus::Model);
 
+our $DEFAULT_ZERO_PROB = 1e-5;
+
 ## OBJECT STRUCTURE:
 ##   + (from Dist::Nary): nz=>$dist, size=>$nevts, sizes=>\@sizes, nzero=>$nzero, zmass=>$zmass, sep=>$sep
 ##   + new:
@@ -142,15 +144,43 @@ sub addSentence {
 ##======================================================================
 ## Modelling
 
-## $log_psent = $model->sentenceProbability(\@sent,%args)
+## $log_p_sentence = $model->sentenceProbability(\@sent,%args)
 ##   + $model should have been conditionalized
 ##   + %args: zeroCount=>$zeroCount ##-- obsolete
 sub sentenceProbability {
   my ($bg,$s,%args) = @_;
   $args{zeroCount} = $bg->zeroCount if (!defined($args{zeroCount}));
+  $args{zeroCount} = $DEFAULT_ZERO_PROB if (!$args{zeroCount}); ##-- HACK
+
+  my ($t1) = $bg->{bos};
+  my ($pbg,$txt);
+  my $logp = $LOG_ONE;
+  foreach $tok (@$s) {
+    $txt   = ref($tok) ? $tok->text : $tok;
+    $pbg   = $bg->{nz}{$t1.$bg->{sep}.$txt};
+    $pbg   = $args{zeroCount} if (!$pbg);
+
+    $logp += log($pbg);
+    $t1    = $txt;
+  }
+  ##-- eos
+  $pbg   = $bg->{nz}{$t1.$bg->{sep}.$bg->{eos}};
+  $pbg   = $args{zeroCount} if (!$pbg);
+  $logp += log($pbg);
+
+  return $logp;
+}
+
+## $log_psent = $model->sentenceProbability(\@sent,%args)
+##   + $model should have been conditionalized
+##   + %args: zeroCount=>$zeroCount ##-- obsolete
+##   + OBSOLETE
+sub sentenceProbability_old {
+  my ($bg,$s,%args) = @_;
+  $args{zeroCount} = $bg->zeroCount if (!defined($args{zeroCount}));
+  $args{zeroCount} = $DEFAULT_ZERO_PROB if (!$args{zeroCount}); ##-- HACK
 
   my $logp = $LOG_ONE;
-
   my ($t1) = $bg->{bos};
   my ($pbg,$txt);
 
@@ -174,17 +204,23 @@ sub sentenceProbability {
 ## \%info = readerProbability($corpusREader,%args)
 ##   + $bg should have been conditionalized
 ##   + %args: zeroCount=>$zeroCount
-sub readerProbability {
+##   + OBSOLETE
+sub readerProbability_old {
   my ($bg,$cr,%args) = @_;
   $args{zeroCount} = $bg->zeroCount if (!defined($args{zeroCount}));
+  $args{zeroCount} = $DEFAULT_ZERO_PROB if (!$args{zeroCount}); ##-- HACK
 
   my $logsum  = $LOG_ZERO;
   my $logprod = $LOG_ONE;
   my ($t1,$logp,$pbg,$txt,$s);
   my $nsents = 0;
+  my $ntoks = 0;
+  my $entropy = 0;
 
   while (defined($s=$cr->getSentence)) {
     ++$nsents;
+    $ntoks += scalar(@$s);
+
     $t1 = $bg->{bos};
     $logp = $LOG_ONE;
     foreach $tok (@$s) {
@@ -192,20 +228,20 @@ sub readerProbability {
       $pbg   = $bg->{nz}{$t1.$bg->{sep}.$txt};
       $pbg   = $args{zeroCount} if (!$pbg);
 
-      $logp  += log($pbg);
-
-      $t1 = $txt;
+      $logp += log($pbg);
+      $t1    = $txt;
     }
     $pbg   = $bg->{nz}{$t1.$bg->{sep}.$bg->{eos}};
     $pbg   = $args{zeroCount} if (!$pbg);
     $logp += log($pbg);
 
-    ##-- sum, prod
+    ##-- sum, prod, entropy
     $logsum   = plogadd($logsum, $logp);
     $logprod += $logp;
+    $entropy += exp($logp) * -($logp/$LOG_TWO);
   }
 
-  return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents};
+  return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents,ntoks=>$ntoks,entropy=>$entropy};
 }
 
 

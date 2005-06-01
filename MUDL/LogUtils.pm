@@ -11,7 +11,7 @@ our $VERSION = 0.01;
 
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS = (
-		    all=>[qw($LOG_ZERO $LOG_ONE $LOG_BIG plogadd plogsum plogdiff)],
+		    all=>[qw($LOG_ZERO $LOG_ONE $LOG_TWO $LOG_BIG plogadd plogsum plogdiff)],
 		   );
 our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 our @EXPORT = @EXPORT_OK;
@@ -19,6 +19,7 @@ our @EXPORT = @EXPORT_OK;
 ##-- constants
 our $LOG_ZERO = -1e38;
 our $LOG_ONE  = 0;
+our $LOG_TWO  = log(2);
 our $LOG_BIG  = 71.38; ##-- log(1e31)
 
 ## $log_x_plus_y = plogadd($log_x, $log_y)

@@ -14,6 +14,12 @@ use MUDL::Dist;
 use Carp;
 our @ISA = qw(MUDL::Dist MUDL::Corpus::Profile MUDL::Corpus::Model);
 
+our $DEFAULT_ZERO_PROB = 1e-3;
+#our $DEFAULT_ZERO_PROB = 1e-4;
+#our $DEFAULT_ZERO_PROB = 1e-5;
+#our $DEFAULT_ZERO_PROB = 1e-6;
+#our $DEFAULT_ZERO_PROB = 1e-7;
+
 ## OBJECT STRUCTURE:
 ##   + (from Dist): $wd => $count, ...
 
@@ -47,50 +53,78 @@ sub addSentence {
 ##======================================================================
 ## Modelling
 
-## $log_psent = $model->sentenceProbability(\@sent,%args)
+## $log_p_sentence = $model->sentenceProbability(\@sent,%args)
 ##   + %args : 'unknown'=>$unknown_symbol
 ##             'punknown'=>p($unknown_symbol)
 sub sentenceProbability {
   my ($ug,$s,%args) = @_;
   $args{unknown} = '@UNKNOWN' if (!defined($args{unknown}));
-  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}}));  ##-- HACK
+  $ug->{$args{unknown}} = $DEFAULT_ZERO_PROB if(!defined($ug->{$args{unknown}}));  ##-- HACK
+  my ($tok,$txt,$txtp);
   my $logp = $LOG_ONE;
+  foreach $tok (@$s) {
+    $txt   = ref($tok) ? $tok->text : $tok;
+    $txtp  = $ug->{$args{unknown}} if (!defined($txtp=$ug->{$txt}));
+    $txtp  = 0 if (!defined($txtp));
+    $logp += log($txtp);
+  }
+  return $logp;
+}
+
+## $log_psent = $model->sentenceProbability(\@sent,%args)
+##   + %args : 'unknown'=>$unknown_symbol
+##             'punknown'=>p($unknown_symbol)
+##   + OBSOLETE!
+sub sentenceProbability_old {
+  my ($ug,$s,%args) = @_;
+  $args{unknown} = '@UNKNOWN' if (!defined($args{unknown}));
+  $ug->{$args{unknown}} = $DEFAULT_ZERO_PROB if(!defined($ug->{$args{unknown}}));  ##-- HACK
   my ($tok,$txt,$txtp);
   foreach $tok (@$s) {
     $txt   = ref($tok) ? $tok->text : $tok;
     $txtp  = $ug->{$args{unknown}} if (!defined($txtp=$ug->{$txt}));
-    $txtp  = $LOG_ZERO if (!defined($txtp));
+    $txtp  = 0 if (!defined($txtp));
     $logp += log($txtp);                     ##-- independent trials: multiply
   }
   return $logp;
 }
 
+
 ## \%info = $model->readerProbability($corpusReader,%args)
 ##   + %args : 'unknown'=>$unknown_symbol (default='@UNKNOWN')
-*readerp = *readerP = *readerrob = *readerProb = \&readerProbability;
-sub readerProbability {
+##   + OBSOLETE
+#*readerp = *readerP = *readerrob = *readerProb = \&readerProbability;
+sub readerProbability_old {
   my ($ug,$cr,%args) = @_;
   $args{unknown} = '@UNKNOWN' if (!defined($args{unknown}));
-  $ug->{$args{unknown}} = 2**-32 if(!defined($ug->{$args{unknown}})); ##-- HACK
+  $ug->{$args{unknown}} = $DEFAULT_ZERO_PROB if(!defined($ug->{$args{unknown}})); ##-- HACK
 
-  my $logsum = $LOG_ZERO;
-  my $logprod = $LOG_ONE;
-  my ($s,$logp,$tok,$txt,$txtp);
-  my $nsents = 0;
+  my ($s,$tok,$txt,$txtp);
+  my $logps = [];
   while (defined($s=$cr->getSentence)) {
     $logp = $LOG_ONE;
     foreach $tok (@$s) {
       $txt   = ref($tok) ? $tok->text : $tok;
       $txtp  = $ug->{$args{unknown}} if (!defined($txtp=$ug->{$txt}));
-      $txtp  = $LOG_ZERO if (!defined($txtp));
+      $txtp  = 0 if (!defined($txtp));
 
       $logp += log($txtp);                     ##-- independent trials: multiply
+      $wentropy += $logp;
     }
-    $logsum = plogadd($logsum, $logp);
-    $logprod += $logsum;
+    $logsum   = plogadd($logsum, $logp);
+    $logprod += $logp;
+    $entropy += exp($logp) * -($logp/$LOG_TWO);
     ++$nsents;
+    $ntoks += scalar(@$s);
   }
-  return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents};
+  return {
+	  logsum=>$logsum,
+	  logprod=>$logprod,
+	  nsents=>$nsents,
+	  ntoks=>$ntoks,
+	  entropy=>$entropy,
+	  wentropy=>$wentropy
+	 };
 }
 
 ##======================================================================

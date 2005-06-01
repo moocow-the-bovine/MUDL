@@ -614,10 +614,11 @@ sub sequenceProbability {
 ##--------------------------------------------------------------
 ## Text-probability: MUDL::Corpus::Model overrides
 
-## $log_sentprob = $hmm->sentenceProbability($mudl_sentence)
+## $log_sentprob = $hmm->sentenceProbability_old($mudl_sentence)
 sub sentenceProbability {
   return $_[0]->sequenceProbability($_[0]->sentence2sequence($_[1]));
 }
+
 
 ###### $log_sum_sentprobs = $hmm->readerProbability($corpusReader)
 ## \%info = $hmm->readerProbability($corpusReader)
@@ -633,18 +634,25 @@ sub readerProbability {
   my $logprod = pdl(double,0); ##-- log(1)
   my ($o,$id,$logp);
   my $nsents = 0;
+  my $entropy = 0;
+  my $log2    = log(pdl(double,2));
+  my $ntoks = 0;
 
   while (defined($s=$cr->getSentence)) {
     ++$nsents;
+    $ntoks += scalar(@$s);
+
     $o = $hmm->sentence2sequence($s);
     $alpha->reshape($hmm->{N}, $o->dim(0));
     hmmalpha($a,$b,$pi, $o, $alpha);
-    $logp = logsumover($alpha->slice(":,-1") + $omega);
-    $logprod += $logp;
+
+    $logp     = logsumover($alpha->slice(":,-1") + $omega);
     $logsum->inplace->logadd($logp);
+    $logprod += $logp;
+    $entropy += $logp * -($logp/$log2);
   }
 
-  return {logprod=>$logprod, logsum=>$logsum, nsents=>$nsents};
+  return {logprod=>$logprod, logsum=>$logsum, nsents=>$nsents, ntoks=>$ntoks, entropy=>$entropy};
 }
 
 ## $log_sum_sentprobs = $hmm->fileProbability($file,%args)
@@ -683,6 +691,8 @@ sub pdlBufferProbability {
   my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
   my $logsum = logzero;
   my $logprod = pdl(double,0);
+  my $entropy = pdl(double, 0);
+  my $log2 = log(pdl(double,2));
 
   my ($o,$logp);
   my $alpha = zeroes($hmm->{type},1,1);
@@ -690,12 +700,21 @@ sub pdlBufferProbability {
     $alpha->reshape($N, $o->dim(0));
     hmmalpha($a,$b,$pi, $o, $alpha);
 
-    $logp = logsumover($alpha->slice(",-1") + $omega);
+    $logp     = logsumover($alpha->slice(",-1") + $omega);
     $logsum->inplace->logadd($logp);
     $logprod += $logp;
+    $entropy += exp($logp) * -($logp/$log2);
   }
 
-  return { logprod=>$logprod, logsum=>$logsum, nsents=>scalar(@{$buf->{sents}}) };
+  my $ntoks = 0;
+  $ntoks += $_->dim(0) foreach (@{$buf->{sents}});
+
+  return { logprod=>$logprod,
+	   logsum=>$logsum,
+	   nsents=>scalar(@{$buf->{sents}}),
+	   ntoks=>$ntoks,
+	   entropy=>$entropy,
+	 };
 }
 
 

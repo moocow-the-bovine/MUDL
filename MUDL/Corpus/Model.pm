@@ -18,10 +18,56 @@ our @ISA = qw(MUDL::Object);
 
 ## return type \%info:
 ##  + hash ref:
-##     logprod => $log_product_of_sentprobs,
-##     logsum  => $log_sum_of_sentprobs,
-##     nsents  => $number_of_sentences,
+##     logprod  => $log_product_of_sentprobs,
+##     logsum   => $log_sum_of_sentprobs,
+##     logprod  => $log_product_of_sentprobs,
+##     #logwsum  => $log_sum_of_wordprobs,
+##     nsents   => $number_of_sentences,
+##     ntoks    => $number_of_tokens,
+##     entropy  => $log_sum_of_p_times_negative_log2_p,
+##     #wentropy => $sum_of_log2_wordprob,
 ##     ...
+
+## \%info = $model->initInfo()
+## \%info = $model->initInfo(\%info)
+##  + initializes an information hash
+sub initInfo {
+  my ($model,$info)=@_;
+  $info = {} if (!defined($info));
+
+  %$info =
+    (
+     logsum  => $LOG_ZERO,
+     #logwsum => $LOG_ZERO,
+     logprod => $LOG_ONE,
+     nsents  => 0,
+     ntoks   => 0,
+     entropy => $LOG_ZERO,
+     #wentropy => 0,
+    );
+
+  return $info;
+}
+
+
+## \%info = $model->addInfo($log_sentence_probability,$sentence_length,\%info)
+##  + adds relevant information to \%info
+sub addInfo {
+  my ($model,$logp,$slen,$info)=@_;
+  #my $logp = $LOG_ONE;
+  #foreach (@$logps) {
+  #  $logp += $_;
+  #  $info->{logwsum}   = plogadd($info->{logwsum}, $_);
+  #  $info->{wentropy} += $_ / $LOG_TWO;
+  #}
+  $info->{logprod} += $logp;
+  $info->{logsum}   = plogadd($info->{logsum}, $logp);
+  $info->{entropy}  = plogadd($info->{entropy}, $logp + log( -($logp / $LOG_TWO) ));
+  $info->{nsents}  ++;
+  $info->{ntoks}   += $slen;
+  return $info;
+}
+
 
 ## \%info = $model->fileProbability($filename,@args)
 ##  + calls fileReader(), readerProbability()
@@ -45,24 +91,25 @@ sub bufferProbability {
 ##  + @args are passed to $model->sentenceProbability() in default version
 sub readerProbability {
   my ($model,$cr) = splice(@_,0,2);
-  my ($s);
-  my $logsum  = $LOG_ZERO;
-  my $logprod = $LOG_ONE;
-  my $nsents  = 0;
-  my ($logp);
+  my ($s,$logp);
+  my $info = $model->initInfo();
   while (defined($s=$cr->getSentence)) {
-    $logp     = $model->sentenceProbability($s,@_[2..$#_]);
-    $logsum   = plogadd($logp, $logsum);
-    $logprod += $logp;
-    ++$nsents;
+    $logp = $model->sentenceProbability($s,@_[2..$#_]);
+    $model->addInfo($logp, scalar(@$s), $info);
   }
-  return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents};
+  return $info;
 }
 
 ## $log_psent = $model->sentenceProbability(\@sentence,@args)
 ##  + returns log(p(\@sentence))
 ##  + dummy method
 *sentenceProbability = dummy('sentenceProbability');
+
+## [$log_p1,...,$log_pN_given_p1_to_Nminus1] = $model->sentenceProbabilities(\@sentence,@args)
+##  + returns log(p(\@sentence))
+##  + dummy method: OBSOLETER!
+#*sentenceProbabilities = dummy('sentenceProbabilities');
+
 
 1;
 

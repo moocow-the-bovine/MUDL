@@ -48,6 +48,18 @@ our $LONG_CLUSTER_LABELS = 1; ##-- provide full cluster labels on itermediate tr
 ##  ##
 ##  ##-- messages
 ##  verbose => $level
+##  ##
+##  ##-- info
+##  stage_info => { ##-- stage unigram-frequency info for new targets
+##           ntgs_k=>$n_new_targets,
+##           avg=>$freq,
+##           prms=>$stddev,
+##           median=>$freq,
+##           min=>$freq,
+##           max=>$freq,
+##           adev=>$abs_stddev,
+##           rms=>$est_stddev,
+##          },
 ## }
 ##
 ## $mp = MUDL::Corpus::MetaProfile::Deep->new(%args)
@@ -62,6 +74,7 @@ sub new {
 			   %args,
 			  );
 }
+
 
 ##======================================================================
 ## Bootstrapping (stage = 1)
@@ -108,7 +121,15 @@ sub bootstrap {
     }
   }
   $mp->{ugs_k} /= 2;
-  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: min(f_0(w))=%.2f\n", $mp->{ugs_k}->min));
+
+  ##-- update info
+  $mp->{stage_info} = {} if (!$mp->{stage_info});
+  @{$mp->{stage_info}}{qw(avg prms median min max adev rms)} = map { $_->sclr } $mp->{ugs_k}->stats;
+  $mp->{ntgs_k} = $mp->{tenum}->size;
+
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: min(f_0(w))=%.2f\n", $mp->{stage_info}{min}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: max(f_0(w))=%.2f\n", $mp->{stage_info}{max}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: avg(f_0(w))=%.2f\n", $mp->{stage_info}{avg}));
 
   ##-- populate {phat}: p(class|word)
   $mp->vmsg($vl_info, "bootstrap(): phat ~ ^p(c|w)\n");
@@ -229,6 +250,7 @@ sub update {
     $tk2t->{$tid_k} = $tid;
   }
   $mp->vmsg($vl_info, "update(): ntargets_k   = ", $tenum_k->size, "\n");
+  $mp->{stage_info}{ntgs_k} = $tenum_k->size;
 
   ##-- tenum_k: old clusters
   my $c2tk = $mp->{c2tk} = {};
@@ -259,7 +281,14 @@ sub update {
   $mp->vmsg($vl_info, "update(): pprof ~ f_{<=k}(d, c_b, t_k + c_<k)\n");
   my $pprof = $mp->populatePprof($prof);
 
-  $mp->vmsg($vl_info, sprintf("update(): unigrams: min(f_{<=k}(w))=%.2f\n", $mp->{ugs_k}->min));
+  ##-- update info
+  my $ugs_tgs_k = $mp->{ugs_k}->slice("0:".($mp->{stage_info}{ntgs_k}-1));
+  @{$mp->{stage_info}}{qw(avg prms median min max adev rms)} = map { $_->sclr } $ugs_tgs_k->stats;
+
+  $mp->vmsg($vl_info, sprintf("update(): unigrams: min(f_k(w))=%.2f\n", $mp->{stage_info}{min}));
+  $mp->vmsg($vl_info, sprintf("update(): unigrams: max(f_k(w))=%.2f\n", $mp->{stage_info}{max}));
+  $mp->vmsg($vl_info, sprintf("update(): unigrams: avg(f_k(w))=%.2f\n", $mp->{stage_info}{avg}));
+
 
   ##-- update: cluster: toPDL
   $mp->vmsg($vl_info, "update(): toPDL()\n");
@@ -623,6 +652,31 @@ sub recluster {
   confess(ref($mp), ": recluster() method not implemented!");
 }
 
+
+##======================================================================
+## Useful Summary Information
+##======================================================================
+## \%infoHash = $mp->getSummaryInfo()
+sub getSummaryInfo {
+  my $mp = shift;
+  my $info = {};
+  $info->{stage} = $mp->{stage};
+
+  @$info{qw(d2p_n d2p_method)} = @{$mp->{d2p}}{qw(n method)};
+  $info->{prfType} = ref($mp->{prof});
+  $info->{nTargets} = $mp->{tenum}->size;
+  $info->{nBounds} = $mp->{benum}->size;
+  $info->{nClusters} = $mp->{cbenum}->size;
+  $info->{nTargets_k} = (defined($mp->{tenum_k})
+			 ? ($mp->{tenum_k}->size - $info->{nClusters})
+			 : $info->{nTargets});
+
+  ##-- unigram freq info
+  my $ugs = $mp->{ugs_k}->slice("0:".($info->{nTargets_k}-1));
+  @$info{qw(ugk_avg ugk_prms ugk_median ugk_min ugk_max ugk_adev ugk_rms)} = map { $_->sclr } $ugs->stats;
+
+  return $info;
+}
 
 
 
