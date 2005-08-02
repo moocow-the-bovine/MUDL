@@ -9,6 +9,7 @@
 package MUDL::CmdUtils;
 use MUDL::Object;
 use Exporter;
+use Carp;
 our @ISA = qw(Exporter);
 
 our %EXPORT_TAGS =
@@ -32,6 +33,7 @@ sub loadModule {
   my ($name,%args) = @_;
   $args{search} =  ['',qw(MUDL::)] if (!$args{search} || !@{$args{search}});
 
+  $name = ref($name) if (ref($name));
   my ($fprefix,$cprefix,$fqname);
   (my $fname = $name) =~ s/::/\//g;
   foreach $cprefix (@{$args{search}}) {
@@ -80,9 +82,9 @@ sub load {
     my $fqclass = $class;
     if (!UNIVERSAL::can($class,'loadFile')) {
       $fqclass = loadModule($class,@_)
-	or die (__PACKAGE__, "::load(): could not find class '$class'!");
+	or confess(__PACKAGE__, "::load(): could not find class '$class'!");
     }
-    die(__PACKAGE__, "::load(): no method loadFile() for class '$fqclass'!")
+    confess(__PACKAGE__, "::load(): no method loadFile() for class '$fqclass'!")
       if (!UNIVERSAL::can($fqclass,'loadFile'));
     return $fqclass->loadFile($filename,@_);
   }

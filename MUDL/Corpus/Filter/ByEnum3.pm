@@ -1,19 +1,19 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL::Corpus::Filter::Map.pm
+## File: MUDL::Corpus::Filter::ByEnum3.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus filters: map
+##  + MUDL unsupervised dependency learner: corpus filters: by enum (trigram text)
 ##======================================================================
 
-package MUDL::Corpus::Filter::Map;
+package MUDL::Corpus::Filter::ByEnum3;
 use MUDL::Corpus::Filter;
-use MUDL::Map;
+use MUDL::Enum::Nary::Flat;
 use Carp;
 our @ISA = qw(MUDL::Corpus::Filter);
 
 ########################################################################
-## I/O : Filter : Map
+## I/O : Filter : Abstract
 ########################################################################
 
 ##----------------------------------------------------------------------
@@ -22,16 +22,14 @@ our @ISA = qw(MUDL::Corpus::Filter);
 ##     reader=>$corpusReader,
 ##     writer=>$corpusWriter,
 ##     ...
-##     map     => $map,
-##     from    => $fromAttribute, ##-- default='text'
-##     to      => $toAttribute,   ##-- default='tag'
-##     unknown => $unknownValue,  ##-- default=undef (=keep old value)
+##     bos => $bos,
+##     eos => $eos,
+##     enum=>$trigramEnum,
 sub new {
   my $that = shift;
-  return $that->SUPER::new('map'=>MUDL::Map->new(),
-			   unknown=>undef,
-			   from=>'text',
-			   to=>'tag',
+  return $that->SUPER::new(enum=>MUDL::Enum::Nary::Flat->new(nfields=>3),
+			   bos=>'__$',
+			   eos=>'__$',
 			   @_);
 }
 
@@ -39,19 +37,19 @@ sub new {
 ##----------------------------------------------------------------------
 ## Filtering
 
-## undef = $f->doSentence(\@sentence)
+## undef = $cr->doSentence(\@sentence)
+##  + should be overridden by child classes
 sub doSentence {
   my ($f,$s) = @_;
-
-  my ($from,$to);
-  foreach $tok (@$s) {
-    next if (!defined($from = $tok->getAttribute($f->{from})));
-    $to = $f->{'map'}{$from};
-
-    next if (!defined($to) && !defined($to=$f->{unknown}));
-    $tok->setAttribute($f->{to}, $to);
+  my @txt = map { $f->{bos} } (0..2);
+  my @s = @$s;
+  @$s = qw();
+  my ($tok);
+  foreach $tok (@s) {
+    shift(@txt);
+    push(@txt,$tok->text);
+    push(@$s, $tok) if (defined($f->{enum}->lindex(@txt)));
   }
-
   return $s;
 }
 
@@ -64,13 +62,34 @@ sub doSentence {
 sub helpString {
   return
     (''
-     ."Deterministically map token text to tag.\n"
+     ."Filter corpus content by text lookup in a MUDL::Enum.\n"
      ."Options:\n"
-     ."  map=MAP           [default=empty]\n"
-     ."  from=ATTR         [default=text]\n"
-     ."  to=ATTR           [default=tag]\n"
-     ."  unknown=VALUE     [default=undef (keep old value)]\n"
+     ."  enum=FLAT_ENUM        [default=empty]\n"
+     ."  bos=BOS               [default=__\$]\n",
+     ."  eos=EOS               [default=__\$]\n",
     );
+}
+
+##----------------------------------------------------------------------
+## AUTOLOAD: pass to reader, writer
+
+##-- don't autoload DESTROY
+sub DESTROY { ; }
+
+our $AUTOLOAD;
+sub AUTOLOAD {
+  my $f = shift;
+  return undef if (!defined($f));
+  (my $name = $AUTOLOAD) =~ s/.*:://; ##-- strip qualification
+
+  my ($sub);
+  if ($sub=UNIVERSAL::can($f->{reader}, $name)) {
+    return $sub->($f->{reader},@_);
+  }
+  elsif ($sub=UNIVERSAL::can($f->{writer}, $name)) {
+    return $sub->($f->{writer},@_);
+  }
+  croak( ref($f) , "::$name() not defined in ", __PACKAGE__ , "::AUTOLOAD.\n");
 }
 
 1;

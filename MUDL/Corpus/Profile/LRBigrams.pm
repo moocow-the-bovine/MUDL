@@ -25,7 +25,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LR);
 ##       smoothgt=>$which,          ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,donorm=>1,%args);
+  return $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
   return $self;
 }
 

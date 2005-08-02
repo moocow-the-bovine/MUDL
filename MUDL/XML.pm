@@ -10,12 +10,16 @@ package MUDL::XML;
 use XML::LibXML;
 use XML::LibXSLT;
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
-   xpaths => [qw($s_xpath $token_xpath $text_xpath $tag_xpath $detail_xpath)],
+   xpaths => [qw($s_xpath $token_xpath
+		 $token_norm_test $token_nonorm_test
+		 $text_xpath $test_xpath_nonorm
+		 $tag_xpath $detail_xpath)
+	     ],
    styles => [qw(stylesheet_xml2tt stylesheet_xml2norm)],
   );
 $EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
@@ -26,10 +30,83 @@ our @EXPORT_DEFAULT = qw();
 ## Constants
 ##======================================================================
 our $s_xpath = '//s';
-our $token_xpath = './token[not(@type) or @type=\'word\']';
-our $text_xpath = './text[not(@normalized) or @normalized=\'1\']';
-our $detail_xpath = './detail';
-our $tag_xpath = './tag';
+
+#our $token_xpath = './token';
+#our $token_xpath   = './token[not(@type) or @type=\'word\']';
+#our $token_xpath  = './token[not(@type) or not(@type=\'punct\')]';
+
+our $token_xpath = './token';
+
+## $token_norm_test
+##  + XPath predicate matching words to be bashed to '<text normalized="1">' value
+our $token_norm_test    = 'not(@type) or @type=\'word\'';
+
+##--
+## $token_nonorm_test
+##  + XPath predicate matching words to be bashed to '<text normalized="0">' value
+#our $token_nonorm_test = '@type and not(@type=\'word\')';   ##-- include all non-word tokens un-normalized
+#our $token_nonorm_test = '@type and not(@type,\'punct\')';  ##-- include all non-punct tokens un-normalized
+#our $token_nonorm_test = '@type and starts-with(@type,\'card\')';  ##-- include all numerics
+our $token_nonorm_test  = 'false()';
+
+our $text_xpath        = './text[not(@normalized) or @normalized=\'1\']';
+our $text_xpath_nonorm = './text[not(@normalized) or @normalized=\'0\']';
+our $detail_xpath      = './detail';
+our $tag_xpath         = './tag';
+
+##======================================================================
+## Aliases
+##======================================================================
+
+##-- words-only
+sub allow_words_only {
+  if (!exists($_[0]) || $_[0]) {
+    $token_norm_test   = 'not(@type) or @type=\'word\'';
+    $token_nonorm_test = 'false()';
+  } else {
+    allow_nonword_literals(1);
+  }
+}
+
+##-- normalize numerics as type-labels
+sub allow_card_types {
+  if ($_[0]) {
+    $token_norm_test   = 'not(@type) or @type=\'word\' or starts-with(@type,\'card\')';
+    $token_nonorm_test = 'false()';
+  } else {
+    allow_words_only(1);
+  }
+}
+
+##-- normalize numerics as literals
+sub allow_card_literals {
+  if ($_[0]) {
+    $token_norm_test   = 'not(@type) or @type=\'word\'';
+    $token_nonorm_test = 'starts-with(@type,\'card\')';
+  } else {
+    allow_words_only(1);
+  }
+}
+
+##-- normalize non-words as type-labels
+sub allow_nonword_types {
+  if ($_[0]) {
+    $token_norm_test   = 'true()';
+    $token_nonorm_test = 'false()';
+  } else {
+    allow_words_only(1);
+  }
+}
+
+##-- normalize non-words as literals
+sub allow_nonword_literals {
+  if ($_[0]) {
+    $token_norm_test   = 'not(@type) or @type=\'word\'';
+    $token_nonorm_test = 'true()';
+  } else {
+    allow_words_only(1);
+  }
+}
 
 ##======================================================================
 ## Parser
@@ -84,13 +161,15 @@ sub stylesheet_xml2norm {
   %args = (
 	   s_xpath => $s_xpath,
 	   token_xpath => $token_xpath,
+	   token_norm_test => $token_norm_test,
+	   token_nonorm_test => $token_nonorm_test,
 	   text_xpath => $text_xpath,
+	   text_xpath_nonorm => $text_xpath_nonorm,
 	   detail_xpath => $detail_xpath,
 	   tag_xpath => $tag_xpath,
 	   %args
 	  );
-  return
-    qq(<?xml version="1.0" encoding="utf-8"?>
+  return qq(<?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
                 version="1.0">
 
@@ -122,17 +201,44 @@ sub stylesheet_xml2norm {
   <xsl:template name="sentence">
     <s>
       <xsl:for-each select="$args{token_xpath}">
-        <xsl:call-template name="token"/>
+        <xsl:choose>
+          <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ normalized tokens -->
+          <xsl:when test="$args{token_norm_test}">
+            <xsl:call-template name="token_normalized"/>
+          </xsl:when>
+          <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ unnormalized tokens -->
+          <xsl:when test="$args{token_nonorm_test}">
+            <xsl:call-template name="token_non_normalized"/>
+          </xsl:when>
+        </xsl:choose>
       </xsl:for-each>
     </s>
   </xsl:template>
 
   <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
-  <!-- token -->
-  <xsl:template name="token">
+  <!-- token (normalized) -->
+  <xsl:template name="token_normalized">
     <token>
       <text>
         <xsl:for-each select="$args{text_xpath}">
+          <xsl:value-of select="."/>
+        </xsl:for-each>
+      </text>
+      <xsl:for-each select="$args{tag_xpath}">
+        <xsl:call-template name="token-tag"/>
+      </xsl:for-each>
+      <xsl:for-each select="$args{detail_xpath}">
+        <xsl:call-template name="token-detail"/>
+      </xsl:for-each>
+    </token>
+  </xsl:template>
+
+  <!--~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~-->
+  <!-- token (non-normalized) -->
+  <xsl:template name="token_non_normalized">
+    <token>
+      <text>
+        <xsl:for-each select="$args{text_xpath_nonorm}">
           <xsl:value-of select="."/>
         </xsl:for-each>
       </text>

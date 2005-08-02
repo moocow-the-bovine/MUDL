@@ -15,6 +15,7 @@ use PDL;
 use PDL::Fit::Linfit;
 use Carp;
 
+use strict;
 our @ISA = qw(MUDL::Map);
 
 ##======================================================================
@@ -54,6 +55,20 @@ sub sizes { return [ $_[0]->size ]; }
 sub nFields { return 1; }
 
 ##======================================================================
+## Manipulators
+
+## $dist = $dist->addDist($dist2)
+##  + adds in data from $dist2
+sub addDist {
+  my ($d1,$d2) = @_;
+  my ($k,$v);
+  while (($k,$v)=each(%$d2)) {
+    $d1->{$k} += $v;
+  }
+  return $d1;
+}
+
+##======================================================================
 ## Smoothing & Normalization
 
 ## $d = $d->normalize()
@@ -90,7 +105,7 @@ sub countcounts {
 sub smear {
   my $Nr = shift;
   my @rs = sort { $a<=>$b } keys(%$Nr);
-  my ($i,$r,$r_lo,$r_hi);
+  my ($i,$r,$r_lo,$r_hi,$N_r);
   my $Zr = __PACKAGE__ -> new();
   for ($i=0; $i <= $#rs; $i++) {
     $r        = $rs[$i];

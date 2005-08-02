@@ -6,6 +6,7 @@ use MUDL::CmdUtils;
 use PDL;
 use MUDL::PdlDist;
 use MUDL::Corpus::MetaProfile;
+use MUDL::Corpus::MetaProfile::Full;
 use MUDL::Corpus::MetaProfile::Deep;
 
 BEGIN {

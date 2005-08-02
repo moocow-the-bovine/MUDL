@@ -140,36 +140,44 @@ sub view {
   my $mbo = $dg->{menu}{options}  = $mb->Menubutton(-text=>'Options', Name=>'options', -underline=>0);
   $mbo->pack(-side=>'left');
 
-  #$mbo->menu->add('checkbutton',
-	#	  -label=>'Show Node Details',
-	#	  -accelerator=>'Ctrl+i',
-	#	  -variable=>\$dg->{info}{state},
-	#	  -command=>sub{$dg->ddg_menu_showinfo},
-	#	 );
-
+  ##-- leaf groups
   $mbo->menu->add('checkbutton',
 		  -label=>'Show Leaf Groups',
 		  -accelerator=>'Ctrl+g',
 		  -variable=>\$dg->{info}{gstate},
 		  -command=>sub{$dg->ddg_menu_showgroups},
 		 );
-
-  $mbo->menu->add('checkbutton',
-		  -label=>'Regex Search Mode',
-		  -accelerator=>'Ctrl+r',
-		  -variable=>\$dg->{info}{searchregex},
-		 );
-
-
   $w->bind('all', '<Control-KeyPress-g>',
 	   sub { $dg->{info}{gstate} = !$dg->{info}{gstate}; $dg->ddg_menu_showgroups });
-  $w->bind('all', '<Control-KeyPress-r>',
+
+  ##-- regex search mode
+  $mbo->menu->add('checkbutton',
+		  -label=>'Regex Search Mode',
+		  -accelerator=>'Ctrl+x',
+		  -variable=>\$dg->{info}{searchregex},
+		 );
+  $dg->{info}{searchregex}=1;
+  $w->bind('all', '<Control-KeyPress-x>',
 	   sub { $dg->{info}{searchregex} = !$dg->{info}{searchregex} });
+
+  ##-- search results window
+  $mbo->menu->add('checkbutton',
+		  -label=>'Show Search Results',
+		  -accelerator=>'Ctrl+r',
+		  -variable=>\$dg->{info}{showsearch},
+		  -command=>sub{
+		    $dg->ddg_show_search_window($dg->{info}{showsearch});
+		  },
+		 );
+  $w->bind('all', '<Control-KeyPress-r>',
+	   sub { $dg->ddg_show_search_window(!$dg->{info}{showsearch}); });
+
 
   #--------------------
   # Menus: Top, Bindings
   $mb->pack(-side=>'top', -fill=>'x');
-  $w->bind('all', '<KeyPress-q>', sub { $w->destroy });
+  $w->bind('quickexit', '<KeyPress-q>', sub { $w->destroy });
+  $mb->bindtags(['quickexit', $mb->bindtags]);
 
 
   #--------------------------------------
@@ -190,6 +198,7 @@ sub view {
   };
   $iwpair->($iwcf, 'Max Group Size:', \$dg->{info}{maxgsize},5);
   $iwpair->($iwcf, 'Avg Group Size (NS):', \$dg->{info}{avggsize},5);
+  $iwpair->($iwcf, 'Number of Leaves:', \$dg->{info}{nleaves},5);
 
   $iwrow = 0;
   my $iwlf = $iw->Frame(-relief=>'groove',-bd=>2);
@@ -205,9 +214,12 @@ sub view {
   my $st = $dg->{info}{searchentry} = $iwsf->Entry(-font=>$dg->{ivfont},-width=>20,
 						   -textvariable=>\$dg->{info}{searchtext});
   $st->bind("<KeyPress-Return>", sub { $dg->ddg_search });
-  $st->bindtags([grep { $_ ne 'all' } $st->bindtags]);
+  $st->bindtags([grep { $_ ne 'quickexit' } $st->bindtags]);
   $pl->pack(-side=>'left');
   $st->pack(-side=>'right',-fill=>'x',-expand=>1);
+
+  $w->bind('all', "<Control-KeyPress-s>", sub { $st->focus(); });
+
 
   my $iwtf = $iw->Frame(-bd=>2);
   my $istpair = sub {
@@ -216,7 +228,12 @@ sub view {
     $height = 5 if (!defined($height));
     my $pf = $iwtf->Frame(-relief=>'groove',-bd=>2);
     my $pl = $pf->Label(-text=>$label,-font=>$dg->{ilfont}, -justify=>'center', -anchor=>'c');
-    my $pv = $pf->Scrolled('Text', -font=>$dg->{ivfont}, -wrap=>'word', -width=>$width,-height=>$height);
+    my $pv = $pf->Scrolled('Text',
+			   -font=>$dg->{ivfont}, -wrap=>'word',
+			   -width=>$width,-height=>$height,
+			   -takefocus=>0);
+    $pv->Subwidget('xscrollbar')->configure(-takefocus=>0);
+    $pv->Subwidget('yscrollbar')->configure(-takefocus=>0);
     $pl->pack(-side=>'top',-fill=>'x');
     $pv->pack(-side=>'top',-fill=>'both',-expand=>1);
     $$tref = $pv;
@@ -237,6 +254,48 @@ sub view {
   #$iw->withdraw();
 
   #--------------------------------------
+  # Search window
+  my $srw  = $dg->{search}{window} = $w->Toplevel(-title=>'Dendogram Search Results');
+  $srw->bind('all', '<Control-KeyPress-d>', sub { $dg->ddg_show_search_window(0) });
+  $srw->bind('all', '<KeyPress-q>',         sub { $dg->ddg_show_search_window(0) });
+
+  my $srlist = $dg->{search}{list} = $srw->Scrolled('Listbox',
+						    -bg=>'white',
+						    -width=>30,
+						    -height=>20,
+						    -scrollbars=>'se',
+						    -borderwidth=>2,
+						    #-selectmode=>'single',
+						    -selectbackground=>'lightblue',
+						    ($dg->{font} ? (-font=>$dg->{font}) : qw()),
+						    -takefocus=>1,
+						   );
+  $srlist->pack(-side=>'top',-fill=>'both',-expand=>1,);
+
+  my $srdismiss = $dg->{search}{dismiss} = $srw->Button(-text=>'Dismiss',
+							-command=>sub { $dg->ddg_show_search_window(0); });
+  $srdismiss->pack(-side=>'top',-fill=>'x',-expand=>0);
+  $srw->withdraw();
+
+  ##-- bindings
+  $srw->bind('all', "<Control-KeyPress-q>", '');
+  $srlist->bind("<Double-Button-1>",
+		sub { $dg->ddg_search_list_choose($srlist->curselection) });
+  $srlist->bind("<KeyPress-space>",
+		sub { $dg->ddg_search_list_choose($srlist->curselection) });
+  my $srspace = $srlist->bind(ref($srlist), "<KeyPress-space>");
+  my $srsub   = eval { $srlist->Subwidget('Listbox')->can(shift(@$srspace)) };
+  $srlist->bind("<KeyPress-Return>",
+		[sub {
+		   my $lb = shift;
+		   eval { no warnings; $srsub->($lb,@_); };
+		   $dg->ddg_search_list_choose($lb->curselection);
+		 }, @$srspace]);
+
+  #$srw->bindtags([$srlist, grep {$_ ne 'all'} $srw->bindtags]); ##-- default search-window widget: listbox ?!
+  #$w->bindtags([$srlist, $w->bindtags]);
+
+  #--------------------------------------
   # Canvas
   my $c = $dg->{canvas} = $w->Scrolled('Canvas',
 				       -background => 'white',
@@ -247,8 +306,11 @@ sub view {
 				       -width=>$dg->{canvasWidth},
 				       -height=>$dg->{canvasHeight},
 				      );
+  $c->Subwidget('xscrollbar')->configure(-takefocus=>0);
+  $c->Subwidget('yscrollbar')->configure(-takefocus=>0);
   $iw->pack(-side=>'left',-fill=>'y',-expand=>0,ipadx=>5,ipady=>5);
   $c->pack(-side=>'left',-fill=>'both',expand=>1,ipadx=>5,ipady=>5);
+  $c->bindtags(['quickexit', $c->bindtags]);
 
   #--------------------------------------
   # Bindings
@@ -259,7 +321,7 @@ sub view {
 		  },
 		  Ev('x'), Ev('y')]);
 
-  $c->CanvasBind("<Button2-Motion>",  [$c, 'scan', 'dragto', Ev('x'), Ev('y')] );
+  $c->CanvasBind("<Button2-Motion>",  [$c, 'scan', 'dragto', Ev('x'), Ev('y'), 10] );
 
   $c->CanvasBind("<ButtonRelease-2>",
 		 [sub {
@@ -267,18 +329,22 @@ sub view {
 		  }
 		 ]);
 
-  $c->CanvasBind("<ButtonPress-1>", sub { $dg->ddg_canvas_select('current') });
-				     #$dg,
-				     #'current'
-				     #Ev('x'), Ev('y'),
-				    #]);
+  $c->CanvasBind("<ButtonPress-1>",
+		 sub {
+		   $dg->{canvas}->focus();
+		   $dg->ddg_canvas_select('current')
+		 });
+  #$dg,
+  #'current'
+  #Ev('x'), Ev('y'),
+  #]);
 
   $c->CanvasBind("<ButtonPress-3>", [\&ddg_display_info,
 				     $dg,
 				     Ev('x'), Ev('y'),
 				    ]);
 
-  #$c->CanvasBind("<Button-1>", [\&ddg_canvas_center, Ev('x'), Ev('y')] );
+  $c->CanvasBind("<Button-3>", [\&ddg_canvas_center_screen, $dg, Ev('x'), Ev('y')] );
 
   #--------------------------------------
   # Guts
@@ -338,7 +404,7 @@ sub _ddg_draw_node {
   my ($dg,$tree,$node,$canvas) = @$args{qw(dg tree node canvas)};
   my $keystr = $node;
 
-  my ($lab,$labtxt,$cid);
+  my ($lab,$labtxt,$cid,$gid);
 
   if ($tree->isLeafNode($node)) {
     ##--------------------------
@@ -355,11 +421,13 @@ sub _ddg_draw_node {
     #print STDERR "LEAF: node=$node ; lab=$lab ; keystr=$keystr ; labtxt='$labtxt'\n";
     #print STDERR "    : tags=n$keystr", @{$args->{ancestors}}, @{$args->{tags}}, "\n";
 
+    $gid = defined($tree->{groups}{$keystr}) ? $tree->{groups}{$keystr} : '(none)';
+
     $cid = $canvas->createText(0, $args->{texty},
 			       -tags => ['node', 'leaf',
 					 ('n'.$keystr),
 					 ('al'.$keystr),
-					 'g'.(defined($tree->{groups}{$keystr}) ? $tree->{groups}{$keystr} : '(none)'),
+					 ('g'.$gid),
 					 @{$args->{ancestors}},
 					 @{$args->{tags}},
 					],
@@ -370,6 +438,7 @@ sub _ddg_draw_node {
 			      );
     $args->{texty} = $dg->{ypad} + ($canvas->bbox($cid))[3];
     $args->{dg}{cid2nid}{$cid} = $node;
+    $args->{dg}{lcid2gid}{$cid} = $gid;
 
     ##-- add 'leaves' nodeinfo
     my ($ancid);
@@ -377,6 +446,9 @@ sub _ddg_draw_node {
       (my $ancid=$_) =~ s/^dn//;
       push(@{$args->{nodeinfo}{$ancid}{leaves}}, ('al'.$keystr));
     }
+
+    ##-- record number of leaves
+    $args->{dg}{info}{nleaves}++;
   }
   else {
     ##--------------------------
@@ -478,7 +550,9 @@ sub _ddg_on_up {
 
 ##======================================================================
 ## Centering
-sub ddg_canvas_center {
+
+##-- screen coordinates
+sub ddg_canvas_center_old {
   my ($canvas,$sx,$sy) = @_;
   my ($centerx, $centery) = ( $canvas->width() / 2.0, $canvas->height() / 2.0 );
   $canvas->scan('mark', $centerx, $centery);
@@ -487,26 +561,162 @@ sub ddg_canvas_center {
 		$centery + (($centery - $sy) / 10.0));
 }
 
+sub ddg_canvas_center_screen {
+  my ($canvas,$dg,$sx,$sy) = @_;
+  my $cx = $canvas->canvasx($sx);
+  my $cy = $canvas->canvasy($sy);
+  #print STDERR "canvas_center_screen(): scoords=<$sx,$sy>  ; ccoords=<cx=$cx,cy=$cy>\n";
+  $dg->ddg_canvas_center($cx,$cy);
+}
+
+
+sub ddg_canvas_center {
+  my ($dg,$cx,$cy) = @_;
+  my $canvas = $dg->{canvas};
+  my $cw = $canvas->width;
+  my $ch = $canvas->height;
+  my @bb = $canvas->bbox('all');
+
+  my $dx = $cx-$bb[0];
+  my $dy = $cy-$bb[1];
+  $canvas->xviewMoveto(0);
+  $canvas->yviewMoveto(0);
+  $canvas->scanMark($bb[0],$bb[1]);
+  $canvas->scanDragto(-$dx+$cw/2, -$dy+$ch/2, 1);
+}
+
+sub ddg_canvas_totop {
+  my ($dg,$topx,$topy) = @_;
+  my $canvas = $dg->{canvas};
+  my @bb = $canvas->bbox('all');
+  my $dx = $topx-$bb[0];
+  my $dy = $topy-$bb[1];
+  $canvas->xviewMoveto(0);
+  $canvas->yviewMoveto(0);
+  $canvas->scanMark($bb[0],$bb[1]);
+  $canvas->scanDragto(-$dx, -$dy, 1);
+}
+
 
 ##======================================================================
-## Search
+## Search: Window
+
+## $dg->ddg_show_searchwindow($bool);
+sub ddg_show_search_window {
+  my ($dg,$bool) = @_;
+  if ($bool) {
+    $dg->{search}{window}->deiconify;
+    $dg->{search}{list}->focus;
+  } else {
+    $dg->{search}{window}->withdraw;
+    $dg->{main}->focusForce;
+    #$dg->{main}->update;
+  }
+  $dg->{info}{showsearch} = $bool;
+}
+
+## $dg->ddg_search_list_choose(@searchlist_indices)
+sub ddg_search_list_choose {
+  my ($dg,@lids) = @_;
+  my $l2m = $dg->{search}{lid2match};
+  warn(ref($dg), ": search index hash not defined!") if (!defined($l2m));
+
+  my @cids = map { $l2m->{$_}{cid} } @lids;
+  if (!@cids) { warn(ref($dg), ": no matches!"); return; }
+
+  $dg->ddg_canvas_select(join('||', @cids));
+  my @bbox = $dg->{canvas}->bbox(@cids);
+  $dg->ddg_canvas_totop(@bbox[0,1]);
+
+  ##-- and re-select 'em, just in case
+  $dg->{search}{list}->selectionClear(@lids);
+  $dg->{search}{list}->selectionSet($_) foreach (@lids);
+}
+
+## $dg->ddg_search_list_incr($offset)
+##  -- OBSOLETE
+sub ddg_search_list_incr {
+  my ($dg,$incr) = @_;
+  my $lb  = $dg->{search}{list};
+  my @cur = $lb->curselection;
+  my $cur = pop(@cur);
+  if (defined($cur)) {
+    $lb->selectionClear($cur);
+    $cur = ($cur+$incr) % $lb->size;
+  }
+  elsif ($incr < 0) { $cur = $lb->size-1; }
+  elsif ($incr > 0) { $cur = 0; }
+  $lb->selectionSet($cur);
+  $lb->see($cur);
+}
+
+##======================================================================
+## Search: Guts
+
 sub ddg_search {
   my $dg = shift;
   my $canvas = $dg->{canvas};
   my $stxt = $dg->{info}{searchtext};
+  if ($dg->{info}{searchregex}) {
+    print STDERR "--- search text = ($stxt) ---\n";
+  }
 
-  $canvas->dtag('search');
-  my ($txt);
-  foreach (
-	   grep {
-	     $txt=$canvas->itemcget($_,'-text');
-	     $dg->{info}{searchregex} ? ($txt =~ $stxt) : $txt eq $stxt
-	   } $canvas->find(withtag=>'node'))
+  ##-- get result hash: { $cid1=>\%match1, ... , $cidN=>\%matchN }
+  ##   + each %match$i is a hash:
+  ##     txt   => $text,
+  ##     cid   => $canvas_id,
+  ##     gid   => $group_id,
+  my $c2m = $dg->{search}{cid2match};
+  if (!$c2m) { $c2m = $dg->{search}{cid2match} = {}; }
+  %$c2m = qw();
+
+  my ($txt, $cid, $gid, $nid);
+  foreach $cid (
+		grep {
+		  $txt=$canvas->itemcget($_,'-text');
+		  $dg->{info}{searchregex} ? ($txt =~ $stxt) : $txt eq $stxt
+		} $canvas->find(withtag=>'leaf'))
     {
-      print STDERR "--- search($stxt): found cid=$_ ---\n";
-      $dg->{canvas}->addtag('search', withtag=>$_);
+      #print STDERR "--- search($stxt): found cid=$cid ---\n";
+      #$dg->{canvas}->addtag('search', withtag=>$_);
+      ##--
+      ##-- check for group
+      $gid = $dg->{lcid2gid}{$cid};
+      $gid = -1 if (!defined($gid));
+      $c2m->{$cid} = {txt=>$canvas->itemcget($cid,'-text'),cid=>$cid,gid=>$gid};
     }
-  $dg->ddg_canvas_select('search');
+  #$dg->ddg_canvas_select('search');
+
+  ##------------------
+  ## search results
+
+  ##-- clear
+  my $srl = $dg->{search}{list};
+  $srl->delete(0,'end');
+
+  ##-- populate
+  my ($leaf, $lid, $gstr);
+  %{$dg->{search}{lid2match}} = qw();
+  foreach $leaf (
+		 sort {
+		   (
+		    $a->{gid} <=> $b->{gid}
+		    || $a->{cid} <=> $b->{cid}
+		    || $a->{txt} cmp $b->{txt}
+		   )
+		 } values(%$c2m)
+		)
+    {
+      ($txt,$cid,$gid) = @$leaf{qw(txt cid gid)};
+      $txt =~ s/\s+/ /g;
+      $lid = $srl->index('end');
+      $gstr = ($gid < 0 ? 'nogroup' : sprintf("g%-4d", $gid));
+      $srl->insert('end', "($gstr): $txt");
+      $dg->{search}{lid2match}{$lid} = $leaf;
+    }
+
+  ##-- de-iconify
+  $dg->ddg_show_search_window(1);
 }
 
 

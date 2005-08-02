@@ -679,6 +679,7 @@ sub fromClusterArray {
 #      %other_tree_new_args
 
 *fromClusters = \&fromClusterPDL;
+$DIST_MAX = 1e100;
 sub fromClusterPDL {
   my ($t,$ct,%args) = @_;
   $t = $t->new(%args) if (!ref($t));
@@ -690,7 +691,7 @@ sub fromClusterPDL {
   my @queue = ($t->{root}, $ct->dim(1)-2);
   $t->label($t->{root}, $ct->dim(1)-1);
 
-  my ($tid,$ctid, $tlabi,$tlabs, $ctn,@tdids,$i);
+  my ($tid,$ctid, $tlabi,$tlabs, $ctn,@tdids,$i, $dist);
   while (($tid,$ctid)=splice(@queue,0,2)) {
     $ctn = $ct->slice(",($ctid)");
 
@@ -719,7 +720,9 @@ sub fromClusterPDL {
     }
 
     if (defined($cdists)) {
-      $t->{dists}{$tid} = $cdists->at($ctid);
+      $dist = $cdists->at($ctid);
+      $dist = $DIST_MAX if ($dist > $DIST_MAX);
+      $t->{dists}{$tid} = $dist;
     }
   }
 

@@ -69,10 +69,10 @@ sub test2 {
   $bp = $bf / $bf->xchg(0,1)->sumover;
   $blp = log($bp);
 
-  $hmm->compilePdls($af,$bf);
+  $hmm->compilePdls($af,$bf, $pif=ones($af->dim(0)), $omegaf=ones($af->dim(0)));
 
-  ($N,$M,$a,$a1,$b,$b1,$pi) = @$hmm{qw(N M a a1 b b1 pi)};
-  $ap=exp($a); $a1p=exp($a1); $bp=exp($b); $pip=exp($pi);
+  ($N,$M,$a,$a1,$b,$b1,$pi,$omega) = @$hmm{qw(N M a a1 b b1 pi omega)};
+  $ap=exp($a); $a1p=exp($a1); $bp=exp($b); $pip=exp($pi); $omegap=exp($omega);
 }
 
 sub test3 {
@@ -146,8 +146,13 @@ sub test1b {
   $b = log(normpdl($bp));
 
   ##-- pi
-  $pip = pdl(double,[1,0,0]);      ## initial probability: bos
+  $pip = pdl(double,[1,0,0]);      ## initial probability: force state-0
   $pi = log($pip/$pip->sum);
+
+  ##-- omega
+  $omegap = pdl(double,[1,1,1]); ## omega: unifrom
+  $omegap /= $omegap->sum;
+  $omega = log($omegap);
 
   ##-- o
   $o = pdl([0,1,2,0]);
@@ -161,14 +166,14 @@ sub test1b {
 
 
   ##-- beta
-  $bw  = hmmbw($a,$b,$o);
+  $bw  = hmmbw($a,$b,$omega, $o);
   $bwp = exp($bw);
 
   $bwp_expect  = pdl(double, [[1/8,0,1/8], [1/4,1/4,0], [0,1/2,1/2], [1,1,1]]);
   print "bw:  ", (all($bwp->approx($bwp_expect,1e-6))   ? "OK" : "NOT OK."), "\n";
 
   ##-- text prob
-  $fwtp = $fwp->slice(",".($fw->dim(1)-1))->sumover;
+  $fwtp = sumover($omegap*$fwp->slice(",-1"));
   $bwtp = sumover($pip*$bwp->slice(",0"));
   print "fw==bw ? ", (all($fwtp->approx($bwtp),1e-6) ? "OK" : "NOT OK"), "\n";
 
@@ -190,8 +195,8 @@ sub test1c {
   $m = 3;
 
   ##-- frequency pdls
-  $af = pdl(double, [[0,1],[1,0]]);
-  $bf = pdl(double, [[1,1],[1,0],[0,1]]);
+  $af = pdl(double, [[1,2],[1,2]]);
+  $bf = pdl(double, [[1,1],[2,1],[2,1]]);
   $pif = pdl(double,[1,1]);      ## initial probability: bos
   $omegaf = pdl(double,[1,1]);
 
@@ -206,6 +211,83 @@ sub test1c {
   ($ap,$bp,$pip,$omegap) = map { exp($_) } ($a,$b,$pi,$omega);
 
   return;
+}
+
+
+use vars qw($a1p $b1p $atotal $btotal);
+sub test1d {
+  $n = 3;
+  $m = 4;
+
+  ##-- frequency pdls
+  $pif = pdl(double,[1,1,1]);
+
+  $bf = pdl(double, [[0,0,0],
+		     [0,0,1],
+		     [0,1,1],
+		     [1,1,1]]);
+
+  $af = pdl(double,   [[0,1,0],
+		       [1,1,1],
+		       [3,1,4]]);
+  $omegaf = pdl(double,[1,1,1]);
+  ##-- total            5,4,6
+
+  ##-- hmm, enums
+  $hmm = MUDL::HMM->new();
+  $qenum = $hmm->{qenum}; $qenum->addSymbol($_) foreach (qw(A B));
+  $oenum = $hmm->{oenum}; $oenum->addSymbol($_) foreach (qw(a b c));
+
+  $smoothb = 'none' if (!defined($smoothb));
+  #$smootha = 'none' if (!defined($smootha));
+  $smootha = 'uniform' if (!defined($smootha));
+
+  $hmm->compilePdls($af,$bf,$pif,$omegaf, smootha=>$smootha,smoothb=>$smoothb);
+
+  ##-- params
+  ($a,$b,$pi,$omega) = @$hmm{qw(a b pi omega)};
+  ($a1,$b1,$atotal,$btotal) = @$hmm{qw(a1 b1 atotal btotal)};
+  ($ap,$bp,$pip,$omegap,$a1p,$b1p) = map { exp($_) } ($a,$b,$pi,$omega,$a1,$b1);
+
+  ##-- save
+  $label = 'default' if (!$label);
+  $save{$label} = {};
+  @{$save{$label}}{qw(a1 b1 atotal btotal ap bp pip omegap a1p b1p)}
+    = ($a1,$b1,$atotal,$btotal,$ap,$bp,$pip,$omegap,$a1p,$b1p);
+
+  return;
+}
+test1d();
+
+
+##----------------------------------------------------------------------
+## test fw/bw
+##----------------------------------------------------------------------
+use vars qw($fwbwp);
+sub testfb1 {
+  $o = pdl(long, [0,1,1,0]) if (!defined($o));
+  $fw = $hmm->alpha($o);
+  $bw = $hmm->beta($o);
+  $fwbw = $fw + $bw;
+  $fwp = $fw->exp;
+  $bwp = $bw->exp;
+  $fwbwp = $fwbw->exp;
+}
+
+##----------------------------------------------------------------------
+## test Viterbi
+##----------------------------------------------------------------------
+sub getcw {
+  $cw = MUDL::CorpusWriter::TT->new();
+  $cw->toFile('-');
+}
+sub testv {
+  $s = bless([map { MUDL::Token->new(text=>$_) } qw(a @UNKNOWN b b @UNKNOWN a)], 'MUDL::Sentence');
+  $hmm->viterbiTagSentence($s);
+}
+sub testfb {
+  $s = bless([map { MUDL::Token->new(text=>$_) } qw(a @UNKNOWN b b @UNKNOWN a)], 'MUDL::Sentence');
+  $hmm->fbTagSentence($s);
 }
 
 
@@ -227,6 +309,6 @@ sub tptestbig {
 #ltest1;
 #tptestbig();
 
-foreach $i (0..100) {
+foreach $i (0..10) {
   print "--dummy[$i]--\n";
 }

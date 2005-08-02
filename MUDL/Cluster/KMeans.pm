@@ -74,18 +74,21 @@ sub new {
 }
 
 ##======================================================================
+## @keys = $cm->datakeys()
+##   + return data-related keys: not copied by shadow(),
+##     deleted on set data
+sub datakeys {
+  my $cm = shift;
+  return ($cm->SUPER::datakeys,
+	  qw(centroids cmask));
+}
+
+##======================================================================
 ## $data = $km->data()
 ## $data = $km->data($data)
 ##   + resets data and related elements
-sub data {
-  my $km = shift;
-  return $km->{data} if (!@_);
-
-  my $data = $km->SUPER::data(@_);
-  delete(@$km{qw(initialid clusterids centroids cmask)});
-
-  return $data;
-}
+##
+##-- (inherited)
 
 
 ##======================================================================
@@ -118,8 +121,8 @@ sub cluster {
        (defined($km->{clusterids}) ? $km->{clusterids} : ($km->{clusterids}=zeroes(long,$km->{data}->dim(1)))),
        ($km->{error}=null),
        ($km->{nfound}=null),
-       (defined($km->{dist})       ? $km->{dist}       : ($km->{dist}='e')),
-       (defined($km->{method})     ? $km->{method}     : ($km->{method}='a')),
+       (defined($km->{dist})       ? $km->{dist}       : ($km->{dist}='b')),
+       (defined($km->{method})     ? $km->{method}     : ($km->{method}='v')),
       );
 
   return $km;
@@ -144,56 +147,30 @@ sub cut {
   return $km->{clusterids};
 }
 
+##======================================================================
+## Utilities: cluster <-> datum distances
+##======================================================================
+
+## (inherited)
 
 ##======================================================================
-## $pdl = $tc->leafdistances()
-## $pdl = $tc->leafdistances($pdl)
-##   + populates returns a $k-by-$n pdl representing distances
-##     between each (cluster,leaf) pair.
-sub leafdistances {
-  my ($km,$pdl) = @_;
+## Utilities: m-best (min|max)
+##======================================================================
 
-  $km->cluster() if (!defined($km->{clusterids}));
+## (inherited)
 
-  my $cids = $km->{clusterids};
-  my $data = $km->{data};
-  my $k = $km->{nclusters};
-  my $d = $data->dim(0);
-  my $n = $data->dim(1);
+##======================================================================
+## Utilities: get centroid data
+##======================================================================
 
-  ##-- get centers
-  #my $getcenters = $km->{method} eq 'm' ? 'getclustermedian' : 'getclustermean';
-  #PDL::Cluster->can($getcenters)->
-  #    (
-  #     $data,
-  #     (defined($km->{mask})      ? $km->{mask}       : ($km->{mask}=ones(long,$km->{data}->dims))),
-  #     $clusterids,
-  #     (defined($km->{centroids}) ? $km->{centroids}   : ($km->{centroids}=zeroes(long,$d,$k))),
-  #     (defined($km->{cmask})     ? $km->{cmask}       : ($km->{cmask}=ones(long,$d,$k))),
-  #    );
-  #my $centroids = $km->{centroids};
-  #my $cmask     = $km->{cmask};
+## (inherited)
 
-  ##-- get distances
-  $pdl = $km->{leafdist} if (!defined($pdl));
-  $pdl = zeroes(double,1,1) if (!defined($pdl));
-  $pdl->reshape($k, $n) if ($pdl->dim(0) != $k || $pdl->dim(1) != $n);
+##======================================================================
+## Utilities: distance-to-probability
+##======================================================================
 
-  my $rowids   = sequence(long,$n);
-  my $km_tcmethod = $km->{method} eq 'm' ? 'c' : 'a';
-  foreach $cid (0..($k-1)) {
-    rowdistances($km->{data},
-		 $km->{mask},
-		 $km->{weight},
-		 $rowids,
-		 which($cids==$cid),
-		 $pdl->slice("($cid)"),
-		 $km->{dist},
-		 $km_tcmethod);
-  }
+## (inherited)
 
-  return $km->{leafdist}=$pdl;
-}
 
 ########################################################################
 ## Conversion
@@ -205,38 +182,7 @@ sub leafdistances {
 ## Viewing
 ########################################################################
 
-##======================================================================
-## $tree = $tc->toTree(%args)
-##  + returns a MUDL::Tree representing the clusters
-##  + %args are passed to MUDL::Tree->new()
-sub toTree {
-  my $km = shift;
-  require MUDL::Tree;
-  my $tree = MUDL::Tree->new(@_);
-
-  ##-- add cluster nodes
-  my $k       = $km->{nclusters};
-  my @cid2nid = qw();
-  foreach $cid (0..($k-1)) {
-    $cid2nid[$cid] = $tree->addDaughter($tree->root, $cid);
-  }
-
-  ##-- add leaves
-  my $groups = $tree->{groups} = {};
-  my $cids = $km->{clusterids};
-  my $n    = $cids->dim(0);
-  my ($tlab,$tnid,$cid);
-  foreach $t (0..($n-1)) {
-    $tlab = defined($km->{enum}) ? $km->{enum}->symbol($t) : $t;
-    $tlab = "leaf:$t" if (!defined($tlab));
-    $cid  = $cids->at($t);
-    $tnid = $tree->addDaughter($cid2nid[$cid], $tlab);
-    $groups->{$tnid} = $cid;
-  }
-
-  return $tree;
-}
-
+## (inherited)
 
 1;
 

@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::Token.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -71,6 +71,31 @@ sub loadNativeString {
   my ($tok,$str) = @_;
   $tok = $tok->new() if (!ref($tok));
   my @fields = split(/\s*\t+\s*/,$str);
+  @$tok{qw(text tag),0..($#fields-2)} = @fields;
+  return $tok;
+}
+
+
+##======================================================================
+## I/O: LOB
+
+## $str = $tok->saveLobStrint()
+##  + only saves 'text', 'tag', and numerically keyed attributes
+sub saveLobString {
+  return join("_",
+	      (grep {
+		defined($_)
+	      }
+	       @{$_[0]}{qw(text tag)},
+	       (map { $_[0]{$_} } (sort { $a <=> $b } grep { /^\d+$/ } keys(%{$_[0]}))))
+	     );
+}
+
+## $tok = $tok->loadLobString($str)
+sub loadLobString {
+  my ($tok,$str) = @_;
+  $tok = $tok->new() if (!ref($tok));
+  my @fields = split(/\_/,$str);
   @$tok{qw(text tag),0..($#fields-2)} = @fields;
   return $tok;
 }
@@ -171,6 +196,20 @@ sub saveNativeString { return join("\t", @{$_[0]})."\n"; }
 sub loadNativeString {
   $_[0] = $_[0]->new if (!ref($_[0]));
   @{$_[0]} = split(/\s*[\t\r\n]+\s*/, $_[1]);
+  return $_[0];
+}
+
+##======================================================================
+## I/O: LOB
+
+## $str = $tok->saveLobString()
+##  + only saves 'text', 'tag', and numerically keyed attributes
+sub saveLobString { return join('_', @{$_[0]}); }
+
+# $tok = $tok->loadLobString($str)
+sub loadLobString {
+  $_[0] = $_[0]->new if (!ref($_[0]));
+  @{$_[0]} = grep { defined($_) } split(/_/, $_[1]);
   return $_[0];
 }
 
@@ -311,6 +350,33 @@ sub loadNativeString {
 }
 
 ##======================================================================
+## I/O: Lob
+
+## $str = $tok->saveLobString()
+##  + only saves 'text', 'tag', and numerically keyed attributes
+sub saveLobString {
+  return join('_',
+	      (grep {
+		defined($_)
+	      }
+	       $_[0]->text,
+	       $_[0]->tag,
+	       (map { $_->textContent } $_[0]->getChildrenByTagName('detail'))),
+	     );
+}
+
+# $tok = $tok->loadLobString($str)
+sub loadLobString {
+  my ($tok,$str) = @_;
+  $tok = $tok->new() if (!ref($tok));
+  my @fields = grep { defined($_) } split(/_/,$str);
+  $tok->text($fields[0]) if (@fields > 0);
+  $tok->tag($fields[1]) if (@fields > 1);
+  $tok->appendTextChild('detail', $_) foreach (@fields[2..$#fields]);
+  return $tok;
+}
+
+##======================================================================
 ## I/O: XML
 
 ## $node = $token->toCorpusXMLNode()
@@ -380,6 +446,20 @@ sub saveNativeString { return ${$_[0]}."\n"; }
 sub loadNativeString {
   $_[0] = $_[0]->new if (!ref($_[0]));
   (${$_[0]} = $_[1]) =~ s/^([^\t\r\n]*\S)\s*[\t\r\n]/$1/;
+  return $_[0];
+}
+
+##======================================================================
+## I/O: Lob
+
+## $str = $tok->saveLobString()
+##  + only saves 'text', 'tag', and numerically keyed attributes
+sub saveLobeString { return ${$_[0]}; }
+
+# $tok = $tok->loadLobString($str)
+sub loadLobString {
+  $_[0] = $_[0]->new if (!ref($_[0]));
+  (${$_[0]} = $_[1]) =~ s/^([^\s\_]*\S)[\s\_]/$1/;
   return $_[0];
 }
 

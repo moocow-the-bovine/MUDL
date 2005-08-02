@@ -7,7 +7,9 @@ use PDL;
 use Benchmark qw(cmpthese timethese);
 
 #use MUDL::Corpus::Buffer::Pdl;
-use MUDL::Cluster::Brown;
+#use MUDL::Cluster::Brown;
+
+use MUDL::SVD;
 
 BEGIN { $, = ' '; }
 

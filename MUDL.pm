@@ -23,6 +23,7 @@ use MUDL::CorpusIO;
 use MUDL::Map;
 use MUDL::Enum;
 use MUDL::Enum::Nary;
+use MUDL::Enum::Nary::Flat;
 use MUDL::Set;
 
 use MUDL::Token;

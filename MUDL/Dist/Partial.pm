@@ -10,6 +10,7 @@ package MUDL::Dist::Partial;
 use MUDL::Dist;
 use Carp;
 
+use strict;
 our @ISA = qw(MUDL::Object);
 
 ## object structure:
@@ -47,9 +48,7 @@ sub f {
 sub clear {
   my $d = shift;
   $d->{nz}->clear;
-  $d->{size} = 0;
-  $d->{zmass} = 0;
-  $d->{nzero} = 0;
+  $d->clearStatic();
   return $d;
 }
 
@@ -95,6 +94,26 @@ sub updateStatic {
   $d->{nzero} = $d->getNZero() if ($d->{nzero});
   return $d;
 }
+
+## $d = $d->clearStatic()
+##   + clears static data members
+sub clearStatic {
+  my $d = shift;
+  $d->{size} = 0;
+  $d->{nzero} = 0;
+  $d->{zmass} = 0;
+  return $d;
+}
+
+## $dist = $dist->addDist($dist2)
+##  + adds in data from $dist2, which should share same structure
+sub addDist {
+  my ($d1,$d2) = @_;
+  $d1->{nz}->addDist($d2->{nz});
+  $d1->clearStatic();
+  return $d1;
+}
+
 
 ##======================================================================
 ## Smoothing & Utilities

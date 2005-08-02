@@ -22,8 +22,12 @@ our $DEFAULT_ZERO_PROB = 1e-5;
 ##      eos=>$eos_marker    # default "__$"
 sub new {
   my $that = shift;
-  my $self = bless $that->SUPER::new(), ref($that)||$that;
-  @$self{qw(bos eos nfields)} = ('__$', '__$', 2);
+  my $self = bless $that->SUPER::new(
+				     bos=>'__$',
+				     eos=>'__$',
+				     nfields=>2,
+				     @_
+				    ), ref($that)||$that;
   return $self;
 }
 

@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+##-*- Mode: Perl -*-
 
 ## File: MUDL::Cluster::Tree.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -12,19 +12,23 @@ use PDL::Cluster;
 use MUDL::Cluster::Method;
 use Carp;
 
+use strict;
+
 our @ISA = qw(MUDL::Cluster::Method);
 our @EXPORT_OK = qw();
 
 ##======================================================================
-## Hierartchical clustering: Constructor
+## Hierarchical clustering: Constructor
 
 ## $args = MUDL::Cluster::Tree->new(%args);
 ##   + %args:
-##       data     => $data,    # pdl($d,$n)
-##       mask     => $mask,    # pdl($d,$n) boolean-valued matrix: true iff $data->at($i,$j) is missing
-##       weight   => $wts,     # pdl($d) $d-ary weight vector
-##       dist     => $metric,  # distance metric character flag (default='e')
-##       method   => $method,  # center computation method flag (default='a')
+##       data     => $data,     # pdl($d,$n)
+##       mask     => $mask,     # pdl($d,$n) boolean matrix: true iff $data->at($i,$j) is valid [default=!$data->isbad]
+##       weight   => $wts,      # pdl($d) $d-ary weight vector
+##       dist     => $metric,   # distance metric character flag (default='b')
+##       method   => $method,   # treecluster link-method flag (default='m')
+##       cddist   => $cddist,   # clusterdistance() dist   flag (default='u')
+##       cdmethod => $cdmethod, # clusterdistance() method flag (default='v')
 ##   + optional data:
 ##       enum     => $enum,    # leaf-id enumerator
 ##       cenum    => $enum,    # cluster-id enumerator
@@ -35,29 +39,40 @@ our @EXPORT_OK = qw();
 ##     - post-cut($k):
 ##         nclusters  => $k,                # number of clusters
 ##         clusterids => $rowid2clusterid,  # pdl($n) maps data rows to cluster-id (range 0..($k-1))
-##     - post-leafdistances():
-##         leafdist   => $leaf2cid2dist, # pdl($k,$n) maps (clusterid,leaf) to distance(leaf,clusterid)
+##     - post-():
+##         #leafdist   => $leaf2cid2dist, # pdl($k,$n) maps (clusterid,leaf) to distance(leaf,clusterid)
+##         # ^-- OBSOLETE: now use 'cdmatrix' (same thing)
 ##   + where:
 ##       $n : number of data instances (rows)
 ##       $d : number of features per datum (columns)
 ##   + methods, metrics, structures: see PDL::Cluster and cluster-3.0 documentation
 sub new {
   my ($that,%args) = @_;
-
   my ($tc);
-  if (defined($args{method}) && $args{method} =~ /^k/i) {
-    ##-- kmeans clustering
-    require MUDL::Cluster::KMeans;
-    $args{method} = substr($args{method},1);
-    $tc = MUDL::Cluster::KMeans->new(%args);
-  }
-  else {
+
+
+#  $args{method} = '' if (!defined($args{method}));
+#  if ($args{method} =~ /^k/i) {
+#    ##-- kmeans clustering (hack)
+#    require MUDL::Cluster::KMeans;
+#    $args{method} = substr($args{method},1);
+#    $tc = MUDL::Cluster::KMeans->new(%args);
+#  }
+#  elsif ($args{method} =~ /^B/) {
+#    ##-- buckshot clustering (hack)
+#    require MUDL::Cluster::Buckshot;
+#    $args{method} = substr($args{method},1);
+#    $tc = MUDL::Cluster::Buckshot->new(%args);
+#  }
+#  else {
     $tc = $that->SUPER::new(
 			    data=>undef,
 			    mask=>undef,
 			    weight=>undef,
-			    method=>'a',
-			    dist=>'e',
+			    dist=>'b',     ##-- Manhattan distance
+			    method=>'m',   ##-- maximum link
+			    cddist=>'u',   ##-- uncentered correlation (vector cosine)
+			    cdmethod=>'v', ##-- pairwise average
 			    ##-- output data
 			    ctree=>undef,
 			    linkdist=>undef,
@@ -65,28 +80,27 @@ sub new {
 			    nclusters=>2,
 			    %args
 			    );
-  }
+#  }
 
   return $tc;
 }
 
 ##======================================================================
+## @keys = $cm->datakeys()
+##   + return data-related keys: not copied by shadow(),
+##     deleted on set data
+sub datakeys {
+  my $cm = shift;
+  return ($cm->SUPER::datakeys,
+	  qw(ctree linkdist),
+	 );
+}
+
+##======================================================================
 ## $tree2 = $tree->shadow(%args)
 ##   + return a new tree of same type:
-##     ~ no data
-##     ~ same distance-metric, link-method, nclusters
-##     ~ copied enum, if present
-##   + %args are passed to ref($tree)->new();
-sub shadow {
-  my $t1 = shift;
-  return ref($t1)->new(
-		       (defined($t1->{enum}) ? (enum=>$t1->{enum}->copy) : qw()),
-		       dist=>$t1->{dist},
-		       method=>$t1->{method},
-		       (defined($t1->{nclusters}) ? (nclusters=>$t1->{nclusters}) : qw()),
-		       @_
-		      );
-}
+##
+## (inherited)
 
 
 ##======================================================================
@@ -107,7 +121,7 @@ sub cluster {
   PDL::Cluster::treecluster
     (
      $tc->{data},
-     (defined($tc->{mask})     ? $tc->{mask}     : ($tc->{mask}=ones(long,$tc->{data}->dims))),
+     (defined($tc->{mask})     ? $tc->{mask}     : ($tc->{mask}=!$tc->{data}->isbad)),
      (defined($tc->{weight})   ? $tc->{weight}   : ($tc->{weight}=ones(double,$tc->{data}->dim(0)))),
 
      (defined($tc->{ctree})    ? $tc->{ctree}    : ($tc->{ctree}=zeroes(long,2,$tc->{data}->dim(1)))),
@@ -116,6 +130,13 @@ sub cluster {
      (defined($tc->{dist})     ? $tc->{dist}     : ($tc->{dist}='e')),
      (defined($tc->{method})   ? $tc->{method}   : ($tc->{method}='a')),
     );
+
+  ##-- sanity check
+  confess(ref($tc), "::cluster() -- unknown error in treecluster()")
+    if (all($tc->{ctree}==zeroes(long,$tc->{ctree}->dims)));
+
+  ##-- update size flags
+  @$tc{qw(nfeatures ndata)} = $tc->{data}->dims;
 
   return $tc;
 }
@@ -126,6 +147,11 @@ sub cluster {
 ##   + cut tree, returns vector clusterids($n)
 sub cut {
   my ($tc,$nclusters) = @_;
+
+  ##-- ensure clustered
+  $tc->cluster() if (!defined($tc->{ctree}));
+
+  ##-- cut: params
   $tc->{nclusters} = $nclusters if (defined($nclusters));
   $tc->{nclusters} = 2 if (!defined($tc->{nclusters}));
 
@@ -140,13 +166,17 @@ sub cut {
   return $tc->{clusterids};
 }
 
+
 ##======================================================================
 ## $pdl = $tc->leafdistances()
-## $pdl = $tc->leafdistances($pdl)
+## $pdl = $tc->leafdistances($leafdist_pdl)
 ##   + populates returns a $k-by-$n pdl representing distances
 ##     between each (cluster,leaf) pair.
-sub leafdistances {
-  my ($tc,$pdl) = @_;
+##
+##-- now just a wrapper for clusterDistanceMatrix()
+
+sub leafdistances_obsolete {
+  my ($tc,$ldpdl) = @_;
 
   confess(ref($tc), "::leafdistances(): no data!") if (!defined($tc->{data}));
 
@@ -157,24 +187,54 @@ sub leafdistances {
   my $k = $tc->{nclusters};
   my $n = $tc->{data}->dim(1);
 
-  $pdl = $tc->{leafdist} if (!defined($pdl));
-  $pdl = zeroes(double,1,1) if (!defined($pdl));
-  $pdl->reshape($k, $n) if ($pdl->dim(0) != $k || $pdl->dim(1) != $n);
+  $ldpdl = $tc->{leafdist} if (!defined($ldpdl));
+  $ldpdl = zeroes(double,1,1) if (!defined($ldpdl));
+  $ldpdl->reshape($k, $n) if ($ldpdl->dim(0) != $k || $ldpdl->dim(1) != $n);
 
+=begin comment
+
+  ##-- OLD
   my $rowids=sequence(long,$n);
   foreach $cid (0..($k-1)) {
-    PDL::Cluster::rowdistances($tc->{data},
-			       $tc->{mask},
-			       $tc->{weight},
-			       $rowids,
-			       which($cids==$cid),
-			       $pdl->slice("($cid)"),
-			       $tc->{dist},
-			       $tc->{method});
+    PDL::Cluster::clusterdistances($tc->{data},
+				$tc->{mask},
+				$tc->{weight},
+				$rowids,
+				which($cids==$cid),
+				$ldpdl->slice("($cid)"),
+				$tc->{dist},
+				$tc->{method});
   }
-  $pdl /= $tc->{weight}->sum if (defined($tc->{weight}));
+  ##-- makes no difference for nbest_inverse
+  #$ldpdl /= $tc->{weight}->sum if (defined($tc->{weight}));
 
-  return $tc->{leafdist}=$pdl;
+=end comment
+
+=cut
+
+
+#=begin comment
+
+  ##-- NEW
+  my $rowseq   = sequence(long,$n);
+  my $cddist   = $tc->cddist();
+  my $cdmethod = $tc->cdmethod();
+  my ($csizes, $ciids, $lds);
+  PDL::Cluster::clustersizes($cids, $csizes=zeroes(long,$k));
+  PDL::Cluster::clusterelements($cids, $csizes, $ciids=zeroes($csizes->max,$k)-1);
+  PDL::Cluster::clusterdistancematrix(@$tc{qw(data mask weight)}, $rowseq,
+				      $csizes, $ciids, $ldpdl,
+				      $cddist, $cdmethod);
+
+  ##-- factor out contribution of WEIGHTS: no effect for nbest_inverse
+  #$ldpdl /= $tc->{weight}->sum if (defined($tc->{weight})); ##-- we had this earlier (but it's wrong)
+  #$ldpdl *= $tc->{weight}->sum if (defined($tc->{weight})); ##-- this is correct, but makes no real difference
+
+#=end comment
+#
+#=cut
+
+  return $tc->{leafdist}=$ldpdl;
 }
 
 
@@ -196,12 +256,15 @@ sub leafdistances {
 sub toTree {
   my $tc = shift;
   require MUDL::Tree;
-  return MUDL::Tree->fromClusterPDL($tc->{ctree},
-				    enum=>$tc->{enum},
-				    dists=>$tc->{linkdist},
-				    groups=>$tc->{clusterids},
-				    #dmult=>100,
-				    @_);
+  if (defined($tc->{ctree})) {
+    return MUDL::Tree->fromClusterPDL($tc->{ctree},
+				      enum=>$tc->{enum},
+				      dists=>$tc->{linkdist},
+				      groups=>$tc->{clusterids},
+				      #dmult=>100,
+				      @_);
+  }
+  return $tc->SUPER::toTree(@_);
 }
 
 

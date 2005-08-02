@@ -23,8 +23,12 @@ our @ISA = qw(MUDL::Dist::Nary MUDL::Corpus::Profile MUDL::Corpus::Model);
 ##      "$w1.$sep.$w2.$sep.$w3"
 sub new {
   my $that = shift;
-  my $self = bless $that->SUPER::new(), ref($that)||$that;
-  @$self{qw(bos eos nfields)} = ('__$', '__$', 3);
+  my $self = bless $that->SUPER::new(
+				     bos=>'__$',
+				     eos=>'__$',
+				     nfields=>3,
+				     @_
+				    ), ref($that)||$that;
   return $self;
 }
 
@@ -111,6 +115,7 @@ sub addReader {
       ($wm2,$wm1) = ($wm1,$txt);
     }
     ++$tg->{nz}{$wm2.$fs.$wm1.$fs.$eos};
+    ++$tg->{nz}{$wm1.$fs.$eos.$fs.$eos};
   }
   return $tg;
 }
