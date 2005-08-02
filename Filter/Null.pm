@@ -1,60 +1,29 @@
 #-*- Mode: Perl -*-
 
-## File: MUDL::Corpus::Filter::Map.pm
+## File: MUDL::Corpus::Filter::Null.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus filters: map
+##  + MUDL unsupervised dependency learner: corpus filters: null filter
 ##======================================================================
 
-package MUDL::Corpus::Filter::Map;
+package MUDL::Corpus::Filter::Null;
 use MUDL::Corpus::Filter;
-use MUDL::Map;
+
+use strict;
 use Carp;
 our @ISA = qw(MUDL::Corpus::Filter);
 
 ########################################################################
-## I/O : Filter : Map
+## I/O : Filter : Abstract
 ########################################################################
-
-##----------------------------------------------------------------------
-## $cf = $class_or_obj->new(%args)
-##  + %args:
-##     reader=>$corpusReader,
-##     writer=>$corpusWriter,
-##     ...
-##     map     => $map,
-##     from    => $fromAttribute, ##-- default='text'
-##     to      => $toAttribute,   ##-- default='tag'
-##     unknown => $unknownValue,  ##-- default=undef (=keep old value)
-sub new {
-  my $that = shift;
-  return $that->SUPER::new('map'=>MUDL::Map->new(),
-			   unknown=>undef,
-			   from=>'text',
-			   to=>'tag',
-			   @_);
-}
 
 
 ##----------------------------------------------------------------------
 ## Filtering
 
-## undef = $f->doSentence(\@sentence)
-sub doSentence {
-  my ($f,$s) = @_;
-
-  my ($from,$to);
-  foreach $tok (@$s) {
-    next if (!defined($from = $tok->getAttribute($f->{from})));
-    $to = $f->{'map'}{$from};
-
-    next if (!defined($to) && !defined($to=$f->{unknown}));
-    $tok->setAttribute($f->{to}, $to);
-  }
-
-  return $s;
-}
-
+## undef = $cr->doSentence(\@sentence)
+##  + should be overridden by child classes
+sub doSentence { return $_[1]; }
 
 
 ##----------------------------------------------------------------------
@@ -64,13 +33,31 @@ sub doSentence {
 sub helpString {
   return
     (''
-     ."Deterministically map token text to tag.\n"
-     ."Options:\n"
-     ."  map=MAP           [default=empty]\n"
-     ."  from=ATTR         [default=text]\n"
-     ."  to=ATTR           [default=tag]\n"
-     ."  unknown=VALUE     [default=undef (keep old value)]\n"
+     ."Null filter, useful for corpus format conversion.\n"
+     ."Options: (none)\n"
     );
+}
+
+##----------------------------------------------------------------------
+## AUTOLOAD: pass to reader, writer
+
+##-- don't autoload DESTROY
+sub DESTROY { ; }
+
+our $AUTOLOAD;
+sub AUTOLOAD {
+  my $f = shift;
+  return undef if (!defined($f));
+  (my $name = $AUTOLOAD) =~ s/.*:://; ##-- strip qualification
+
+  my ($sub);
+  if ($sub=UNIVERSAL::can($f->{reader}, $name)) {
+    return $sub->($f->{reader},@_);
+  }
+  elsif ($sub=UNIVERSAL::can($f->{writer}, $name)) {
+    return $sub->($f->{writer},@_);
+  }
+  croak( ref($f) , "::$name() not defined in ", __PACKAGE__ , "::AUTOLOAD.\n");
 }
 
 1;

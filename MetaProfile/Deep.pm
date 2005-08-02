@@ -14,6 +14,7 @@ use PDL::Cluster;
 use Carp;
 our @ISA = qw(MUDL::Corpus::MetaProfile);
 
+use strict;
 our $LONG_CLUSTER_LABELS = 1; ##-- provide full cluster labels on itermediate tree
 
 ##======================================================================
@@ -26,7 +27,7 @@ our $LONG_CLUSTER_LABELS = 1; ##-- provide full cluster labels on itermediate tr
 ##  tenum => $enum,        ## previous+current targets (token) enum (T_{<=$i})
 ##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + bos,eos)
 ##  cbenum => $enum,       ## (bound-)class enum: includes bos,eos (<=$i)
-##  tree => $cluster_tree, ## MUDL::Cluster::Tree
+##  cm => $cluster_method, ## MUDL::Cluster::Method
 ##  ##
 ##  ##-- previous data
 ##  pprof => $prev_prof,   ## ^f_{<=k}($dir, $bound_cluster, $target_word)
@@ -34,7 +35,7 @@ our $LONG_CLUSTER_LABELS = 1; ##-- provide full cluster labels on itermediate tr
 ##  ##-- current iteration data
 ##  prof => $profile,      ## current profile: ^f_{$dir}($dir, $bound_word, $target_word)
 ##  stage => $i,           ## stage number
-##  d2p => {method=>'nbest_base',n=>4,b=>2},  ## distance-to-probability arguments
+##  #d2p => {method=>'nbest_base',n=>4,b=>2},  ## distance-to-probability arguments: now in {cm}{cd...}
 ##  ##
 ##  ##-- more current iteration data
 ##  clusterids => $pdl,    ## pdl($n) : best cluster-ids
@@ -65,11 +66,7 @@ our $LONG_CLUSTER_LABELS = 1; ##-- provide full cluster labels on itermediate tr
 ## $mp = MUDL::Corpus::MetaProfile::Deep->new(%args)
 sub new {
   my ($that,%args) = @_;
-
-  $args{method} = 'full';
-  return $that->SUPER::new(
-			   stage => 0,
-			   d2p => {method=>'nbest_inverse',n=>8,b=>2},
+  return $that->SUPER::new(stage => 0,
 			   verbose => $vl_default,
 			   %args,
 			  );
@@ -81,24 +78,29 @@ sub new {
 ##======================================================================
 
 ##--------------------------------------------------------------
-## $mp = $mp->bootstrap($profile1, $tree1, %args)
+## $mp = $mp->bootstrap($profile1, $cm1, %args)
 ##  + initializes $mp->{phat}
-##  + %args contains arguments for $tree1->membershipProbs()
-##  + $profile1 and $tree1 may both be destructively altered!
+##  + %args contains arguments for $cm1->membershipProbs()
+##  + $profile1 and $cm1 may both be destructively altered!
 sub bootstrap {
-  my ($mp,$prof,$tree,%args) = @_;
+  my ($mp,$prof,$cm,%args) = @_;
   $mp->vmsg($vl_info, "bootstrap().\n");
 
-  $mp->{prof} = $prof;
-  $mp->{tree} = $tree;
+  ##-- set base data
+  $mp->{prof}  = $prof;
+  $mp->{cm}    = $cm;
   $mp->{stage} = 1;
+
+  ##-- load modules
+  MUDL::CmdUtils::loadModule(ref($prof))
+      or confess(ref($mp), "::bootstrap(): could not load profile module '", ref($prof), "': $!");
+  MUDL::CmdUtils::loadModule(ref($cm))
+      or confess(ref($mp), "::bootstrap(): could not load cluster module '", ref($cm), "': $!");
 
   ##-- initialize enums
   $mp->{tenum}  = $prof->{targets};
   $mp->{benum}  = $prof->{targets}->copy;
-
-  ##--
-  $mp->{cbenum} = $tree->clusterEnum()->copy;
+  $mp->{cbenum} = $cm->clusterEnum()->copy;
 
   ##-- bound-class-hack: bos,eos
   foreach (@$mp{qw(bos eos)} = @$prof{qw(bos eos)}) {
@@ -107,14 +109,14 @@ sub bootstrap {
 
   ##-- populate {clusterids}: word => argmax_class ( p(class|word) )
   $mp->vmsg($vl_info, "bootstrap(): clusterids ~ w => argmax_c ( p(c|w) )\n");
-  $mp->{clusterids} = $tree->{clusterids};
+  $mp->{clusterids} = $cm->{clusterids};
 
   ##-- populate ugs_k
   $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
   $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
-  foreach $dir (qw(right left)) {
+  foreach my $dir (qw(right left)) {
     my $d = $mp->{prof}{$dir};
-    my ($k,$t,$b,$f);
+    my ($k,$t,$b,$f,$w);
     while (($k,$f)=each(%{$d->{nz}})) {
       ($w,$b) = $d->split($k);
       $mp->{ugs_k}->slice("$w") += $f;
@@ -141,74 +143,33 @@ sub bootstrap {
 ##--------------------------------------------------------------
 ## $phatPdl = $mp->populatePhat(%args)
 ##  + populates $mp->{phat} ~ $phat->at($cid,$wid) = ^p($cid | $wid)
-##    from $mp->{tree}
+##    from $mp->{cm}
 ##  + %args:
-##    - passed to $mp->{tree}->membershipProbPdl()
+##    - passed to $mp->{cm}->membershipProbPdl()
 sub populatePhat {
   my $mp = shift;
 
   my $phat = zeroes(double, $mp->{cbenum}->size, $mp->{tenum}->size);
   my $beta = $mp->beta;
   $mp->vmsg($vl_info, "populatePhat(): avg(beta) = ", $beta->avg, "\n");
-  $mp->{tree}->membershipProbPdl( %{$mp->{d2p}},
-				  beta=>$beta,
-				  @_,
-				  pdl=>$phat );
+  $mp->{cm}->membershipProbPdl(@_,d2pbeta=>$beta,r2cprobs=>$phat);
 
   ##-- class-probability membership hack: bos,eos
   foreach (@$mp{qw(bos eos)}) {
     $phat->slice($mp->{cbenum}->index($_).",") .= 0;
   }
 
+  ##-- sanity check
+  $phat->inplace->setnantobad();
+  confess(ref($mp), "::populatePhat(): bad values in {phat} bode ill!")
+    if ($phat->nbad > 0);
+  confess(ref($mp), "::populatePhat(): no nonzero values in {phat}!")
+    if (all($phat==0));
+
+
   return $mp->{phat} = $phat;
 }
 
-##--------------------------------------------------------------
-## $tweakedDist = $mp->bootstrapProfileDist($profileDistNary)
-##  + generated $tweakedDist, a distribution over target-words & bound-classes
-##    from $profileDistNary, over target- and bound-words.
-*boundWords2Clusters = \&bootstrapProfileDist;
-sub bootstrapProfileDist {
-  my ($mp,$wvdist) = @_;
-
-  my $wenum   = $wvdist->{enum}{enums}[0];
-  my $venum   = $wvdist->{enum}{enums}[1];
-  my $tenum   = $mp->{tenum};
-  my $cbenum  = $mp->{cbenum};
-
-  my $Ncb     = $cbenum->size;
-  my $Nt      = $tenum->size;
-  my $fwb_pdl = zeroes(double, $Nt, $Ncb);
-  my $phat    = $mp->{phat};
-
-  my ($key,$f, $w,$v, $wi, $vs,$vi, $Pbv);
-  while (($key,$f)=each(%{$wvdist->{nz}})) {
-    ($w,$v) = $wvdist->split($key);
-
-    $wi = $tenum->index($wenum->symbol($w)); ##-- this should never fail
-
-    $vs = $venum->symbol($v);                ##-- nor should this
-
-    if (defined($vi=$tenum->index($vs))) {
-      ##-- bound-word, previous target
-      $Pbv                      = $phat->slice(",($vi)");
-      $fwb_pdl->slice("($wi)") += $Pbv * $f;
-    }
-    else {
-      ##-- whoa, it's a literal singleton class-bound!
-      $vi = $cbenum->index($vs);
-      $fwb_pdl->slice("$wi,$vi") += $f;
-    }
-  }
-
-  my $fwb_ed = MUDL::EDist::Nary->new(nfields=>$wvdist->{nfields},
-				      sep=>$wvdist->{sep},
-				      enum=>MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
-								  enums=>[$tenum, $cbenum]),
-				     );
-
-  return MUDL::PdlDist->new(pdl=>$fwb_pdl, enum=>$fwb_ed->{enum})->toEDist($fwb_ed);
-}
 
 ##======================================================================
 ## Update (Stage > 1)
@@ -233,6 +194,12 @@ sub update {
   $mp->vmsg($vl_info, "update(): ntargets     = ", $prof->{targets}->size, "\n");
   $mp->{prof} = $prof;
 
+  ##-- update: load modules
+  MUDL::CmdUtils::loadModule(ref($prof))
+      or confess(ref($mp), "::update(): could not load profile module '", ref($prof), "': $!");
+  MUDL::CmdUtils::loadModule(ref($mp->{cm}))
+      or confess(ref($mp), "::update(): could not load cluster module '", ref($mp->{cm}), "': $!");
+
   ##-- update: enums
   $mp->vmsg($vl_info, "update(): enums ~ B_<=k, T_<=k, T_k\n");
   my $tenum_ltk = $mp->{tenum_ltk} = $mp->{tenum}->copy;
@@ -255,7 +222,7 @@ sub update {
   ##-- tenum_k: old clusters
   my $c2tk = $mp->{c2tk} = {};
   my $tk2c = $mp->{tk2c} = {};
-  my $Nc = $mp->{tree}{nclusters};
+  my $Nc = $mp->{cm}{nclusters};
 
   my $km1 = $mp->{stage}-1;
   my @clabs = map { "~c${_}_${km1}:" } (0..($Nc-1)); ##-- $clabs[$cluster_id] => $cluster_label
@@ -292,26 +259,16 @@ sub update {
 
   ##-- update: cluster: toPDL
   $mp->vmsg($vl_info, "update(): toPDL()\n");
-  my $tree = $mp->{tree_k} = $mp->{tree}->shadow(enum=>$pprof->{targets});
-  $tree->data($pprof->toPDL);
+  my $cm = $mp->{cm_k} = $mp->{cm}->shadow(enum=>$pprof->{targets});
+  $cm->data($pprof->toPDL);
 
   ##-- update: cluster: cluster()
   $mp->vmsg($vl_info, "update(): cluster()\n");
-  $tree->cluster();
+  $cm->cluster();
 
-  ##-- update: cluster: cut()
-  #$mp->vmsg($vl_info, "update(): cut()\n");
-  #$tree->cut();
-
-  #return $mp; ##-- DEBUG
-
-  ##-- update: tree
-  $mp->vmsg($vl_info, "update(): tree\n");
-  $mp->updateTree();
-
-  ##-- update: phat
-  #$mp->vmsg($vl_info, "update(): phat ~ ^p( c_{k} | w_{<=k} )\n");
-  #$mp->populatePhat();
+  ##-- update: cm
+  $mp->vmsg($vl_info, "update(): cm\n");
+  $mp->updateCm();
 
   ##-- update: phat
   $mp->vmsg($vl_info, "update(): phat ~ ^p( c_{k} | w_{<=k} )\n");
@@ -400,7 +357,7 @@ sub addProfileDist {
     $ws = $wenum->symbol($w);
     $wi = $tenum_k->index($ws);
     if (!defined($wi)) {
-      ##-- whoa: target looks like a pseudo-class  (hack: no smearing)
+      ##-- whoa: target looks like a pseudo-class  (hack: no smearing) : FIX THIS?
       $wi = $c2tk->{ $cids_ltk->at($tenum->index($ws)) };
     }
 
@@ -413,7 +370,7 @@ sub addProfileDist {
       $fwb_pdl->slice("($wi)") += $Pbv * $f;
     }
     else {
-      ##-- whoa, it's a literal singleton class-bound!
+      ##-- whoa, it's a literal singleton class-bound -- i.e. {BOS},{EOS}
       $vi = $cbenum->index($vs);
       $fwb_pdl->slice("$wi,$vi") += $f;
     }
@@ -444,9 +401,9 @@ sub beta {
 ##--------------------------------------------------------------
 ## $phatPdl = $mp->updatePhat(%args)
 ##  + populates $mp->{phat} ~ $phat->at($cid,$wid) = ^p($cid | $wid)
-##    from $mp->{tree_k} and $mp->{phat} (last iteration)
+##    from $mp->{cm_k} and $mp->{phat} (last iteration)
 ##  + %args:
-##    - passed to $mp->{tree_k}->membershipProbPdl()
+##    - passed to $mp->{cm_k}->membershipProbPdl()
 ##  + needs:
 ##    $mp->{phat}        ## ^p_{<k}
 ##    $mp->{tenum_ltk}   ## T_{<k}
@@ -458,14 +415,12 @@ sub updatePhat {
   my $phat_ltk = $mp->{phat};
 
   ##-- get ^p_k( c_k | t_k + c_{k-1} )  ~ current iteration
-  $mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
   my $beta = $mp->beta;
   $mp->vmsg($vl_info, "updatePhat(): avg(beta) = ", $beta->avg, "\n");
+
+  $mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
   my $phat_k   = zeroes(double, $mp->{cbenum}->size, $mp->{tenum_k}->size);
-  $mp->{tree_k}->membershipProbPdl( %{$mp->{d2p}},
-				    @_,
-				    beta=>$beta,
-				    pdl=>$phat_k );
+  $mp->{cm_k}->membershipProbPdl(@_, d2pbeta=>$beta, r2cprobs=>$phat_k);
 
   ##-- allocate new ^p_{<=k}()
   $mp->vmsg($vl_info, "updatePhat(): adjust ~ ^p_{<=k}( c_k | t_{<=k} )\n");
@@ -478,18 +433,56 @@ sub updatePhat {
   my $tenum     = $mp->{tenum};
   my $tenum_ltk = $mp->{tenum_ltk};
   my $tenum_k   = $mp->{tenum_k};
-  my $cids_ltk  = $mp->{tree_ltk}{clusterids};
+  my $cids_ltk  = $mp->{cm_ltk}{clusterids};
 
-  $mp->vmsg($vl_info, "updatePhat(): add<k ~ ^p_{<=k} += t_{<k}\n");
+#=begin comment
+
+  $mp->vmsg($vl_info, "updatePhat(): add<k ~ ^p_{<=k} += t_{<k} [HARD]\n");
   my ($tid_ltk,$tid_lek,$cid_ltk);
   my $c2tk = $mp->{c2tk};
+  ##-- OLD
   foreach $tid_ltk (0..($tenum_ltk->size-1)) {
     $cid_ltk = $cids_ltk->at($tid_ltk);
-    $phat->slice(",($tid_ltk)") .= $phat_k->slice(",($c2tk->{$cid_ltk})");
+    $phat->slice(",($tid_ltk)") .= $phat_k->slice(",($c2tk->{$cid_ltk})"); ##-- NO SMEARING: FIX!
   }
 
-  ## phat: create: add new
+#=end comment
+#
+#=cut
+
+=begin comment
+
+  ##-- NEW
+  $mp->vmsg($vl_info, "updatePhat(): add<k ~ ^p_{<=k} += t_{<k} [SOFT]\n");
+  my $phat_cltk2ck = $phat_k->dice_axis(1, pdl(long, [@$c2tk{(0..(scalar(keys(%{$mp->{c2tk}}))-1))}]));
+  my $phat_t_lek = zeroes(double, $phat_k->dim(0));
+  my $d2p_n = $mp->{d2p}{n} ? $mp->{d2p}{n} : 1;
+  my $tcids_ltk = zeroes(long, $d2p_n);
+  my ($phat_t_ltk, $phat_t);
+  foreach $tid_ltk (0..($tenum_ltk->size-1)) {
+    #$cid_ltk = $cids_ltk->at($tid_ltk);
+
+    ##-- get p(c_{k-1} | t)
+    $phat_t_ltk = $phat_ltk->slice(",($tid_ltk)");
+    $phat_t_ltk->which($tcids_ltk);
+
+    ##-- compute p(c_k|t_{k-1}) = \sum_{c_{k-1}} p(c_k|c_{k-1}) * p(c_{k-1}|t_{k-1})
+    sumover($phat_t_ltk->dice($tcids_ltk) * $phat_cltk2ck->dice_axis(1,$tcids_ltk)->xchg(0,1), $phat_t_lek);
+
+    ##-- restrict to n-best
+    $phat_t_lek->maximum_n_ind($tcids_ltk);
+    $phat_t = $phat->slice(",($tid_ltk)");
+    $phat_t->index($tcids_ltk) .= $phat_t_lek->index($tcids_ltk);
+    $phat_t /= $phat_t->sum;
+  }
+
+=end comment
+
+=cut
+
+  ##-- phat: create: add new targets
   $mp->vmsg($vl_info, "updatePhat(): add+k ~ ^p_{<=k} += t_k\n");
+  my ($tid_k);
   foreach $tid_k (0..($tenum_k->size-1)) {
     $tid_lek = $tenum->index($tenum_k->symbol($tid_k));
     next if (!defined($tid_lek));  ##-- ignore old clusters
@@ -507,137 +500,153 @@ sub updatePhat {
 
 
 ##--------------------------------------------------------------
-## $tree = $mp-updateTree()
-##  + updates $mp->{tree} from $mp->{tree_k} and $mp->{tree_ltk}
+## $cm = $mp-updateCm(%args)
+##  + updates $mp->{cm} from $mp->{cm_k} and $mp->{cm_ltk}
 ##  + %args:
-##    - passed to $mp->{tree}->membershipProbPdl()
+##    - ignored
 ##  + needs:
-##    $mp->{tree_k}
-##    $mp->{tree_ltk}
-sub updateTree {
+##    $mp->{cm_k}
+##    $mp->{cm_ltk}
+sub updateTree { return shift->updateCm(@_); }
+sub updateCm {
   my $mp = shift;
 
   ##-- update cluster-ids
-  #$mp->vmsg($vl_info, "updateTree(): clusterids ~ w => arg max_c ( p(c|w) )\n");
   my $tenum   = $mp->{tenum};
   my $tenum_k = $mp->{tenum_k};
-  my $cids  = zeroes(long, $tenum->size);
-  #my $phat  = $mp->{phat};
-  #foreach $tid_lek (0..($tenum->size-1)) {
-  #  $cids->set($tid_lek, $phat->slice(",($tid_lek)")->maximum_ind);
-  #}
 
-  ##-- create new tree
-  $mp->vmsg($vl_debug, "updateTree(): tree\n");
-  my $tree_k   = $mp->{tree_k};
-  my $tree_ltk = $mp->{tree_ltk} = $mp->{tree};
-  my $tree     = $mp->{tree} = $tree_ltk->shadow(
-						 enum=>$mp->{tenum},
-						 #ctree=>$tree_ltk->{ctree},
-						 #linkdist=>$tree_ltk->{linkdist},
-						 #clusterids=>$cids,
-						);
+  ##-- create new cm
+  $mp->vmsg($vl_debug, "updateCm(): cm\n");
+  my $cm_k   = $mp->{cm_k};
+  my $cm_ltk = $mp->{cm_ltk} = $mp->{cm};
+  my $cm     = $mp->{cm} = $cm_ltk->shadow(enum=>$mp->{tenum});
 
-  ##-- populate new tree
-  $mp->vmsg($vl_debug, "updateTree(): tree: index (<k)\n");
-  my $ct_k   = $tree_k->{ctree};
-  my $ct_ltk = $tree_ltk->{ctree};
-  my $ct     = $tree->{ctree} = zeroes(long, 2, $tenum->size);
+  if (UNIVERSAL::isa(ref($cm), 'MUDL::Cluster::Tree')) {
+    ##-- populate new cm: Tree
+    $mp->vmsg($vl_debug, "updateCm(): cm: index (<k)\n");
+    my $ct_k   = $cm_k->{ctree};
+    my $ct_ltk = $cm_ltk->{ctree};
+    my $ct     = $cm->{ctree} = zeroes(long, 2, $tenum->size);
 
-  ##-- populate: find node-ids of old cluster nodes
-  ##   + code depends heavily on cuttree() from cluster.c
-  my $nelts_ltk = $ct_ltk->dim(1);
-  my $njoin_ltk = $nelts_ltk - $tree_ltk->{nclusters};
+    ##-- populate: Tree: Tree: Tree: find node-ids of old cluster nodes
+    ##   + code depends heavily on cutcm() from cluster.c
+    my $nelts_ltk = $ct_ltk->dim(1);
+    my $njoin_ltk = $nelts_ltk - $cm_ltk->{nclusters};
 
-  ##-- populate: map old node-ids to cluster-ids
-  my $cids_ltk = $tree_ltk->{clusterids};
-  my %nid2cid = qw();
-  my ($did,$cid);
-  foreach $i (0..($njoin_ltk-1)) {
-    if    ( ($did=$ct_ltk->at(0,$i)) >= 0) {
-      ##-- left-leaf
-      $cid = $cids_ltk->at($did);
-      $nid2cid{-$i-1} = $cid;
-    }
-    elsif ( ($did=$ct_ltk->at(1,$i)) >= 0) {
-      ##-- right-leaf
-      $cid = $cids_ltk->at($did);
-      $nid2cid{-$i-1} = $cid;
-    }
-    else {
-      ##-- internal node: we should have registered both left and right daughters
-      $did = $ct_ltk->at(0,$i);
-      $cid = $nid2cid{$did};
-      $nid2cid{-$i-1} = $cid;
-    }
-  }
-
-  ##-- populate: map old cluster-ids to old node-ids
-  my %cid2nid = map { $nid2cid{$_}=>$_ } sort {$b<=>$a} keys(%nid2cid);
-
-  ##-- populate: map old singleton-clusterids to old leafnode-ids
-  foreach $i ($njoin_ltk..($nelts_ltk-2)) {
-    if  ( ($did=$ct_ltk->at(0,$i)) >= 0) {
-      ##-- left-leaf
-      $cid = $cids_ltk->at($did);
-      $cid2nid{$cid} = $did;
-    }
-    if ( ($did=$ct_ltk->at(1,$i)) >= 0) {
-      ##-- right-leaf
-      $cid = $cids_ltk->at($did);
-      $cid2nid{$cid} = $did;
-    }
-  }
-
-  ##-- populate: add old nodes
-  $mp->vmsg($vl_debug, "updateTree(): tree: adopt (<k)\n");
-  $ct->slice(",0:".($njoin_ltk-1)) .= $ct_ltk->slice(",0:".($njoin_ltk-1));
-
-
-  ##-- populate: add new nodes
-  $mp->vmsg($vl_debug, "updateTree(): tree: adopt (=k)\n");
-  my ($ii,$tid);
-  my $tk2c = $mp->{tk2c};
-  foreach $i (0..($ct_k->dim(1)-2)) {
-    $ii = $njoin_ltk + $i;
-    foreach $j (0,1) {
-      $did = $ct_k->at($j,$i);
-      if ($did >= 0) {
-	##-- leaf daughter
-	if (defined($cid=$tk2c->{$did})) {
-	  ##-- placeholder for old cluster
-	  $ct->set($j,$ii, $cid2nid{$cid});
-	}
-	else {
-	  ##-- real (new) leaf: must translate
-	  $ct->set($j,$ii, $tenum->index($tenum_k->symbol($did)));
-	}
-      }
-      else {
-	##-- non-leaf daughter
-	$ct->set($j,$ii, $did-$njoin_ltk);
+    ##-- populate: Tree: map old node-ids to cluster-ids
+    my $cids_ltk = $cm_ltk->{clusterids};
+    my %nid2cid = qw();
+    my ($did,$cid,$i);
+    foreach $i (0..($njoin_ltk-1)) {
+      if ( ($did=$ct_ltk->at(0,$i)) >= 0) {
+	##-- left-leaf
+	$cid = $cids_ltk->at($did);
+	$nid2cid{-$i-1} = $cid;
+      } elsif ( ($did=$ct_ltk->at(1,$i)) >= 0) {
+	##-- right-leaf
+	$cid = $cids_ltk->at($did);
+	$nid2cid{-$i-1} = $cid;
+      } else {
+	##-- internal node: we should have registered both left and right daughters
+	$did = $ct_ltk->at(0,$i);
+	$cid = $nid2cid{$did};
+	$nid2cid{-$i-1} = $cid;
       }
     }
+
+    ##-- populate: Tree: map old cluster-ids to old node-ids
+    my %cid2nid = map { $nid2cid{$_}=>$_ } sort {$b<=>$a} keys(%nid2cid);
+
+    ##-- populate: Tree: map old singleton-clusterids to old leafnode-ids
+    foreach $i ($njoin_ltk..($nelts_ltk-2)) {
+      if ( ($did=$ct_ltk->at(0,$i)) >= 0) {
+	##-- left-leaf
+	$cid = $cids_ltk->at($did);
+	$cid2nid{$cid} = $did;
+      }
+      if ( ($did=$ct_ltk->at(1,$i)) >= 0) {
+	##-- right-leaf
+	$cid = $cids_ltk->at($did);
+	$cid2nid{$cid} = $did;
+      }
+    }
+
+    ##-- populate: Tree: add old nodes
+    $mp->vmsg($vl_debug, "updateCm(): cm: adopt (<k)\n");
+    if ($njoin_ltk > 0) {
+      $ct->slice(",0:".($njoin_ltk-1)) .= $ct_ltk->slice(",0:".($njoin_ltk-1));
+    } else {
+      ##-- hack for nclusters==ntargets
+      $ct->slice(",0:".($ct_ltk->dim(1)-1)) .= $ct_ltk;
+    }
+
+
+    ##-- populate: Tree: add new nodes
+    $mp->vmsg($vl_debug, "updateCm(): cm: adopt (=k)\n");
+    my ($ii,$tid,$j);
+    my $tk2c = $mp->{tk2c};
+    foreach $i (0..($ct_k->dim(1)-2)) {
+      $ii = $njoin_ltk + $i;
+      foreach $j (0,1) {
+	$did = $ct_k->at($j,$i);
+	if ($did >= 0) {
+	  ##-- leaf daughter
+	  if (defined($cid=$tk2c->{$did})) {
+	    ##-- placeholder for old cluster
+	    $ct->set($j,$ii, $cid2nid{$cid});
+	  } else {
+	    ##-- real (new) leaf: must translate
+	    $ct->set($j,$ii, $tenum->index($tenum_k->symbol($did)));
+	  }
+	} else {
+	  ##-- non-leaf daughter
+	  $ct->set($j,$ii, $did-$njoin_ltk);
+	}
+      }
+    }
+
+    ##-- populate: Tree: link distances
+    $mp->vmsg($vl_debug, "updateCm(): cm: link distances\n");
+    my $linkdist = zeroes(double, $ct->dim(1));
+
+    if ($njoin_ltk > 0) {
+      $linkdist->slice("0:".($njoin_ltk-1))
+	.= $cm_ltk->{linkdist}->slice("0:".($njoin_ltk-1));
+    } else {
+      ##-- hack for nclusters==ntargets
+      $linkdist->slice("0:".($cm_ltk->{linkdist}->dim(0)-1)) .= $cm_ltk->{linkdist};
+    }
+
+    $linkdist->slice("$njoin_ltk:".($njoin_ltk + $cm_k->{linkdist}->dim(0) - 1))
+      .= $cm_k->{linkdist}->slice("0:".($cm_k->{linkdist}->dim(0)-1));
+
+
+    ##-- update: finalize
+    $mp->vmsg($vl_debug, "updateCm(): cut()\n");
+    $cm->{ctree} = $ct;
+    $cm->{linkdist} = $linkdist;
+    $cm->cut();
+    $mp->{clusterids} = $cm->{clusterids};
+  }
+  else {
+    ##-- populate: non-tree: {clusterids} only
+    my $cids_k   = $cm_k->{clusterids};
+    my $cids_ltk = $cm_ltk->{clusterids};
+    my $cids   = zeroes(long, $tenum->size);
+    my ($tid,$cid);
+    foreach $tid (0..($tenum->size-1)) {
+      if (defined($tenum_k->index($tenum->symbol($tid)))) {
+	##-- new target
+	$cids->set($tid, $cids_k->at($tid));
+      } else {
+	##-- old target: use cluster
+	$cids->set($tid, $cids_k->at($cids_ltk->at($tid)));
+      }
+    }
+    $mp->{clusterids} = $cm->{clusterids} = $cids;
   }
 
-  ##-- populate: link distances
-  $mp->vmsg($vl_debug, "updateTree(): tree: link distances\n");
-  my $linkdist = zeroes(double, $ct->dim(1));
-
-  $linkdist->slice("0:".($njoin_ltk-1))
-    .= $tree_ltk->{linkdist}->slice("0:".($njoin_ltk-1));
-
-  $linkdist->slice("$njoin_ltk:".($njoin_ltk + $tree_k->{linkdist}->dim(0) - 1))
-    .= $tree_k->{linkdist}->slice("0:".($tree_k->{linkdist}->dim(0)-1));
-
-  ##-- update: finalize
-  $mp->vmsg($vl_debug, "updateTree(): cut()\n");
-  $tree->{ctree} = $ct;
-  $tree->{linkdist} = $linkdist;
-  $tree->cut();
-  $mp->{clusterids} = $tree->{clusterids};
-
-  return $mp->{tree} = $tree;
+  return $mp->{cm} = $cm;
 }
 
 
@@ -662,7 +671,7 @@ sub getSummaryInfo {
   my $info = {};
   $info->{stage} = $mp->{stage};
 
-  @$info{qw(d2p_n d2p_method)} = @{$mp->{d2p}}{qw(n method)};
+  @$info{qw(d2p_n d2p_method)} = @{$mp->{cm}}{qw(d2pn d2pmethod)};
   $info->{prfType} = ref($mp->{prof});
   $info->{nTargets} = $mp->{tenum}->size;
   $info->{nBounds} = $mp->{benum}->size;

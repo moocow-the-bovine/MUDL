@@ -14,6 +14,8 @@ use MUDL::Object;
 use PDL;
 use PDL::Fit::Linfit;
 use Carp;
+
+use strict;
 our @ISA = qw(MUDL::Corpus::Profile);
 
 ##======================================================================
@@ -36,7 +38,7 @@ sub new {
   my $targets = $args{targets} || MUDL::Enum->new();
   my $nfields = $args{nfields} || 1;
   my $enum = $args{enum} || MUDL::Enum::Nary->new(enums=>[$targets,(map { $bounds } (1..$nfields))]);
-  delete($args{qw(bounds targets nfields enum)});
+  delete(@args{qw(bounds targets nfields enum)});
 
   my $self = $that->SUPER::new
     (eos=>'__$',
@@ -55,6 +57,18 @@ sub new {
      %args);
 
   return $self;
+}
+
+##======================================================================
+## Reset
+
+## $lr = $lr->reset()
+##   + resets profile distributions
+sub reset {
+  my $lr = shift;
+  $lr->{left}->clear;
+  $lr->{right}->clear;
+  return $lr;
 }
 
 ##======================================================================
@@ -83,6 +97,21 @@ sub shadow {
   return $lr2;
 }
 
+##======================================================================
+## $lr = $lr->setEnums($targets,$bounds)
+##   + sets all relevant target- & bound-enums
+sub setEnums {
+  my ($lr,$tgs,$bds) = @_;
+  foreach (@{$lr->{enum}{enums}}) {
+    $_ = $bds if ($_ eq $lr->{bounds});
+    $_ = $tgs if ($_ eq $lr->{targets});
+  }
+  $lr->{targets} = $tgs;
+  $lr->{bounds}  = $bds;
+
+  return $lr;
+}
+
 
 ##======================================================================
 ## Profiling
@@ -96,6 +125,7 @@ sub shadow {
 
 ## $pdl_2d = $lr->toPDL()
 ## $pdl_2d = $lr->toPDL($pdl_2d)
+## $pdl_2d = $lr->toPDL($pdl_2d,%args)
 ##   + converts to pdl
 ##   + returned pdl is of dimensions: ($d,$n), where:
 ##     - $n == number-of-targets
@@ -104,16 +134,20 @@ sub shadow {
 ##     - undef = $lr->finishPdl($pdl_3d)
 ##     - undef = $lr->normalizePdl($pdl_3d)
 ##   + $pdl_3d is of dimensions (2, $d/2, $n) [separated R- and L-components]
+##   + WARNING:
+##     - passing $pdl_2d probably won't work unless it already has correct dimensions!
+##   + %args: clobbers %$lr
 *toPDLi = \&toPDL;
 sub toPDL {
-  my ($lr,$pdl) = @_;
+  my ($lr,$pdl,%args) = @_;
+  @$lr{keys %args} = values %args; ##-- args: clobber
   $pdl = $lr->toPDL3d($pdl);
   $pdl->reshape($pdl->dim(0)*$pdl->dim(1), $pdl->dim(2));
   return $pdl;
 }
 
 ## $pdl_3d = $lr->toPDL3d()
-## $pdl_3d = $lr->toPDL3d($pdl_3d)
+## $pdl_3d = $lr->toPDL3d($pdl_3d,%args)
 ##   + converts to pdl
 ##   + returned $pdl_3d is of dimensions: (2,$d,$n), where:
 ##     - $n == number-of-targets
@@ -121,8 +155,11 @@ sub toPDL {
 ##   + may call the following:
 ##     - undef = $lr->finishPdl($pdl_3d)
 ##     - undef = $lr->normalizePdl($pdl_3d)
+##   + %args:
+##     clobber %$lr
 sub toPDL3d {
-  my ($lr,$pdl) = @_;
+  my ($lr,$pdl,%args) = @_;
+  @$lr{keys %args} = values %args; ##-- args: clobber
 
   ##-- enum
   my $nfields  = $lr->{nfields};
@@ -137,7 +174,7 @@ sub toPDL3d {
   $pdl .= 0;
 
   ##-- frequency data: left-context
-  my ($k,$v,$tid,@bids);
+  my ($k,$v,$tid,@bids,$i);
   while (($k,$v)=each(%{$lr->{left}{nz}})) {
     ($tid,@bids) = $lr->{left}->split($k);
     foreach $i (0..$#bids) {
@@ -164,21 +201,22 @@ sub toPDL3d {
   return $pdl;
 }
 
-## $pdl_3d = $lr->smoothPdl($pdl_3d)
+## $pdl_3d = $lr->smoothPdl($pdl_3d,%args)
 ##  + smooth a frequency pdl (3d)
 ##  + relevant flags in $lr:
 ##     smoothgt          => $which, ##-- perform Good-Turing smoothing here if $which eq 'pdl'
 ##     norm_zero_f       => $value, ##-- unnormalized zero value
 ##     norm_zero_zero    => $zero,  ##-- zero value to normalize
 sub smoothPdl {
-  my ($lr,$pdl) = @_;
+  my ($lr,$pdl,%args) = @_;
+  @$lr{keys %args} = values %args;   ##-- args: clobber
 
   if ($lr->{smoothgt} && $lr->{smoothgt} eq 'pdl') {
     my ($dpdl, $dnz,$dnzi, $dnr,$dr, $dnrwi, $N);
     my ($r,$nr, $r_hi,$r_lo, $zr);
     my ($logr, $logz, $nrfit,$coeffs);
     my ($S_a,$S_e, $nzrp1,$Enzr,$Enzrp1);
-    my ($nrzero);
+    my ($nrzero,$dim);
     foreach $dim (0,1) {
       ##-- get count-counts
       $dpdl  = $pdl->slice("$dim,:,:");        ##-- direction pdl
@@ -243,16 +281,129 @@ sub smoothPdl {
 }
 
 
+##--------------------------------------------------------------
+## PDL-ization: normalization
+
 ## $pdl_3d = $lr->normalizePdl($pdl_3d)
 ##  + normalize a pdl (3d)
 ##  + relevant flags in $lr:
 ##     norm_independent => $bool,  ##-- whether to normalize left and right subvectors independently
-##     norm_zero_p      => $value, ##-- pre-normalized zero value
-##     norm_zero_zero   => $zero,  ##-- zero value to normalize
-##     norm_min         => $min,   ##-- subtracted value: default=$pdl->min
+##     norm_nan         => $value, ##-- value for -nan- & bad values (applied first) [default=0]
+##     norm_zero_zero   => $zero,  ##-- zero value to feed into normalization method
+##     norm_zero_p      => $value, ##-- post-normalized zero value
+##     norm_nan_p       => $value, ##-- post-normalized -nan- & bad value (may be undef)
+##     norm_min         => $min,   ##-- subtracted value: default=$pdl->min (for norm_how='pmass')
+##     norm_how         => $how,   ##-- one of 'pmass', 'amass', 'alimits', 'slimits' : default='pmass'
+##  + saves computed:
+##     norm_min_prev    => $min,   ##-- for reversibility
+##     norm_how_prev    => $how,   ##-- ditto
 sub normalizePdl {
+  my ($lr,$pdl,%args) = @_;
+  @$lr{keys %args} = values %args;   ##-- args: clobber
+
+  ##-- bad & nan normalization: preliminary
+  my ($norm_nan);
+  $norm_nan    = 0 if (!defined($norm_nan=$lr->{norm_nan}));
+  $pdl->inplace->setnantobad->inplace->setbadtoval($norm_nan);
+
+  ##-- how
+  my $norm_how = $lr->{norm_how};
+  $norm_how    = 'pmass' if (!defined($norm_how));
+  $lr->{norm_how_prev} = $norm_how;
+
+  if ($norm_how eq 'pmass') {
+    ##-- normalize by positive mass: force positive values
+    my $min = $lr->{norm_min};
+    $min  = $pdl->min if (!defined($min));
+    $pdl -= $min      if ($min < 0);
+    $lr->{norm_min_prev} = $min;
+  }
+
+  ##-- normalization: method
+  my $norm_sub = $lr->can($norm_how);
+  $norm_sub = $lr->can("normpdl_${norm_how}") if (!defined($norm_sub));
+  confess(ref($lr), "::normalizePdl(): unknown normalization method '$norm_how'")
+    if (!defined($norm_sub));
+
+  ##-- normalization: guts
+  my $norm_ind = !defined($lr->{norm_independent}) || $lr->{norm_independent};
+  my ($z,$pz);
+  if ($norm_ind) {
+    ##-- normalize left- & right- subvectors independently
+    foreach $z (0,1) {
+      $pz = $pdl->slice("($z),:,:");
+      $norm_sub->($lr, $pdl->slice("($z),:,:"));
+    }
+  }
+  else {
+    ##-- normalize left- & right- subvectors jointly
+    $norm_sub->($lr, $pdl->clump(2));
+  }
+
+  ##-- zero (post-normalized)
+  if (defined($lr->{norm_zero_p})) {
+    my $zero = $lr->{norm_zero_zero};
+    $zero = 0 if (!$zero);
+    $pdl->where($pdl==$zero) .= $lr->{norm_zero_p};
+  }
+
+  ##-- nan (post-normalized)
+  $pdl->inplace->setnantobad;
+  $pdl->inplace->setbadtoval($lr->{norm_nan_p})
+    if (defined($lr->{norm_nan_p}));
+
+  return $pdl;
+}
+
+##--------------------------------------------------------------
+## PDL-ization: normalization: subs
+
+## undef = $lr->normpdl_pmass($pdl_2d);
+##  + normalize $pdl rows by positive mass: pseudo-probabilities
+sub normpdl_pmass {
+  my ($lr,$pz) = @_;
+  $pz /= sumover($pz)->slice("*1,");
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
+}
+
+## undef = $lr->normpdl_amass($pdl_2d)
+##  + normalize $pdl rows by absolute mass
+##  + total absolute mass per row == 1
+sub normpdl_amass {
+  my ($lr,$pz) = @_;
+  $pz /= sumover(abs($pz))->slice("*1,");
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
+}
+
+## $lr->normpdl_alimits($pdl_2d)
+##  + normalize $pdl rows by absolute limit
+##  + most extreme component gets (+/-) 1
+sub normpdl_alimits {
+  my ($lr,$pz) = @_;
+  $pz /= maximum(abs($pz))->slice("*1,");
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
+}
+
+## $lr->normpdl_slimits($pdl_2d)
+##  + normalize $pdl rows by stretched limits
+##  + min-limit gets -1, max-limit gets 1, for every row
+sub normpdl_slimits {
+  my ($lr,$pz) = @_;
+  my $pgt0 = $pz>0;              ##-- positive component mask
+  my $plt0 = $pz<0;              ##-- negative component mask
+  my $pmax = maximum($pz*$pgt0); ##-- positive extremes (fit to +1)
+  my $pmin = minimum($pz*$plt0); ##-- negative extremes (fit to -1)
+  $pz /= $pgt0*$pmax->slice("*1,") - $plt0*$pmin->slice("*1,");
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- sanity check
+}
+
+
+
+##--------------------------------------------------------------
+## PDL-ization: normalization: OLD
+
+sub normalizePdlOld {
   my ($lr,$pdl) = @_;
-  my ($sum);
 
   my $min = $lr->{norm_min};
   $min  = $pdl->min if (!defined($min));
@@ -260,21 +411,23 @@ sub normalizePdl {
 
   ##-- normalization
   my $norm_ind = !defined($lr->{norm_independent}) || $lr->{norm_independent};
+  my ($ni,$v,$sum);
   foreach $ni (0..($pdl->dim(2)-1)) {
-    ##-- normalize left- & right- subvectors independently
+    ##-- normalize left- & right- subvectors
 
     if ($norm_ind) {
-      ##-- : left subvector
+      ##-- ... independently : left subvector
       $v    = $pdl->slice("0,:,$ni");
       $sum  = $v->sum;
       $v   /= $sum if ($sum != 0);
 
-      ##-- : right subvector
+      ##-- ... independently : right subvector
       $v    = $pdl->slice("1,:,$ni");
       $sum  = $v->sum;
       $v   /= $sum if ($sum != 0);
     }
     else {
+      ##-- ... jointly
       $v    = $pdl->slice(":,:,$ni");
       $sum  = $v->sum;
       $v   /= $sum if ($sum != 0);
@@ -310,6 +463,7 @@ sub saveLibclusterDataFh {
 
   my @bsyms = map { $bds->symbol($_) } (0..($pdl->dim(0)/2 -1));
   $fh->print(join("\t ", 'UNIQID', (map { ("$_:L","$_:R") } @bsyms)), "\n");
+  my ($tid);
   foreach $tid (0..($pdl->dim(1)-1)) {
     $fh->print(join("\t ",
 		    $tgs->symbol($tid),
@@ -337,6 +491,7 @@ sub helpString {
      .qq(  eos=EOS_STRING   [default='__\$']\n)
      .qq(  bos=BOS_STRING   [default='__\$']\n)
      .qq(  donorm=BOOL      [default=1]\n)
+     .qq(  norm_min=VALUE   [default=minimum]\n)
     );
 }
 

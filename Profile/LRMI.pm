@@ -12,6 +12,8 @@ use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
+
+use strict;
 our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 
 ##======================================================================
@@ -25,8 +27,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 ##       right=>$right_bigrams,     ## ($target,$rneighbor)
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,donorm=>1,%args);
-  return $self;
+  return $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>1,%args);
 }
 
 ##======================================================================
@@ -54,7 +55,7 @@ sub dist2mi {
 
   my $Pmi = MUDL::Dist->new();
 
-  my ($event,$ptb,$t,$b);
+  my ($event,$ptb,$t,$b, $pt,$pb);
   while (($event,$ptb)=each(%{$dist->{nz}})) {
     ($t,$b) = $dist->split($event);
     $pt = $Pt->{$t};
@@ -92,7 +93,11 @@ sub finishPdl {
     $Pt  = $Ptb->sumover;
     $Pb  = $Ptb->xchg(0,1)->sumover;
 
-    $Ptb .= log($Ptb/($Pt->transpose*$Pb))/log(2);
+    #$Ptb .= log($Ptb/($Pt->slice("*1,")*$Pb))/log(2);
+    $Ptb  /= $Pt->slice("*1,");
+    $Ptb  /= $Pb;
+    $Ptb->inplace->log;
+    $Ptb  /= pdl(double,2)->log;
   }
   $pdl->inplace->setnantobad->inplace->setbadtoval(0);
 

@@ -1,5 +1,7 @@
 *~
 .*~
+
 save
 *.save*
 *.log
+*.bin
