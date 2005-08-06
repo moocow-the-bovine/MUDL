@@ -219,7 +219,16 @@ sub populatePhat {
 			       ##--
 			       d2pbeta=>$d2pbeta,
 			       ##--
-			       r2cprobs=>$phat);
+			       r2cprobs=>$phat,
+			       ##
+			       ##-- for hard-clustering bonus
+			       cdbonus=>1, ##-- bonus is available here
+			      );
+
+  delete(@{$mp->{cm}}{qw(d2pbeta)}); ##-- cleanup
+
+  ##-- no bonus after initial stage (?)
+  $mp->{cm}{cdbonus} = 0 if ($mp->{cm}{cdmethod} !~ /\+bb/);
 
   ##-- save n-best membership mask
   $mp->{phatm} = $mp->{cm}->membershipSimMask($phat, d2pbeta=>$d2pbeta);
@@ -337,10 +346,15 @@ sub update {
   my $cdist_k = zeroes(double, $trowids->nelem);
   attachtonearestd($cdm, $trowids, $cids_k, $cdist_k);
 
-
   ##-- update: cm
   $mp->vmsg($vl_info, "update(): cm\n");
   $mp->updateCm();
+
+  ##-- update: apply hard-clustering bonus (?)
+  if ($cm_k->{cdmethod} =~ /\+bb/) {
+    my $cemask = $cm_k->clusterElementMask;
+    $cdm->where($cemask) .= 0;
+  }
 
   ##-- update: phat
   $mp->vmsg($vl_info, "update(): phat ~ ^p( c_{k} | w_{<=k} )\n");
@@ -541,7 +555,12 @@ sub updatePhat {
 			   ##--
 			   d2pbeta=>$d2pbeta,
 			   ##--
-			   r2cprobs=>$phat_k);
+			   r2cprobs=>$phat_k,
+			   ##
+			   ##-- for hard-clustering bonus
+			   #cdbonus=>0, ##-- no bonus for update() ? [see above]
+			  );
+
 
   ##-- get stage-k n-best membership mask
   my $phatm_k = $cm_k->membershipSimMask($phat_k, d2pbeta=>$d2pbeta);

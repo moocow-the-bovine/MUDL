@@ -35,6 +35,12 @@ our @EXPORT_OK = qw();
 ##   + for clusterdistance():
 ##       cddist   => $cddist,   # clusterdistance() dist   flag (default={dist})     : for clusterdistance()
 ##       cdmethod => $cdmethod, # clusterdistance() method flag (default=from method): for clusterdistance()
+##                              # - may contain suffix '+b' to indicate bonus clustering
+##       cdbonus  => $bool,     # whether to apply hard-clustering bonus (bash distance to zero)
+##                              # - bonus distance is only applied if:
+##                              #     $cdmethod =~ /\+b/
+##                              #   AND
+##                              #     $cdbonus is a true value
 ##   + for getcenters():
 ##       ctrmethod => $cmethod, # see getcenters()
 ##       ctrmode   => $cmode,   # 'hard' or 'soft' [default='hard']
@@ -91,6 +97,7 @@ sub new {
 			     ##-- clusterdistance() flags
 			     cddist => 'u',
 			     cdmethod => 'v',
+			     cdbonus => 1, ##-- hard-clustering bonus
 			     ##-- output data
 			     clusterids=>undef,
 			     nclusters=>2,
@@ -277,11 +284,11 @@ sub cdmethod {
   my $cm=shift;
   return $cm->{cdmethod} if ($cm->{cdmethod});
   my $method = $cm->{method} ? $cm->{method} : 'a';
-  if    ($method eq 'f') { return 'a'; }
-  elsif ($method eq 'c') { return 'm'; }
-  elsif ($method eq 's') { return 's'; }
-  elsif ($method eq 'm') { return 'x'; }
-  elsif ($method eq 'a') { return 'v'; }
+  if    ($method =~ /^f(.*)/) { return "a$1"; }
+  elsif ($method =~ /^c(.*)/) { return "m$1"; }
+  elsif ($method =~ /^s(.*)/) { return "s$1"; }
+  elsif ($method =~ /^m(.*)/) { return "x$1"; }
+  elsif ($method =~ /^a(.*)/) { return "v$1"; }
   else {
     croak(ref($cm), "::cdmethod(): no clusterdistance() equivalent known for method='$method'!");
   }
@@ -346,6 +353,7 @@ sub clusterElements {
 ##     rowids   => $pdl,    ## rows to populate (default: sequence($n))
 ##     cddist   => $dist,   ## default/clobber: $cm->{cddist}
 ##     cdmethod => $method, ## default/clobber: $cm->{cdmethod}
+##     cdbonus  => $bool,   ## default/clobber: $cm->{cdbonus} : apply hard bonus
 ##  + ... any args for clusterSizes(), clusterElements()
 ##  + output matrix $cdmatrix has dimensions ($k,$nr=$rowids->nelem)
 ##    and has values distance($cluster_k, $rowids_nr)
@@ -358,10 +366,11 @@ sub clusterDistanceMatrix {
   ##-- arg parsing
   $args{cddist}   = $cm->cddist()   if (!defined($args{cddist}));
   $args{cdmethod} = $cm->cdmethod() if (!defined($args{cdmethod}));
-  @$cm{qw(cddist cdmethod)} = @args{qw(cddist cdmethod)};
+  $args{cdbonus}  = $cm->{cdbonus}  if (!defined($args{cdbonus}));
+  @$cm{qw(cddist cdmethod cdbonus)} = @args{qw(cddist cdmethod cdbonus)};
 
   ##-- sanity checks
-  confess(ref($cm), "::leafdistances(): no data!") if (!defined($cm->{data}));
+  confess(ref($cm), "::clusterDistanceMatrix(): no data!") if (!defined($cm->{data}));
   confess(ref($cm), "::clusterDistanceMatrix(): cowardly refusing bad data!")
       if ($cm->{data}->inplace->setnantobad->nbad > 0);
 
@@ -382,6 +391,13 @@ sub clusterDistanceMatrix {
 
   confess(ref($cm), "::clusterDistanceMatrix(): bad data in output pdl!")
       if ($cm->{cdmatrix}->inplace->setnantobad->nbad > 0);
+
+  ##-- apply hard-clustering bonus ?
+  if ($args{cdmethod} =~ /\+b/ && $args{cdbonus}) {
+    my $cemask     = $cm->clusterElementMask();
+    my $row_cemask = $cemask->dice_axis(1, $rowids);
+    $cm->{cdmatrix}->where($row_cemask) .= 0;
+  }
 
   return $cm->{cdmatrix};
 }
@@ -781,6 +797,7 @@ sub membershipSimPdl {
   my $msub = $cm->can($d2pmethod);
   $msub = $cm->can("d2p_$d2pmethod") if (!defined($msub));
 
+  ##-- n-best method dispatch
   $cm->{d2p_isnbest} = 0;
   $cm->{d2p_isnbest} = 1 if (!defined($msub)
 			     && $d2pmethod =~ /^nbest_(.*)/
@@ -789,14 +806,6 @@ sub membershipSimPdl {
   confess(ref($cm), "::membershipSimPdl(): unknown estimation method '$d2pmethod'")
     if (!defined($msub));
 
-#  if ($cm->{d2p_isnbest}) {
-#    my $cdm     = $cm->clusterDistanceMatrix();
-#    my $simPdl  = $msub->($cm);
-#    my $simPdls = $cm->d2p_slicePdl($cdm, $simPdl);
-#    my $nbmask  = $cm->d2p_nbest_mask($cdm);
-#    $simPdls   *= $nbmask;
-#    return $simPdl;
-#  }
   return $msub->($cm);
 }
 
@@ -934,7 +943,7 @@ sub d2p_pinskerL1 {
 ##      d2pb     : base : UNUSED (always=exp(1))
 ##      d2pbeta  : pdl ($n) : exp coefficients (sample sizes by target index)
 ##  + theoretically motivated for D(empirical||source) distance between probability
-##    distributions [according to Lee
+##    distributions [according to Lee (1997)]
 *d2p_pinskerD = \&d2p_jaynes;
 sub d2p_jaynes {
   my $cm  = shift;
