@@ -31,6 +31,7 @@ our @ISA = qw(MUDL::Corpus::MetaProfile);
 ##  cbenum => $enum,       ## (bound-)class enum: includes bos,eos (<=$i)
 ##  cenum => $enum,        ## target-cluster enum: does NOT include bos,eos
 ##  cm => $cluster_method, ## the initial MUDL::Cluster::Method subclass object used for clustering
+##  tbeta => $tbeta,       ## pdl($n) : maps targets to their beta values as returned by $mp->d2pbeta()
 ##  ##
 ##  ##-- previous data
 ##  ctrprof => $ctr_prof,  ## ^f_{<k}($dir, $bound_cluster, $target_cluster{stage=>'<=k'})
@@ -151,7 +152,7 @@ sub bootstrap {
   return $mp;
 }
 
-## $beta = $mp->d2pbeta)
+## $beta = $mp->d2pbeta()
 ##  + get a value for beta constant for use with d2p_jaynes()-based methods
 sub d2pbeta {
   my $mp = shift;
@@ -232,6 +233,10 @@ sub populatePhat {
 
   ##-- save n-best membership mask
   $mp->{phatm} = $mp->{cm}->membershipSimMask($phat, d2pbeta=>$d2pbeta);
+
+  ##-- save beta (initial)
+  $mp->{tbeta}  = zeroes(double, $phat->dim(1));
+  $mp->{tbeta} .= $d2pbeta;
 
   ##-- class-probability membership hack: bos,eos
   foreach (@$mp{qw(bos eos)}) {
@@ -565,6 +570,9 @@ sub updatePhat {
   ##-- get stage-k n-best membership mask
   my $phatm_k = $cm_k->membershipSimMask($phat_k, d2pbeta=>$d2pbeta);
 
+  ##-- save stage-k betas
+  $mp->{tbeta}->reshape($mp->{tbeta}->dim(0) + $phat_k->dim(1));
+  $mp->{tbeta}->slice("-".$phat_k->dim(1).":-1") .= $d2pbeta;
 
   ##-- allocate new ^p_{<=k}()
   $mp->vmsg($vl_info, "updatePhat(): adjust ~ ^p_{<=k}( c_k | t_{<=k} )\n");
