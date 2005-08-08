@@ -354,7 +354,7 @@ sub toHMM {
       ##-- word-frequency exponential bonus: \fhat(w,c) = \phat(c|w) ** (f(w)*$bonus)
       my $bonus = $1;
       my $ugn = $ugp->sum;
-      $bf_o->inplace->pow($bonus * $ugp * $ugn);
+      $bf_o->inplace->pow($bonus * $ugp->dice_axis(1,$o2t) * $ugn);
     }
 
     ##-- back to ye olde grinde
