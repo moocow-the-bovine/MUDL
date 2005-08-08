@@ -350,11 +350,11 @@ sub toHMM {
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow($ebonus * ($tbeta->dice($o2t)->slice("*1,")**-1 + $pbonus));
     }
-    elsif ($bmode =~ /\+efwbonus-([\-\d\.]+)/) {
-      ##-- word-frequency exponential bonus: \fhat(w,c) = \phat(c|w) ** (f(w)*$bonus)
+    elsif ($bmode =~ /\+eipwbonus-([\-\d\.]+)/) {
+      ##-- inverse wordprob exponential bonus: \fhat(w,c) = \phat(c|w) ** (p(w)**-$bonus)
       my $bonus = $1;
       my $ugn = $ugp->sum;
-      $bf_o->inplace->pow($bonus * $ugp->dice_axis(1,$o2t) * $ugn);
+      $bf_o->inplace->pow($bonus * $ugp->dice_axis(1,$o2t)**(-1));
     }
 
     ##-- back to ye olde grinde
