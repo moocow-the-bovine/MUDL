@@ -281,9 +281,13 @@ sub toHMM {
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
-      #$bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
-      $bf_o->inplace->pow( $tbeta->dice($o2t)->slice("*1,")**-1 );
-      $bf_o->inplace->pow( $bonus );
+      $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+    }
+    elsif ($bmode =~ /\+pebbonus-([\d\.]+)-([\d\.]+)/) {
+      my $pbonus = $1;
+      my $ebonus  = $2;
+      my $tbeta  = $mp->{tbeta};
+      $bf_o->inplace->pow($ebonus * ($tbeta->dice($o2t)->slice("*1,")**-1 + $pbonus));
     }
 
     #$bf_o   /= $bf_o->sumover->slice("*1,");
@@ -334,9 +338,13 @@ sub toHMM {
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
-      #$bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
-      $bf_o->inplace->pow( $tbeta->dice($o2t)->slice("*1,")**-1 );
-      $bf_o->inplace->pow( $bonus );
+      $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+    }
+    elsif ($bmode =~ /\+pebbonus-([\d\.]+)-([\d\.]+)/) {
+      my $pbonus = $1;
+      my $ebonus  = $2;
+      my $tbeta  = $mp->{tbeta};
+      $bf_o->inplace->pow($ebonus * ($tbeta->dice($o2t)->slice("*1,")**-1 + $pbonus));
     }
 
     ##-- back to ye olde grinde
