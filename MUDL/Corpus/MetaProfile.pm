@@ -278,6 +278,11 @@ sub toHMM {
       my $bonus = $1;
       $bf_o->inplace->pow($bonus);
     }
+    elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
+      my $bonus  = $1;
+      my $tbeta  = $mp->{tbeta};
+      $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+    }
 
     #$bf_o   /= $bf_o->sumover->slice("*1,");
     $bf_o    *= $mp->{phatm}->dice($q2c,$o2t) if ($bmode =~ /\+mask/);
@@ -323,6 +328,11 @@ sub toHMM {
       ##-- exponential bonus
       my $bonus = $1;
       $bf_o->inplace->pow($bonus);
+    }
+    elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
+      my $bonus  = $1;
+      my $tbeta  = $mp->{tbeta};
+      $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
     }
 
     ##-- back to ye olde grinde
