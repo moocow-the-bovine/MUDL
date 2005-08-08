@@ -274,16 +274,18 @@ sub toHMM {
     $bf_o    .= $phat->dice($q2c,$o2t);
 
     if ($bmode =~ /\+ebonus-([\d\.]+)/) {
-      ##-- exponential bonus
+      ##-- exponential bonus: looks good
       my $bonus = $1;
       $bf_o->inplace->pow($bonus);
     }
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
+      ##-- beta-dependent exponential bonus: not so hot
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
     }
     elsif ($bmode =~ /\+pebbonus-([\d\.]+)-([\d\.]+)/) {
+      ##-- beta-dependent exp-linear function: not so hot
       my $pbonus = $1;
       my $ebonus  = $2;
       my $tbeta  = $mp->{tbeta};
@@ -331,20 +333,28 @@ sub toHMM {
       $bf_o->indexND($cidi)    += $bonus;
     }
     elsif ($bmode =~ /\+ebonus-([\d\.]+)/) {
-      ##-- exponential bonus
+      ##-- exponential bonus: looks good at 7 <= $bonus <= 8
       my $bonus = $1;
       $bf_o->inplace->pow($bonus);
     }
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
+      ##-- beta-dependent exponential bonus: not so hot
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
     }
     elsif ($bmode =~ /\+pebbonus-([\d\.]+)-([\d\.]+)/) {
+      ##-- beta-dependent exp-linear function: not so hot
       my $pbonus = $1;
       my $ebonus  = $2;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow($ebonus * ($tbeta->dice($o2t)->slice("*1,")**-1 + $pbonus));
+    }
+    elsif ($bmode =~ /\+efwbonus-([\-\d\.]+)/) {
+      ##-- word-frequency exponential bonus: \fhat(w,c) = \phat(c|w) ** (f(w)*$bonus)
+      my $bonus = $1;
+      my $ugn = $ugp->sum;
+      $bf_o->inplace->pow($bonus * $ugp * $ugn);
     }
 
     ##-- back to ye olde grinde
