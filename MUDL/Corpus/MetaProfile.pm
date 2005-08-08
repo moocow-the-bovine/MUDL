@@ -281,7 +281,9 @@ sub toHMM {
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
-      $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+      #$bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+      $bf_o->inplace->pow( $tbeta->dice($o2t)->slice("*1,")**-1 );
+      $bf_o->inplace->pow( $bonus );
     }
 
     #$bf_o   /= $bf_o->sumover->slice("*1,");
@@ -332,7 +334,9 @@ sub toHMM {
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
-      $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+      #$bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+      $bf_o->inplace->pow( $tbeta->dice($o2t)->slice("*1,")**-1 );
+      $bf_o->inplace->pow( $bonus );
     }
 
     ##-- back to ye olde grinde
