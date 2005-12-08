@@ -40,7 +40,7 @@ our @EXPORT_OK = qw();
 ##                              # - bonus distance is only applied if:
 ##                              #     $cdmethod =~ /\+b/
 ##                              #   AND
-##                              #     $cdbonus is a true value
+##                              #     $cdbonus is a true value (default=true)
 ##   + for getcenters():
 ##       ctrmethod => $cmethod, # see getcenters()
 ##       ctrmode   => $cmode,   # 'hard' or 'soft' [default='hard']
