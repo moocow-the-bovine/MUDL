@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Cluster::Method.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -1286,7 +1286,14 @@ sub toMap {
 
   my ($k,$n) = ($cm->{nclusters}, $cm->{clusterids}->dim(0));
   my ($lenum,$cenum) = $cm->toEnums();
-  my $cids = $cm->{clusterids};
+  my ($cids);
+  if (defined($cm->{cdmatrix})) {
+    ##-- soft clusters
+    $cids = $cm->{cdmatrix}->minimum_ind;
+  } else {
+    ##-- hard clusters
+    $cids = $cm->{clusterids};
+  }
 
   ##-- generate map
   my $map = MUDL::Map->new(@_);

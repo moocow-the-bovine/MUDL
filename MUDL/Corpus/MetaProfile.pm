@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::MetaProfile.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -201,6 +201,15 @@ sub toLR3 {
   return $lr3;
 }
 
+##======================================================================
+## Export: to Map
+##======================================================================
+sub toMap {
+  my $mp = shift;
+  my $cm = $mp->{cm};
+  $mp->{cm}{cdmatrix} = -($mp->{phat}*$mp->{phatm}) if (!defined($mp->{cm}{cdmatrix}));
+  return $cm->toMap(@_);
+}
 
 ##======================================================================
 ## Export: to HMM
