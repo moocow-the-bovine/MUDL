@@ -1,5 +1,5 @@
 ##-*- Mode: CPerl -*-
-
+##
 ## File: MUDL::Cluster::Method.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
@@ -394,6 +394,11 @@ sub clusterDistanceMatrix {
 
   ##-- apply hard-clustering bonus ?
   if ($args{cdmethod} =~ /\+b/ && $args{cdbonus}) {
+    print STDERR
+      ("<<<DEBUG>>>: ", ref($cm),
+       "::clusterDistanceMatrix() adding bonus for ", $rowids->nelem, " rowids.\n",
+      );
+
     my $cemask     = $cm->clusterElementMask();
     my $row_cemask = $cemask->dice_axis(1, $rowids);
     $cm->{cdmatrix}->where($row_cemask) .= 0;
