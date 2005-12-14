@@ -1,4 +1,3 @@
-##-*- Mode: CPerl -*-
 ##
 ## File: MUDL::Cluster::Method.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
