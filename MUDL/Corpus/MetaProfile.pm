@@ -518,6 +518,264 @@ sub toHMM {
 }
 
 ########################################################################
+## Description Length
+########################################################################
+
+##------------------------------------------------------
+## $log2n = log2($n);
+our $LOG2 = log(2);
+sub log2 { return log($_[0])/$LOG2; }
+
+##------------------------------------------------------
+## $nbits = listLambda($list_length)
+##   + $nbits is the number of bits required to declare
+##     a list of length $list_length in an optimal encoding
+##   + see Goldsmith (2001) & the references cited there for details
+sub listLambda {
+  return
+    #log2($_[0]); ##-- this is not quite enough...
+    log2($_[0]+1); ##-- how about this?
+}
+
+##------------------------------------------------------
+## $length = $mp->modelDescLen()
+## $length = $mp->modelDescLen($clusterSizesPdl)
+##   + get description length of model
+
+#*modelDescLen = \&modelDescriptionLength;
+#*modelDescLen = *modelDescriptionLength = \&modelDescriptionLength_v1;
+*modelDescLen = *modelDescriptionLength = \&modelDescriptionLength_v2;
+#*modelDescLen = *modelDescriptionLength = \&modelDescriptionLength_v3;
+
+sub modelDescriptionLength_v3 {
+  my ($mp,$csizes) = @_;
+  $csizes = $mp->{cm}->clusterSizes()      ##-- get cluster sizes
+    if (!defined($csizes));
+
+  my $ntyps = $csizes->sumover + 1;        ##-- get number of targets (+ UNKNOWN)
+
+  my $len = listLambda($csizes->nelem);    ##-- list of all classes
+
+  $len += listLambda($csizes)->sumover;    ##-- foreach class: list of class elements
+
+  ##--
+  $len += sumover($csizes*log2($csizes));  ##-- v2: foreach class: foreach word: word-id
+                                            ##-- where p(w) ~= 1/|class(w)|
+                                            ##   -> all class-internal word-types are equiprobable for model
+                                            ##   -> prefers lots of small clusters
+
+  ##-- unknown class
+  #$len += 0; # 1*log2(1) == 0
+
+  return $len->at(0);
+}
+
+sub modelDescriptionLength_v2 {
+  ##   + "small" models are those with fewer classes
+  my ($mp,$csizes) = @_;
+
+  $csizes = $mp->{cm}->clusterSizes()      ##-- get cluster sizes
+    if (!defined($csizes));
+
+  my $ntyps = $csizes->sum + 1;            ##-- get number of target-types (+ UNKNOWN)
+  my $nclasses = $csizes->dim(0) + 1;      ##-- get number of class-types  (+ UNKNOWN)
+
+  my $len = listLambda($ntyps);            ##-- list of all targets (+ UNKNOWN)
+
+  $len += $ntyps * log2($nclasses);        ##-- foreach target w: c=class(w),
+                                           ##   -> where p(c) ~= 1 / nclusters
+                                           ##   -> no a priori class probability for model encoding
+
+  return $len;
+}
+
+sub modelDescriptionLength_v1 {
+  my ($mp,$csizes) = @_;
+  $csizes = $mp->{cm}->clusterSizes()      ##-- get cluster sizes
+    if (!defined($csizes));
+
+  my $ntyps = $csizes->sumover + 1;        ##-- get number of targets (+ UNKNOWN)
+
+  my $len = listLambda($csizes->nelem);    ##-- list of all classes
+
+  $len += listLambda($csizes)->sumover;    ##-- foreach class: list of class elements
+
+  ##------
+  ##--
+  #$len += sumover($csizes*log2($ntyps));   ##-- v1: foreach class: foreach word: word-id
+                                            ##-- where p(w) ~= 1/|Targets|
+                                            ##   -> all word-types are equiprobable for model-encoding
+                                            ##   -> favors a single large cluster (but not too strongly...)
+  ##--
+  $len += $csizes->sumover*log2($ntyps);   ##-- as (v1), above
+  ##--
+  #$len += sumover($csizes*log2($csizes));  ##-- v2: foreach class: foreach word: word-id
+                                            ##-- where p(w) ~= 1/|class(w)|
+                                            ##   -> all class-internal word-types are equiprobable for model
+                                            ##   -> prefers lots of small clusters
+
+  ##-- unknown class
+  #$len += 0; # 1*log2(1) == 0
+
+  return $len->at(0);
+}
+
+
+##------------------------------------------------------
+## $length = $mp->ugDescLen($mudl_unigrams,$cids)
+## $length = $mp->ugDescLen($mudl_unigrams)
+##   + get description length of corpus (as unigrams)
+
+#*corpusDescLen = \&corpusDescriptionLength;
+*corpusDescLen = *corpusDescriptionLength = \&corpusDescriptionLength_v2;
+
+#our $DEFAULT_CDL_MODE = 'u,u';
+#our $DEFAULT_CDL_MODE = 'u,ml';
+our $DEFAULT_CDL_MODE = 'ml,u';
+#our $DEFAULT_CDL_MODE = 'ml,ml';
+sub corpusDescriptionLength_v2 {
+  my ($mp,$ugs,$cids,$mode) = @_;
+  $mode=$DEFAULT_CDL_MODE if (!defined($mode));
+
+  ##-- get cluster-id map & target enum
+  $cids = $mp->{clusterids} if (!defined($cids));
+  my $tenum = $mp->{tenum};
+
+  ##-- DON'T reshape cluster-id map (NOT adding "unknown" word)
+  my $nclusters = $cids->max+1;
+
+  ##-- get cluster sizes (NOT adding "unknown" cluster)
+  my $csizes = zeroes(long,$nclusters);
+  PDL::Cluster::clustersizes($cids,$csizes);
+
+  ##-- get cluster-frequency pdl
+  my $cf   = zeroes(double,$nclusters);
+
+  ##-- get cluster unigram frequencies
+  my ($w,$wid,$cid,$fw, $nunknown);
+  my $widf = zeroes(double,$tenum->size);
+  foreach $wid (0..($tenum->size-1)) {
+    $w   = $tenum->{id2sym}[$wid];
+    $fw  = $ugs->{$w};
+    $cid = $cids->at($wid);
+    $cf->index($cid) += $fw;
+    $widf->index($wid) += $fw;
+  }
+
+  ##-- compute corpus description length
+  my $len = 0;
+  my $ftotal = $cf->sumover;
+  if ($mode eq 'u,u') {
+    ## p(c)   [UNIFORM:1/nclusters]
+    ## p(w|c) [UNIFORM:1/cluster-size]
+    ## --> favors single huge cluster
+    my $ntyps = pdl(double,$widf->nelem);
+    $len += sumover($widf * (
+			     -log2($nclusters**-1)               ## p(c)   [UNIFORM:1/nclusters]
+			     -log2($ntyps**-1)                   ## p(w|c) [ML:word-tokens/cluster-tokens]
+			    )
+		   );
+  }
+  elsif ($mode eq 'u,ml') {
+    ## p(c)   [UNIFORM:1/nclusters]
+    ## p(w|c) [ML:word-tokens/cluster-tokens]
+    ## --> favors single huge cluster
+    $len += sumover($widf * (
+			     -log2($nclusters**-1)               ## p(c)   [UNIFORM:1/nclusters]
+			     -log2($widf/$cf->index($cids))      ## p(w|c) [ML:word-tokens/cluster-tokens]
+			    )
+		   );
+  }
+  elsif ($mode eq 'ml,u') {
+    ## p(c)   [ML]
+    ## p(w|c) [UNIFORM:1/cluster-size]
+    ## --> favors many small clusters
+    $len += sumover($cf * (
+			   -log2($cf/$ftotal)            ## p(c)   [ML]
+			   -log2($csizes**-1)            ## p(w|c) [UNIFORM:1/cluster-size]
+			  )
+		   );
+  }
+  elsif ($mode eq 'ml,ml') {
+    ## p(c)   [ML]
+    ## p(w|c) [ML:word-tokens/cluster-tokens]
+    ## --> doesn't favor any model at all: it's all ML...
+    $len += sumover($widf * (
+			     -log2(($cf/$ftotal)->index($cids))  ## p(c)   [ML]
+			     -log2($widf/$cf->index($cids))      ## p(w|c) [ML:word-tokens/cluster-tokens]
+			    )
+		   );
+  }
+
+  return $len->at(0);
+}
+
+sub corpusDescriptionLength_v1 {
+  my ($mp,$ugs,$cids0) = @_;
+
+  ##-- get cluster-id map & target enum
+  $cids0 = $mp->{clusterids} if (!defined($cids0));
+  my $tenum = $mp->{tenum};
+
+  ##-- reshape cluster-id map (adding "unknown" word)
+  my $cids = pdl($cids0);
+  my $nclusters = $cids->max+1;
+  my $ucid = $nclusters;
+  my $uwid = $cids->nelem;
+  $cids->reshape($uwid+1);
+  $cids->set($uwid,$ucid);
+
+  ##-- get cluster sizes (adding "unknown" cluster)
+  my $csizes = zeroes(long,$ucid+1);
+  PDL::Cluster::clustersizes($cids,$csizes);
+
+  ##-- get cluster-frequency pdl
+  my $cf   = zeroes(double,$ucid+1); ##-- handle unknown cluster
+
+  ##-- get cluster unigram frequencies
+  my ($w,$wid,$cid,$fw, $nunknown);
+  while (($w,$fw)=each(%$ugs)) {
+    if (defined($wid=$tenum->{sym2id}{$w})) {
+      $cid = $cids->at($wid)
+    } else {
+      $cid = $ucid;
+      $nunknown++;             ##-- update "unknown word" cluster size
+    }
+    $cf->index($cid) += $fw;
+  }
+  $csizes->set($ucid,$nunknown);
+
+  ##-- compute corpus description length
+  my $len = 0;
+  my $ftotal = $cf->sumover;
+  if (1) {
+    ## p(w|c) [UNIFORM:1/cluster-size]
+    $len += sumover($csizes * (
+			       -log2($cf/$ftotal)
+			       -log2($csizes**-1)
+			      )
+		   );
+  }
+  elsif (0) {
+    ## p(w|c) [ML:word-tokens/cluster-tokens]
+    while (($w,$fw)=each(%$ugs)) {
+      $wid=$tenum->{sym2id}{$w};
+      $cid = defined($wid) ? $cids->at($wid) : $ucid;
+
+      $len += $fw * (
+		     -log2($cf->index($cid)/$ftotal)            ## p(c) [ML]
+		     ##--
+		     #-log2($csizes->index($cid)**-1)           ## p(w|c) [UNIFORM:1/cluster-size]
+		     -log2(pdl(double,$fw)/$cf->index($cid))    ## p(w|c) [ML:word-tokens/cluster-tokens]
+		  );
+    }
+  }
+
+  return $len->at(0);
+}
+
+
+########################################################################
 ## Viewing
 ########################################################################
 
