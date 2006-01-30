@@ -4,6 +4,7 @@ use lib qw(../..);
 use Gfsm;
 use MUDL::Gfsm::Automaton;
 use MUDL::Gfsm::Alphabet;
+use MUDL::Gfsm::FreqTrie;
 
 ##--------------------------------------------------
 BEGIN {
