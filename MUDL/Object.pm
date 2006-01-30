@@ -599,14 +599,14 @@ sub saveBinFh {
 ## I/O: Binary: Load
 ##======================================================================
 
-## $obj_or_undef = $obj->loadBinString($str,@args)
+## $obj_or_undef = $class_or_obj->loadBinString($str,@args)
 sub loadBinString {
   my $str = $_[1];
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
   return Storable::thaw($str);
 }
 
-## $obj_or_undef = $obj->loadBinFile($filename,@args)
+## $obj_or_undef = $class_or_obj->loadBinFile($filename,@args)
 ##   + calls loadBinFh($fh)
 sub loadBinFile {
   my ($obj,$file) = splice(@_,0,2);
@@ -621,7 +621,7 @@ sub loadBinFile {
   return $rc;
 }
 
-## $obj_or_undef = $obj->loadBinFh($fh,@args)
+## $obj_or_undef = $class_or_obj->loadBinFh($fh,@args)
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK

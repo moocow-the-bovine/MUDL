@@ -161,9 +161,16 @@ sub vector2chars { return $_[0]->labels2chars($_[0]->vector2labels($_[1])); }
 sub getFreqLabels {
   my ($trie,$labs) = @_;
   return 0 if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
-  my $qid = $trie->{fsm}->add_paths(($trie->{reversed} ? [reverse(@$labs)] : $labs), [], 0);
-  return 0 if ($qid==$Gfsm::noState);
-  return $trie->{fsm}->final_weight($qid);
+
+  my $fsm = $trie->{fsm};
+  my $qid = 0;
+  my ($lab);
+  foreach $lab (@$labs) {
+    $qid = $fsm->find_arc_lower($qid,$lab);
+    return 0 if ($qid == $Gfsm::noState);
+  }
+
+  return $fsm->final_weight($qid);
 }
 
 ## $freq = $trie->getFreqStrings(\@strings);
