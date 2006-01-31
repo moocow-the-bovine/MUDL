@@ -7,20 +7,30 @@
 ##======================================================================
 
 package MUDL::Corpus::Profile::PTA;
-use MUDL::Corpus::Profile;
 use MUDL::Gfsm::FreqTrie;
-use MUDL::Object;
+use MUDL::Corpus::Profile;
 use Carp;
 
 use strict;
-our @ISA = qw(MUDL::Corpus::Profile);
+our @ISA = qw(MUDL::Gfsm::FreqTrie MUDL::Corpus::Profile);
+
+##======================================================================
+## Constants & class methods
+
+## $bool = $class_or_obj->reverseDefault()
+##  + returns true if this class handles suffixes and not prefixes by default
+sub reverseDefault { return 0; }
 
 ##======================================================================
 ## $prof = $class_or_obj->new(%args)
 ##   + %args:
-##       eos => $eos_str,
-##       bos => $bos_str,
-##       trie => $mudl_gfsm_freqtrie,
+##     ##-- inherited from Gfsm::FreqTrie
+##     fsm=>$mudl_gfsm_automaton,
+##     abet=>$mudl_gfsm_alphabet,
+##     reversed=>$bool
+##     ##-- new in Corpus::Profile::PTA
+##     eos => $eos_str,
+##     bos => $bos_str,
 sub new {
   my ($that,%args) = @_;
 
@@ -28,15 +38,15 @@ sub new {
     (
      eos=>'__$',
      bos=>'__$',
-     trie=>MUDL::Gfsm::FreqTrie->new(reversed=>0),
+     reversed=>$that->reverseDefault,
      %args,
-     );
+    );
 
   return $self;
 }
 
 ##======================================================================
-## Reset
+## Profile Methods: Reset
 
 ## $prof = $prog->reset()
 ##   + resets profile distributions
@@ -47,7 +57,7 @@ sub reset {
 }
 
 ##======================================================================
-## Shadow
+## Profile Methods: Shadow
 
 ## $prof = $prof->shadow(%args)
 ##  + return new profile of same form
@@ -85,7 +95,6 @@ sub helpString {
     (qq(Class for word-level prefix tree acceptor corpus profiles.\n)
      .qq(  eos=EOS_STRING   [default='__\$']\n)
      .qq(  bos=BOS_STRING   [default='__\$']\n)
-     .qq(  trie=TRIE        [default=new MUDL::Gfsm::FreqTrie]\n)
     );
 }
 
