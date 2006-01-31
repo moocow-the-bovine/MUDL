@@ -236,19 +236,37 @@ sub addPathChars {
 ## Methods: Traversal
 ##======================================================================
 
+## Return conventions for traversal subs
+
+## $TRAVERSE_STOP
+##  + immediately cease traversal
+our $TRAVERSE_STOP = 0;
+
+## $TRAVERSE_IGNORE
+##  + continue inspecting queued states, but do not enqueue successors
+##    of current state for inspection
+our $TRAVERSE_IGNORE = 1;
+
+## $TRAVERSE_CONTINUE
+##  + continue inspecting queued states, enqueing successors of current state
+##  + default
+our $TRAVERSE_CONTINUE = 2;
 
 ## undef = $trie->traverse(\&sub)
 ##  + calls &sub(\@prefix,$qid) for each state in trie
-##  + stops if the call to &sub() returns a false value
+##  + return conventions for \&sub 
+##    - one of $TRAVERSE_STOP,$TRAVERSE_IGNORE, or $TRAVERSE_CONTINUE
 sub traverse {
   my ($trie,$sub) = @_;
   my $fsm = $trie->{fsm};
   my $abet = $trie->{abet};
   my @queue = ([],$fsm->root);
-  my ($prefix,$qid,$ai);
+  my ($prefix,$qid,$ai,$rc);
   while (@queue) {
     ($prefix,$qid) = splice(@queue,0,2);
-    last if (!&$sub($prefix,$qid));
+    $rc = &$sub($prefix,$qid);
+    last if (!defined($rc) || $rc == $TRAVERSE_STOP);
+    next if ( defined($rc) && $rc == $TRAVERSE_IGNORE);
     for ($ai = Gfsm::ArcIter->new($fsm,$qid); $ai->ok; $ai->next) {
       push(@queue, [@$prefix,$ai->lower], $ai->target);
     }
@@ -272,7 +290,7 @@ sub toHash {
  $trie->traverse(sub {
 		   #($prefix,$qid)=@_;
 		   $h->{ join($sep, @{$trie->labels2strings($_[0])}) } = $fsm->final_weight($_[1]);
-		   1;
+		   return $TRAVERSE_CONTINUE;
 		 });
   return $h;
 }
@@ -296,7 +314,7 @@ sub toVectorHash {
   $trie->traverse(sub {
 		    #($prefix,$qid)=@_;
 		    $h->{$trie->labels2vector($_[0])} = $fsm->final_weight($_[1]);
-		    1;
+		   return $TRAVERSE_CONTINUE;
 		  });
   return $h;
 }
