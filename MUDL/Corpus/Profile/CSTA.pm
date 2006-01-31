@@ -1,17 +1,17 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::STA.pm
+## File: MUDL::Corpus::Profile::CSTA.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: Suffix Tree Acceptor
+##  + MUDL unsupervised dependency learner: corpus profile: Character Suffix Tree Acceptor
 ##======================================================================
 
-package MUDL::Corpus::Profile::STA;
-use MUDL::Corpus::Profile::PTA;
+package MUDL::Corpus::Profile::CSTA;
+use MUDL::Corpus::Profile::CPTA;
 use Carp;
 
 use strict;
-our @ISA = qw(MUDL::Corpus::Profile::PTA);
+our @ISA = qw(MUDL::Corpus::Profile::CPTA);
 
 ##======================================================================
 ## Constants & class methods
@@ -23,7 +23,7 @@ sub reverseDefault { return 1; }
 ##======================================================================
 ## Methods
 
-##-- Everything else inherited from Corpus::Profile::PTA
+##-- Everything else inherited from Corpus::Profile::CPTA
 
 ##======================================================================
 ## Help
@@ -32,9 +32,9 @@ sub reverseDefault { return 1; }
 sub helpString {
   my $that = shift;
   return
-    (qq(Class for word-level suffix tree acceptor corpus profiles.\n)
-     .qq(  eos=EOS_STRING   [default='__\$']\n)
-     .qq(  bos=BOS_STRING   [default='__\$']\n)
+    (qq(Class for character-level suffix tree acceptor corpus profiles.\n)
+     .qq(  eos=EOS_STRING   [default='#']\n)
+     .qq(  bos=BOS_STRING   [default='#']\n)
     );
 }
 

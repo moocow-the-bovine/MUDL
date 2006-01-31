@@ -1,12 +1,12 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::STA.pm
+## File: MUDL::Corpus::Profile::CPTA.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: Suffix Tree Acceptor
+##  + MUDL unsupervised dependency learner: corpus profile: Character Prefix Tree Acceptor
 ##======================================================================
 
-package MUDL::Corpus::Profile::STA;
+package MUDL::Corpus::Profile::CPTA;
 use MUDL::Corpus::Profile::PTA;
 use Carp;
 
@@ -18,12 +18,47 @@ our @ISA = qw(MUDL::Corpus::Profile::PTA);
 
 ## $bool = $class_or_obj->reverseDefault()
 ##  + returns true if this class handles suffixes and not prefixes by default
-sub reverseDefault { return 1; }
+sub reverseDefault { return 0; }
 
 ##======================================================================
-## Methods
+## $prof = $class_or_obj->new(%args)
+##   + %args:
+##     ##-- inherited from Gfsm::FreqTrie
+##     fsm=>$mudl_gfsm_automaton,
+##     abet=>$mudl_gfsm_alphabet,
+##     reversed=>$bool
+##     ##-- new in Corpus::Profile::PTA
+##     eos => $eos_str,
+##     bos => $bos_str,
+sub new {
+  my ($that,%args) = @_;
 
-##-- Everything else inherited from Corpus::Profile::PTA
+  my $self = $that->SUPER::new
+    (
+     bos=>'#',
+     eos=>'#',
+     reversed=>$that->reverseDefault,
+     %args,
+    );
+
+  return $self;
+}
+
+##======================================================================
+## Profiling
+
+## undef = $profile->addSentence(\@sentence)
+##  + addds characters for each word in \@sentence
+sub addSentence {
+  my ($prof,$sent) = @_;
+  $prof->addPathChars(((defined($prof->{bos}) ? $prof->{bos} : '')
+		       .(ref($_) ? $_->text : $_)
+		       .(defined($prof->{eos}) ? $prof->{eos} : '')),
+		      1)
+    foreach (@$sent);
+}
+
+
 
 ##======================================================================
 ## Help
@@ -32,9 +67,9 @@ sub reverseDefault { return 1; }
 sub helpString {
   my $that = shift;
   return
-    (qq(Class for word-level suffix tree acceptor corpus profiles.\n)
-     .qq(  eos=EOS_STRING   [default='__\$']\n)
-     .qq(  bos=BOS_STRING   [default='__\$']\n)
+    (qq(Class for character-level prefix tree acceptor corpus profiles.\n)
+     .qq(  eos=EOS_CHAR   [default='#']\n)
+     .qq(  bos=BOS_CHAR   [default='#']\n)
     );
 }
 
