@@ -52,7 +52,7 @@ sub new {
 ##   + resets profile distributions
 sub reset {
   my $prof = shift;
-  $prof->{trie}->clear;
+  $prof->clear;
   return $prof;
 }
 
@@ -76,11 +76,11 @@ sub shadow {
 ## undef = $profile->addSentence(\@sentence)
 sub addSentence {
   my ($prof,$sent) = @_;
-  $prof->{trie}->addPathStrings([
-				 (defined($prof->{bos}) ? $prof->{bos} : qw()),
-				 @$sent,
-				 (defined($prof->{eos}) ? $prof->{eos} : qw()),
-				], 1);
+  $prof->addPathStrings([
+			 (defined($prof->{bos}) ? $prof->{bos} : qw()),
+			 @$sent,
+			 (defined($prof->{eos}) ? $prof->{eos} : qw()),
+			], 1);
 }
 
 
