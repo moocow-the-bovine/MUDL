@@ -4,5 +4,9 @@
 *.ps
 *.dot
 *.bin
+*.txt
+
+utest-nl.*
+utrain-nl.*
 
 save

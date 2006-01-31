@@ -38,11 +38,12 @@ sub epsilonString { return '<epsilon>'; }
 sub new {
   my ($that,%args) = @_;
   my $trie = bless {
-		fsm=>MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal), ##-- acceptor with Real semiring
-		abet=>MUDL::Gfsm::Alphabet->new(),
-		reversed=>$that->reverseDefault(),
-		%args,
-	       }, ref($that)||$that;
+		    fsm=>MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal), ##-- acceptor with Real semiring
+		    abet=>MUDL::Gfsm::Alphabet->new(),
+		    rfsm=>undef, ##-- reverse-lookup fsm
+		    reversed=>$that->reverseDefault(),
+		    %args,
+		   }, ref($that)||$that;
 
   ##-- structure stuff
   $trie->ensureEpsilon;
@@ -55,8 +56,21 @@ sub clear {
   my $trie = shift;
   $trie->{fsm}->clear;
   $trie->{abet}->clear;
+  delete($trie->{rfsm});
   $trie->ensureEpsilon;
   return $trie;
+}
+
+##======================================================================
+## Methods: reverse-indexing
+##======================================================================
+
+## $fsm = $trie->reverseFsm()
+##  + returns a Gfsm::Automaton suitable for reverse-lookup (state-id => path)
+##  + only call this once you have added all data to the trie
+sub reverseFsm {
+  my $trie = shift;
+  return $trie->{fsm}->reverse;
 }
 
 ##======================================================================
@@ -74,7 +88,6 @@ sub vector2labels { return [unpack('S*',$_[1])]; }
 
 ##--------------------------------------------------------------
 ## Methods: Lookup : Strings -> Labels
-
 
 ## $labels = $trie->strings2labels(\@strings_or_tokens)
 ## $labels = $trie->strings2labels(\@strings_or_tokens,$autocreate)
@@ -150,15 +163,15 @@ sub labels2chars {
 ## $chars = $trie->vector2chars($vec)
 sub vector2chars { return $_[0]->labels2chars($_[0]->vector2labels($_[1])); }
 
-
 ##======================================================================
-## Methods: Lookup : Frequency
+## Methods: Lookup : State-ID
 ##======================================================================
 
-## $freq = $trie->getFreqLabels(\@labels);
-##  + gets stored frequency for \@labels
+## $qid = $trie->getStateLabels(\@labels);
+##  + gets state-id for address \@labels
 ##  + implicitly reverses \@labels if $trie->{reversed} is true
-sub getFreqLabels {
+##  + returns undef if no state is defined
+sub getStateLabels {
   my ($trie,$labs) = @_;
   return 0 if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
 
@@ -167,24 +180,67 @@ sub getFreqLabels {
   my ($lab);
   foreach $lab (@$labs) {
     $qid = $fsm->find_arc_lower($qid,$lab);
-    return 0 if ($qid == $Gfsm::noState);
+    return undef if ($qid == $Gfsm::noState);
   }
+  return $qid;
+}
 
-  return $fsm->final_weight($qid);
+## $qid = $trie->getStateStrings(\@strings);
+##  + gets state-id for address \@strings
+sub getStateStrings {
+  #my ($trie,$strings) = @_;
+  return $_[0]->getFreqLabels($_[0]->strings2labels($_[1],0));
+}
+
+## $qid = $trie->getStateChars($word);
+##  + gets state-id for $word
+sub getStateChars {
+  #my ($trie,$word) = @_;
+  return $_[0]->getStateLabels($_[0]->chars2labels($_[1],0));
+}
+
+## $qid = $trie->getStateChars($vector);
+##  + gets state-id for $vector
+sub getStateVector {
+  #my ($trie,$vec) = @_;
+  return $_[0]->getStateLabels($_[0]->vector2labels($_[1]));
+}
+
+
+##======================================================================
+## Methods: Lookup : Frequency
+##======================================================================
+
+## $freq = $trie->getFreqState($id_or_undef)
+##  + returns 0 if $qid is invalid
+sub getFreqState {
+  my ($trie,$qid) = @_;
+  return defined($id) && $id < $trie->{fsm}->n_states ? $trie->{fsm}->final_weight($qid) : 0;
+}
+
+## $freq = $trie->getFreqLabels(\@labels);
+##  + gets stored frequency for \@labels
+##  + implicitly reverses \@labels if $trie->{reversed} is true
+sub getFreqLabels {
+  return $_[0]->getFreqState($_[0]->getStateLabels($_[1]));
 }
 
 ## $freq = $trie->getFreqStrings(\@strings);
 ##  + gets stored frequency for \@strings
 sub getFreqStrings {
-  #my ($trie,$strings) = @_;
-  return $_[0]->getFreqLabels($_[0]->strings2labels($_[1],0));
+  return $_[0]->getFreqState($_[0]->getStateStrings($_[1]));
 }
 
 ## $freq = $trie->getFreqChars($word);
 ##  + gets stored frequency for $word
 sub getFreqChars {
-  #my ($trie,$word) = @_;
-  return $_[0]->getFreqLabels($_[0]->chars2labels($_[1],0));
+  return $_[0]->getFreqState($_[0]->getStateChars($_[1]));
+}
+
+## $freq = $trie->getFreqVector($vec);
+##  + gets stored frequency for vector $vec
+sub getFreqVector {
+  return $_[0]->getFreqState($_[0]->getStateVector($_[1]));
 }
 
 
@@ -265,8 +321,8 @@ sub traverse {
   while (@queue) {
     ($prefix,$qid) = splice(@queue,0,2);
     $rc = &$sub($prefix,$qid);
-    last if (!defined($rc) || $rc == $TRAVERSE_STOP);
-    next if ( defined($rc) && $rc == $TRAVERSE_IGNORE);
+    last if (!defined($rc) || $rc == $TRAVERSE_STOP   || $rc eq 'stop');
+    next if ( defined($rc) && $rc == $TRAVERSE_IGNORE || $rc eq 'ignore');
     for ($ai = Gfsm::ArcIter->new($fsm,$qid); $ai->ok; $ai->next) {
       push(@queue, [@$prefix,$ai->lower], $ai->target);
     }
