@@ -3,8 +3,16 @@
 use lib qw(../..);
 use Gfsm;
 use MUDL::Gfsm::FreqTrie;
+use MUDL::Corpus::Profile::PTA;
+use MUDL::Corpus::Profile::STA;
+use MUDL::Corpus::Profile::CPTA;
+use MUDL::Corpus::Profile::CSTA;
+use MUDL::Unigrams;
+use MUDL::CorpusIO;
 use MUDL::Dist;
 use MUDL::CmdUtils;
+use PDL;
+
 
 ##--------------------------------------------------
 ## create a freq trie
@@ -41,6 +49,38 @@ sub loadtrie {
   $trie = load('utest-nl.t.cpta.bin');
   loadModule($trie);
 }
+
+##--------------------------------------------------
+## generate freq tries & unigram word profile
+sub gentries {
+  $nwords = shift;
+  $nwords = 10000 if (!defined($nwords));
+  $nread  = 0;
+
+  $cr = MUDL::CorpusIO->formatReader('utest-nl.t');
+  $pta = MUDL::Corpus::Profile::CPTA->new(bos=>$bos,eos=>$eos);
+  $sta = MUDL::Corpus::Profile::CSTA->new(abet=>$pta->{abet},bos=>$bos,eos=>$eos);
+  $ugp = MUDL::Unigrams->new();
+
+  while (defined($s = $cr->getSentence) && $nread < $nwords) {
+    if ($nread + @$s > $nwords) {
+      @$s = @$s[0..($nwords-$nread-1)];
+    }
+    $pta->addSentence($s);
+    $sta->addSentence($s);
+    $ugp->addSentence($s);
+
+    $nread += @$s;
+  }
+  $trie = $pta;
+  undef $cr;
+
+  ##-- save 'em
+  $pta->saveFile('utest-nl.t.cpta.bin');
+  $sta->saveFile('utest-nl.t.csta.bin');
+  $ugp->saveFile('utest-nl.t.ug.bin');
+}
+
 
 ##--------------------------------------------------
 ## REVERSE LOOKUP

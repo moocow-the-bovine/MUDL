@@ -40,7 +40,7 @@ sub new {
   my $trie = bless {
 		    fsm=>MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal), ##-- acceptor with Real semiring
 		    abet=>MUDL::Gfsm::Alphabet->new(),
-		    rfsm=>undef, ##-- reverse-lookup fsm
+		    #rfsm=>undef, ##-- reverse-lookup fsm
 		    reversed=>$that->reverseDefault(),
 		    %args,
 		   }, ref($that)||$that;
@@ -81,9 +81,11 @@ sub reverseFsm {
 ## Methods: Lookup : Labels -> Vectors
 
 ## $vec = $trie->labels2vector(\@labs)
+##   + no implicit reversal
 sub labels2vector { return pack('S*',@{$_[1]}); }
 
 ## $labs = $trie->vector2labels($vec)
+##   + no implicit reversal
 sub vector2labels { return [unpack('S*',$_[1])]; }
 
 ##--------------------------------------------------------------
@@ -92,6 +94,7 @@ sub vector2labels { return [unpack('S*',$_[1])]; }
 ## $labels = $trie->strings2labels(\@strings_or_tokens)
 ## $labels = $trie->strings2labels(\@strings_or_tokens,$autocreate)
 ##   + ensures labels exist for each text string in @strings_or_tokens
+##   + no implicit reversal
 sub strings2labels {
   my ($trie,$strings,$autocreate) = @_;
   my $abet = $trie->{abet};
@@ -108,12 +111,14 @@ sub strings2labels {
 
 ## $vec = $trie->strings2vector(\@strings_or_tokens)
 ## $vec = $trie->strings2vector(\@strings_or_tokens,$autocreate)
+##   + no implicit reversal
 sub strings2vector { return $_[0]->labels2vector($_[0]->strings2labels(@_[1..$#_])); }
 
 
 ## $labels = $trie->chars2labels($word_or_token)
 ## $labels = $trie->chars2labels($word_or_token,$autocreate)
 ##   + ensures labels exist for each text character in $word_or_token
+##   + no implicit reversal
 sub chars2labels {
   my ($trie,$word,$autocreate) = @_;
   my $abet = $trie->{abet};
@@ -178,7 +183,7 @@ sub getStateLabels {
   my $fsm = $trie->{fsm};
   my $qid = 0;
   my ($lab);
-  foreach $lab (@$labs) {
+  foreach $lab ($trie->{reversed} ? reverse(@$labs) : @$labs) {
     $qid = $fsm->find_arc_lower($qid,$lab);
     return undef if ($qid == $Gfsm::noState);
   }
@@ -215,7 +220,7 @@ sub getStateVector {
 ##  + returns 0 if $qid is invalid
 sub getFreqState {
   my ($trie,$qid) = @_;
-  return defined($id) && $id < $trie->{fsm}->n_states ? $trie->{fsm}->final_weight($qid) : 0;
+  return defined($qid) && $qid < $trie->{fsm}->n_states ? $trie->{fsm}->final_weight($qid) : 0;
 }
 
 ## $freq = $trie->getFreqLabels(\@labels);
