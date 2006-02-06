@@ -72,6 +72,7 @@ sub compact {
     @$id2s[$i-$offset,$i] = @$id2s[$i,$i-$offset];
     $changed->[$i] = $i-$offset if ($changed);
   }
+  splice(@$id2s, -$offset, $#$id2s-$offset+1);
   return $e;
 }
 
