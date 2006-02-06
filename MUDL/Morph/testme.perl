@@ -10,13 +10,17 @@ use PDL;
 
 
 ##--------------------------------------------------
-## create a freq trie
+## initialization
 BEGIN {
   our (@words);
   @words = (
 	    #qw(a as aa aas ab abs abc abcs),
+	    ##--
 	    (map { 'xxx' . $_ } qw(ed s ion ing)),
-	    (map { $_ . 'yyy' } qw(post un)),
+	    #(map { $_ . 'yyy' } qw(post un)),
+	    ##--
+	    #(map { 'zz' . $_ } qw(es s ion ing)),
+	    #(map { $_ . 'zz' } qw(post un)),
 	   );
   ##--
   our ($bos,$eos);
@@ -26,6 +30,8 @@ BEGIN {
   ($bos,$eos) = (undef,undef);
 }
 
+##--------------------------------------------------
+## object creation: dummy
 sub newmorph {
   $morph = MUDL::Morph::Goldsmith->new(bos=>$bos,eos=>$eos, tsplit=>'', @_);
   $morph->addSentence(\@words);
@@ -39,26 +45,49 @@ sub newmorph_w {
 }
 #newmorph_w;
 
+##--------------------------------------------------
+## object creation: profile
+
+sub profmorph {
+  $morph = MUDL::Morph::Goldsmith->new(bos=>$bos,eos=>$eos,tsplit=>'',@_);
+  $cr = MUDL::CorpusIO->fileReader('utest-nl.t');
+  $sent = [];
+  for ($i=0; defined($sent=$cr->getSentence) && $i <= 10000; $i += $#$sent+1) {
+    $morph->addSentence($sent);
+  }
+  return $morph;
+}
+
+sub save_morph {
+  my $file = shift;
+  $file = 'morph-test.bin' if (!$file);
+  $morph->saveFile($file);
+}
+sub loadmorph { load_morph(@_); }
+sub load_morph {
+  my $file=shift;
+  $file = 'morph-test.bin' if (!$file);
+  $morph = MUDL::Morph::Goldsmith->loadFile($file);
+}
+
 
 ##--------------------------------------------------
 ## test: successor frequencies
 
 sub testsf1_0 {
   my %args = @_;
-  newmorph();
+  newmorph(reversed=>$args{reversed}) if (!$morph);
+  #newmorph(minStemLen1=>0);
   $morph->succFreqs(mode=>1,%args);
-  our $cuts = $morph->{cuts};
+  our $wcuts = $morph->debug_cuts();
 
-  our $wcuts = {};
-  my ($vid,$cutat);
-  while (($vid,$cutat)=each(%$cuts)) {
-    $labs = $morph->{pta}->vector2labels($morph->{wenum}{id2sym}[$vid]);
-    $word=$morph->{pta}->labels2chars($labs);
-    $wcuts->{$word} = substr($word,0,$cutat+1).".".substr($word,$cutat+1);
-    #$wcuts->{$word} = $cutat;
-  }
+  $morph->generateModelFromCuts(%args);
+  our $t2f   = $morph->debug_t2f;
+  our $f2t   = $morph->debug_f2t;
+  our $sig2t = $morph->debug_sig2t;
 }
-testsf1_0;
+loadmorph;
+testsf1_0(reversed=>0);
 #testsf1_0(reversed=>1);
 
 ##--------------------------------------------------
