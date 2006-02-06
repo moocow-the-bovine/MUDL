@@ -5,6 +5,7 @@
 *.dot
 *.bin
 *.txt
+*.save[0-9]
 
 utest-nl.*
 utrain-nl.*
