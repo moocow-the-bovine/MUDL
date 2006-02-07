@@ -6,6 +6,8 @@
 *.bin
 *.txt
 *.save[0-9]
+*.tfst
+*.gfst
 
 utest-nl.*
 utrain-nl.*
