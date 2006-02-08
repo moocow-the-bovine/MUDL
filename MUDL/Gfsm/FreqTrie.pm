@@ -34,14 +34,27 @@ sub epsilonString { return '<epsilon>'; }
 ##   + args:
 ##       fsm=>$mudl_gfsm_automaton,
 ##       abet=>$mudl_gfsm_alphabet,
-##       reversed=>$bool
+##       reversed=>$bool,             ##-- whether to implicitly reverse path-addresses (arrays,vectors,etc.)
+##
+##       ##-- add_paths flags:
+##       add_to_arcs => $bool,        ##-- add_paths(): arcs? (default=1)
+##       add_to_state_final => $bool, ##-- add_paths(): final-weight for all visited states? (default=0)
+##       add_to_path_final => $bool,  ##-- add_paths(): final-weight for path-final state?   (default=1)
 sub new {
   my ($that,%args) = @_;
   my $trie = bless {
+		    ##-- guts
 		    fsm=>MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal), ##-- acceptor with Real semiring
 		    abet=>MUDL::Gfsm::Alphabet->new(),
 		    #rfsm=>undef, ##-- reverse-lookup fsm
 		    reversed=>$that->reverseDefault(),
+
+		    ##-- add_paths() flags:
+		    add_to_arcs=>1,
+		    add_to_state_final=>0,
+		    add_to_path_final=>1,
+
+		    ##-- user args
 		    %args,
 		   }, ref($that)||$that;
 
@@ -62,16 +75,87 @@ sub clear {
 }
 
 ##======================================================================
+## Methods: trie reversal
+##======================================================================
+
+## $trie = $trie->_reverse()
+##  + reverses contents of trie: PTA to STA (destructive)
+sub _reverse {
+  my $trie = shift;
+  my $fsm = $trie->{fsm};
+  $fsm->_reverse;
+  $fsm->_rmepsilon;
+  $fsm->_determinize;
+  $fsm->_connect;
+  $fsm->renumber_states;
+  return $trie;
+}
+
+## $rtrie = $trie->reverseTrie()
+##  + returns copy of trie, reversed: PTA to STA (destructive)
+*sta2pta = *pta2sta = \&reverseTrie;
+sub reverseTrie {
+  my $trie = shift;
+  my $rtrie = bless { %$trie }, ref($trie);
+  $rtrie->{abet} = $trie->{abet}->clone;
+  $rtrie->{fsm}  = $trie->{fsm}->clone;
+  $rtrie->{reversed} = !$trie->{reversed};
+  $rtrie->_reverse;
+  return $rtrie;
+}
+
+
+##======================================================================
 ## Methods: reverse-indexing
 ##======================================================================
 
-## $fsm = $trie->reverseFsm()
+## $rfsm = $trie->reverseLookupFsm()
 ##  + returns a Gfsm::Automaton suitable for reverse-lookup (state-id => path)
 ##  + only call this once you have added all data to the trie
-sub reverseFsm {
+sub reverseLookupFsm {
   my $trie = shift;
   return $trie->{fsm}->reverse;
 }
+
+##======================================================================
+## Methods: Lookup : Suffixes
+##======================================================================
+
+## \@suffix_label_vectors = $trie->suffixesState($qid)
+sub suffixesState {
+  my ($trie,$qid) = @_;
+  return qw() if (!defined($qid));
+  my $root_tmp = $trie->{fsm}->root;
+  $trie->{fsm}->root($qid);
+  my @suffixes = map { $_->{lo} } @{$trie->{fsm}->paths};
+  $trie->{fsm}->root($root_tmp);
+  return \@suffixes;
+}
+
+## \@suffix_label_vectors = $trie->suffixesLabels(\@labels)
+sub suffixesLabels {
+  my ($trie,$labs) = @_;
+  return $trie->suffixesState($trie->getStateLabels($labs));
+}
+
+## \@suffix_label_vectors = $trie->suffixesStrings(\@strings)
+sub suffixesStrings {
+  my ($trie,$strs) = @_;
+  return $trie->suffixesState($trie->getStateStrings($strs));
+}
+
+## \@suffix_label_vectors = $trie->suffixesChars($chars)
+sub suffixesChars {
+  my ($trie,$chars) = @_;
+  return $trie->suffixesState($trie->getStateChars($chars));
+}
+
+## \@suffix_label_vectors = $trie->suffixesVector($vec)
+sub suffixesVector {
+  my ($trie,$vec) = @_;
+  return $trie->suffixesVectors($trie->getStateVector($vec));
+}
+
 
 ##======================================================================
 ## Methods: Lookup : Vectors <-> Labels <-> Strings
@@ -178,10 +262,12 @@ sub vector2chars { return $_[0]->labels2chars($_[0]->vector2labels($_[1])); }
 ##  + returns undef if no state is defined
 sub getStateLabels {
   my ($trie,$labs) = @_;
-  return 0 if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
+  return undef if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
 
   my $fsm = $trie->{fsm};
-  my $qid = 0;
+  my $qid = $fsm->root;
+  return undef if ($qid == $Gfsm::noState);
+
   my ($lab);
   foreach $lab ($trie->{reversed} ? reverse(@$labs) : @$labs) {
     $qid = $fsm->find_arc_lower($qid,$lab);
@@ -194,7 +280,7 @@ sub getStateLabels {
 ##  + gets state-id for address \@strings
 sub getStateStrings {
   #my ($trie,$strings) = @_;
-  return $_[0]->getFreqLabels($_[0]->strings2labels($_[1],0));
+  return $_[0]->getStateLabels($_[0]->strings2labels($_[1],0));
 }
 
 ## $qid = $trie->getStateChars($word);
@@ -204,7 +290,7 @@ sub getStateChars {
   return $_[0]->getStateLabels($_[0]->chars2labels($_[1],0));
 }
 
-## $qid = $trie->getStateChars($vector);
+## $qid = $trie->getStateVector($vector);
 ##  + gets state-id for $vector
 sub getStateVector {
   #my ($trie,$vec) = @_;
@@ -268,7 +354,14 @@ sub ensureEpsilon {
 sub addPathLabels {
   my ($trie,$labs,$freq) = @_;
   $freq = 1 if (!defined($freq));
-  $trie->{fsm}->add_paths(($trie->{reversed} ? [reverse(@$labs)] : $labs), [], 1);
+  $trie->{fsm}->add_paths(
+			  ($trie->{reversed} ? [reverse(@$labs)] : $labs),
+			  [],
+			  1,
+			  ($trie->{add_to_arcs} ? 1 : 0),
+			  ($trie->{add_to_state_final} ? 1 : 0),
+			  ($trie->{add_to_path_final} ? 1 : 0),
+			 );
   return $trie;
 }
 
@@ -293,6 +386,15 @@ sub addPathChars {
   return $_[0]->addPathLabels($_[0]->chars2labels($_[1],1), $_[2]);
 }
 
+## $trie = $trie->addPathVector($vec)
+## $trie = $trie->addPathVector($vec,$freq)
+##  + calls addPathLabels(\@labels)
+sub addPathVector {
+  #my ($trie,$vec,$freq) = @_;
+  #return $trie->addPathLabels($trie->vector2labels($vec), $freq);
+  return $_[0]->addPathLabels($_[0]->vector2labels($_[1]), $_[2]);
+}
+
 ##======================================================================
 ## Methods: Traversal
 ##======================================================================
@@ -314,15 +416,17 @@ our $TRAVERSE_IGNORE = 1;
 our $TRAVERSE_CONTINUE = 2;
 
 ## undef = $trie->traverse(\&sub)
+## undef = $trie->traverse(\&sub,$qid_initial)
+##  + $qid_initial defaults to $trie->root
 ##  + calls &sub(\@prefix,$qid) for each state in trie
 ##  + return conventions for \&sub 
 ##    - one of $TRAVERSE_STOP,$TRAVERSE_IGNORE, or $TRAVERSE_CONTINUE
 sub traverse {
-  my ($trie,$sub) = @_;
+  my ($trie,$sub,$qid) = @_;
   my $fsm = $trie->{fsm};
   my $abet = $trie->{abet};
-  my @queue = ([],$fsm->root);
-  my ($prefix,$qid,$ai,$rc);
+  my @queue = ([], (defined($qid) ? $qid : $fsm->root));
+  my ($prefix,$ai,$rc);
   while (@queue) {
     ($prefix,$qid) = splice(@queue,0,2);
     $rc = &$sub($prefix,$qid);
