@@ -228,13 +228,13 @@ sub successorFrequencies {
   }
 
   ##-- get first-stab signatures
-  $morph->generateModelFromCuts(%args);
+  #$morph->generateModelFromCuts(%args);
 
   ##-- filter 'em
-  $morph->filterFirstModel(%args);
+  #$morph->filterFirstModel(%args);
 
   ##-- compute robustness of remaining signatures
-  $morph->computeRobustness(%args);
+  #$morph->computeRobustness(%args);
 
   return $morph;
 }
@@ -257,7 +257,6 @@ sub generateModelFromCuts {
   my $f2t   = $morph->{f2t}   = {};
   my $t2sig = $morph->{t2sig} = {};
   my $sig2t = $morph->{sig2t} = {};
-  my $sigs  = {};
 
   ##-- get all stems & tentative signatures
   my ($vid,$wvec, $cutvec,$cut, $stem, $suff, $sig, $i);
@@ -281,10 +280,19 @@ sub generateModelFromCuts {
     $t2sig->{$stem} = $sig;
   }
 
+  ##-- get pseudo-sets of all sigs & all suffs
+  my $sigs  = {};
+  my $suffs = {};
+  foreach $sig (values(%$t2sig)) {
+    $sigs->{$sig} = undef;
+    @$suffs{unpack('(S/a*)*', $sig)} = undef;
+  }
 
-  ##-- now, create sigs
-  while (($stem,$sig)=each(%$t2sig)) {
-    $sig2t->{$sig}{$stem} = undef;
+  ##-- foreach sig, get list of all matching stems
+  my (@suffs,$stems);
+  foreach $sig (sort { length($a) <=> length($b) } keys(%$sigs)) {
+    @suffs = unpack('(S/a*)*', $sig);
+    #$stems = $morph->{pta}->
   }
 
   return $morph;
