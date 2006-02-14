@@ -1,14 +1,14 @@
-#!/usr/bin/perl -wd
+#!/usr/bin/perl -w
 
 use lib '../..';
 use MUDL::Morph::Editor;
+use MUDL::Morph::Editor::Gtk;
 
 sub main {
-  $me = MUDL::Morph::Editor->new();
-  $me->view(loop=>0);
-  $me->loadCorpus('test.t');
-  $me->selectWord(1);
-  Tk::MainLoop;
+  Gtk->init;
+  our $me  = MUDL::Morph::Editor->new();
+  our $gui = MUDL::Morph::Editor::Gtk->new(data=>$me);
+  Gtk->main;
 }
 main;
 
