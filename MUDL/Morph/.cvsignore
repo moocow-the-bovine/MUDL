@@ -8,8 +8,11 @@
 *.save[0-9]
 *.tfst
 *.gfst
+*.gfst.gz
+*.lab
 
-utest-nl.*
-utrain-nl.*
+*utest-nl.*
+*utrain-nl.*
+
 
 save

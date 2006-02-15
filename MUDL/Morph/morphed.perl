@@ -2,13 +2,13 @@
 
 use lib '../..';
 use MUDL::Morph::Editor;
-use MUDL::Morph::Editor::Gtk;
+use MUDL::Morph::Editor::Gtk2;
 
 sub main {
-  Gtk->init;
+  Gtk2->init;
   our $me  = MUDL::Morph::Editor->new();
-  our $gui = MUDL::Morph::Editor::Gtk->new(data=>$me);
-  Gtk->main;
+  our $gui = MUDL::Morph::Editor::Gtk2->new(data=>$me);
+  Gtk2->main;
 }
 main;
 

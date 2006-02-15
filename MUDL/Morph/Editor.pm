@@ -11,6 +11,9 @@ use MUDL::Object;
 use MUDL::Corpus::Buffer::Pdl;
 use MUDL::Enum;
 use MUDL::EDist;
+
+use MUDL::Gfsm::Automaton;
+use MUDL::Gfsm::Alphabet;
 use PDL;
 
 use utf8;
@@ -33,6 +36,9 @@ sub new {
      woccs=>{},                  ##-- maps word ids to occurrence indices, as
                                  ##  $occs = pack('(LS)*', $sentidx,$occidx, ...)
      corpus=>undef, ##-- a MUDL::Corpus::Buffer::Pdl
+
+     fst=>MUDL::Gfsm::Automaton->new, ##-- morph fst
+     labs=>MUDL::Gfsm::Alphabet->new, ##-- morph labels
 
      ##-- gui
      gui=>undef,

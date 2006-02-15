@@ -33,7 +33,7 @@ sub new {
 			      data=>MUDL::Morph::Editor->new(), ##-- editor data
 
 			      ##-- GUI stuff
-			      default_size=>[640,480],
+			      default_size=>[1000,700],
 			      kwicn=>4,
 
 			      ##-- Fonts
@@ -100,29 +100,27 @@ sub initialize {
   ##--------------------------------------
   ## Main Frame: pack logic
   my $vhp = $vbox->{hpaned} = Gtk::HPaned->new();
-  $vbox->pack_start($vhp, 1,1,0);
+  $vbox->pack_start($vhp, 1,1,5);
 
   ##--------------------------------------
   ## Word-Type Frame
-  my $wf = $gui->{wf} = Gtk::Frame->new;
-  $wf->set_shadow_type("in");
-  $wf->set_usize(200,0);
+  my $wf = $gui->{wordf} = Gtk::Frame->new('Word Types');
+  $wf->set_shadow_type("etched-in");
+  $wf->border_width(5);
   $vhp->add1($wf);
 
-  my $wvb = $wf->{vbox} = Gtk::VBox->new(0,0);
-  $gui->create_word_clist();
-  #$gui->create_word_filters();
-  $wf->add($wvb);
+  $gui->create_word_frame();
 
   ##--------------------------------------
   ## Details Frame
-  my $df = $gui->{df} = Gtk::Frame->new;
-  $df->set_shadow_type("in");
+  my $df = $gui->{detailsf} = Gtk::Frame->new;
+  $df->set_shadow_type("none");
+  $df->border_width(5);
   $vhp->add2($df);
 
   ##--------------------------------------
-  ## Details Frame: notebook
-  $gui->create_details_notebook;
+  ## Details Frame
+  $gui->create_details_frame;
 
   ##--------------------------------------
   ## Show all
@@ -229,6 +227,26 @@ sub create_menubar {
       callback    => sub { $gui->menu_corpus_clear },
       accelerator => '<control>C',
      },
+
+     ##-----------------------------------
+     ## Morphology
+     {
+      path => '/_Morphology/_Load FST',
+      #accelerator => ''
+      callback    => sub { $gui->menu_morph_fst_load; },
+     },
+     {
+      path        => '/_Morphology/_Load Labels',
+      #accelerator => '',
+      callback    => sub { $gui->menu_morph_labels_load; },
+     },
+     { path=>'/Morphology/sep1', type=>'<Separator>', },
+     {
+      path        => '/_Morphology/_Clear',
+      #accelerator => '<control>C',
+      callback    => sub { $gui->menu_morph_clear; },
+     },
+
     );
 
   ##-- get the main menubar
@@ -274,16 +292,40 @@ sub get_main_menubar {
 }
 
 ##--------------------------------------------------------------
-## GUI: Initialization: Word CList
+## GUI: Initialization: Word Frame
+sub create_word_frame {
+  my $gui = shift;
+  my $wf = $gui->{wordf};
+
+  my $wvb = $wf->{vbox} = Gtk::VBox->new(0,0);
+  $gui->create_word_clist;
+
+  ##-- notebook (info, filters, etc.)
+  my $nb = $wf->{notebook} = Gtk::Notebook->new;
+  $nb->set_tab_pos('top');
+  $nb->border_width(0);
+  $nb->set_show_tabs(1);
+  $nb->set_scrollable(1);
+  $wvb->pack_start($nb, 0,0,0);
+
+  ##-- create filters in notebook
+  $gui->create_word_filters;
+
+  $wf->set_usize(256,0);
+  $wf->add($wvb);
+}
+
+##--------------------------------------------------------------
+## GUI: Initialization: Word Frame: Word CList
 sub create_word_clist {
   my $gui = shift;
 
-  my $wf = $gui->{wf};
+  my $wf = $gui->{wordf};
   my $wcl = $wf->{clist} = Gtk::CList->new_with_titles('Word','Freq');
   $wcl->reorderable(0);
   $wcl->set_column_justification(0,'left');
   $wcl->set_column_justification(1,'right');
-  $wcl->set_column_width(0,128);
+  $wcl->set_column_width(0,160);
   $wcl->set_column_width(1,24);
   $wcl->set_selection_mode('single');
 
@@ -318,41 +360,11 @@ sub create_word_clist {
   $scrolled->set_policy('automatic','automatic');
   $scrolled->add($wcl);
 
-  $wf->{vbox}->pack_start($scrolled, 1,1,0);
+  $wf->{vbox}->pack_start($scrolled, 1,1,5);
 }
 
 sub word_clist_compare_func {
-  #my ($wcl,$a,$b,$is_numeric) = @_;
-  return
-    #($is_reversed
-    # ? ($is_numeric ?  $b <=> $a : $b cmp $a)
-    # : ($is_numeric ?  $a <=> $b : $a cmp $b));
-    #($is_numeric ?  $a <=> $b : $a cmp $b)
-    ($_[3] ? $_[1] <=> $_[2] : $_[1] cmp $_[2])
-      ;
-}
-
-
-##--------------------------------------------------------------
-## GUI: Initialization: Details notebook
-sub create_details_notebook {
-  my $gui = shift;
-  my $df  = $gui->{df};
-  my $nb  = $df->{nb} = Gtk::Notebook->new;
-  $nb->set_tab_pos('top');
-  $nb->border_width(10);
-  $nb->set_show_tabs(1);
-  $nb->set_scrollable(1);
-  #$nb->realize;
-  $df->add($nb);
-
-  ##-- filters
-  $nb->append_page($gui->create_word_filters,
-		   Gtk::Label->new('Filters'));
-
-  ##-- contexts
-  $nb->append_page($gui->create_word_contexts(),
-		   Gtk::Label->new('Contexts'));
+  return ($_[3] ? $_[1] <=> $_[2] : $_[1] cmp $_[2]);
 }
 
 ##--------------------------------------------------------------
@@ -360,12 +372,14 @@ sub create_details_notebook {
 sub create_word_filters {
   my ($gui) = shift;
 
-  my $wff = $gui->{filters} = Gtk::Frame->new();
-  $wff->border_width(5);
+  my $wf  = $gui->{wordf};
+  my $wfnb = $wf->{notebook};
+  my $wff =  $gui->{filters} = Gtk::Frame->new();
   $wff->set_shadow_type('none');
+  $wff->border_width(0);
 
   my $vbox = $wff->{vbox} = Gtk::VBox->new();
-  $vbox->border_width(5);
+  $vbox->border_width(0);
   $wff->add($vbox);
 
   my $wfftab = $wff->{tab} = Gtk::Table->new(3, 2);
@@ -375,22 +389,23 @@ sub create_word_filters {
   my $wff_min_adj  = $wff->{min_adj}  = Gtk::Adjustment->new(0.0, 0.0, 1e38, 1.0, 10.0, 0.0);
   my $wff_min_spin = $wff->{min_spin} = Gtk::SpinButton->new($wff_min_adj, 1.0, 0);
   $wff_min_spin->set_wrap(0);
-  $wff_min_spin->set_usize(100,0);
+  $wff_min_spin->set_usize(50,0);
   $wff_min_spin->set_update_policy('always'); ##???
-  $gui->labelled_widget($wfftab, 0, "Min Freq:", $wff_min_spin);
+  $gui->labelled_widget($wfftab, 0, "Min F:", $wff_min_spin);
   #$wff_min_adj->signal_connect(value_changed=>sub { print "value changed: ", $_[0]->get_value, "\n"; });
 
   ##-- Maximum Frequency
   my $wff_max_adj  = $wff->{max_adj}  = Gtk::Adjustment->new(0.0, 0.0, 1e38, 1.0, 10.0, 0.0);
   my $wff_max_spin = $wff->{max_spin} = Gtk::SpinButton->new($wff_max_adj, 1.0, 0);
   $wff_max_spin->set_wrap(0);
-  $wff_max_spin->set_usize(100,0);
+  $wff_max_spin->set_usize(50,0);
   $wff_max_spin->set_update_policy('always'); ##???
-  $gui->labelled_widget($wfftab, 1, "Max Freq:", $wff_max_spin);
+  $gui->labelled_widget($wfftab, 1, "Max F:", $wff_max_spin);
 
   ##-- Regex
   my $wff_regex = $wff->{regex} = Gtk::Entry->new();
-  $gui->labelled_widget($wfftab, 2, 'Regex', $wff_regex);
+  $wff_regex->set_usize(50,0);
+  $gui->labelled_widget($wfftab, 2, 'Regex:', $wff_regex);
 
   ##-- ButtonBox
   my $bbox = $wff->{bbox} = Gtk::HButtonBox->new();
@@ -401,20 +416,47 @@ sub create_word_filters {
   $b_apply->signal_connect('clicked', sub { $gui->apply_word_filters(@_); });
   $bbox->add($b_apply);
 
-  return $wff;
+  ##-- scroll the frame, just in case
+  #my $wffSW = $wff->{scrolled} = Gtk::ScrolledWindow->new(undef,undef);
+  #$wffSW->set_policy('automatic','automatic');
+  #$wffSW->add_with_viewport($wff);
+  #$wffSW->set_usize(200,190);
+
+  ##-- create filters notebook page
+  #$wfnb->append_page($wffSW, Gtk::Label->new('Filters'));
+  $wfnb->append_page($wff, Gtk::Label->new('Filters'));
+}
+
+
+##--------------------------------------------------------------
+## GUI: Initialization: Details Frame
+sub create_details_frame {
+  my $gui = shift;
+
+  my $df = $gui->{detailsf};
+
+  ##-- details frame: vertical separator
+  my $dfvp = $df->{vpaned} = Gtk::VPaned->new();
+  $df->add($dfvp);
+
+  ##-- details frame: kwic area
+  $gui->create_context_area();
+
+  ##-- details frame: edit area
+  $gui->create_edit_area();
 }
 
 ##--------------------------------------------------------------
-## GUI: Initialization: Word Contexts
-sub create_word_contexts {
+## GUI: Initialization: Details: Context Area
+sub create_context_area {
   my $gui = shift;
 
-  my $cf = $gui->{contexts} = Gtk::Frame->new();
-  $cf->border_width(5);
-  $cf->set_shadow_type('none');
+  my $cf = $gui->{contexts} = Gtk::Frame->new('Contexts');
+  $cf->border_width(0);
+  $cf->set_shadow_type('etched-in');
 
   my $vbox = $cf->{vbox} = Gtk::VBox->new();
-  $vbox->border_width(5);
+  $vbox->border_width(0);
   $cf->add($vbox);
 
   my $kwicn = $gui->{kwicn};
@@ -439,8 +481,26 @@ sub create_word_contexts {
   $scrolled->add($kwic);
   $vbox->pack_start($scrolled, 1,1,5);
 
-  return $cf;
+
+  ##-- pack it
+  $cf->set_usize(200,200);
+  $gui->{detailsf}{vpaned}->add1($cf);
 }
+
+##--------------------------------------------------------------
+## GUI: Initialization: Details: Edit Area
+sub create_edit_area {
+  my $gui = shift;
+
+  my $ef = $gui->{editf} = Gtk::Frame->new('Edit');
+  $ef->set_shadow_type('etched-in');
+  $ef->set_border_width(0);
+
+
+  $ef->set_usize(200,200);
+  $gui->{detailsf}{vpaned}->add2($ef);
+}
+
 
 ##======================================================================
 ## Gtk Utilities: Labelled Widgets
@@ -770,7 +830,7 @@ sub populateWordList {
   my $gui = shift;
 
   ##-- gui objects
-  my $wcl = $gui->{wf}{clist};
+  my $wcl = $gui->{wordf}{clist};
   my $fmin  = $gui->{filters}{min_adj}->get_value;
   my $fmax  = $gui->{filters}{max_adj}->get_value;
   my $fre   = $gui->{filters}{regex}->get_text;
@@ -853,7 +913,7 @@ sub select_word {
   $kwic->columns_autosize;
 
   ##-- ... & select all of 'em
-  $kwic->select_all;
+  #$kwic->select_all;
 }
 
 
@@ -874,10 +934,30 @@ sub apply_word_filters {
 ##======================================================================
 
 ## undef = $gui->menu_file_open()
-*menu_file_open = apidummy('menu_file_open');
+sub menu_file_open {
+  my $gui = shift;
+  $gui->file_open_dialog('dlg_data_load',
+			(ref($gui)."::Open Data File"),
+			sub {
+			  if (!($gui->{data} = $gui->{data}->loadFile($_[0]))) {
+			    $gui->error_dialog(undef,"Error loading data file\n", "'$_[0]'");
+			  }
+			  $gui->populateWordList();
+			});
+}
 
 ## undef = $gui->menu_file_save()
-*menu_file_save = apidummy('menu_file_save');
+sub menu_file_save {
+  my $gui = shift;
+  $gui->file_open_dialog('dlg_data_save',
+			(ref($gui)."::Save Data File"),
+			sub {
+			  if (!$gui->{data}->saveFile($_[0])) {
+			    $gui->error_dialog(undef,"Error saving data file\n", "'$_[0]'");
+			  }
+			});
+}
+
 
 ##======================================================================
 ## Guts: I/O: Corpus
@@ -902,6 +982,47 @@ sub menu_corpus_clear {
   my $gui = shift;
   $gui->{data}->clearCorpus;
   $gui->populateWordList;
+}
+
+##======================================================================
+## Guts: I/O: Morphology
+##======================================================================
+
+sub menu_morph_fst_load {
+  my $gui = shift;
+
+  my $fst = $gui->{data}{fst};
+  $fst = $gui->{data}{fst} = MUDL::Gfsm::Automaton->new() if (!$fst);
+
+  $gui->file_open_dialog('dlg_morph_fst_load',
+			(ref($gui)."::Load Morphology FST"),
+			sub {
+			  if (!$fst->load($_[0])) {
+			    $gui->error_dialog(undef, "Error loading morphology FST file:\n", $_[0]);
+			  }
+			});
+}
+
+sub menu_morph_labels_load {
+  my $gui = shift;
+  my $labs = $gui->{data}{labs};
+
+  #$labs = $gui->{data}{labs} = MUDL::Gfsm::Alphabet->new() if (!$labs);
+  $labs = $gui->{data}{labs} = Gfsm::Alphabet->new() if (!$labs);
+
+  $gui->file_open_dialog('dlg_morph_labs_load',
+			(ref($gui)."::Load Morphology Labels"),
+			sub {
+			  if (!$labs->load($_[0])) {
+			    $gui->error_dialog(undef, "Error loading morphology labels file:\n", $_[0]);
+			  }
+			});
+}
+
+sub menu_morph_clear {
+  my $gui = shift;
+  $gui->{data}{fst}->clear if ($gui->{data}{fst});
+  $gui->{data}{labs}->clear if ($gui->{data}{labs});
 }
 
 
