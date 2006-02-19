@@ -1,11 +1,12 @@
 this
 is
 a
-test
+test	foo	bar
 .
 
 this
 is
+being
 only
 a
 test

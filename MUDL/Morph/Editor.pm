@@ -63,6 +63,7 @@ sub new {
 
 ## $me->loadCorpus($file,%args)
 ##  + load corpus into the object
+##  + corpus may be analyzed (token tag=best-lemma, analyses=lemma1, ..., lemmaN)
 ##  + populates $me->{wenum}, $me->{wfreq}, ...?
 sub loadCorpus {
   my ($me,$file,%args) = @_;

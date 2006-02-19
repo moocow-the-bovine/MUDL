@@ -11,6 +11,14 @@ our $data = [
 our $datai = 2;
 our $ncols = $#{$data->[0]}+1;
 
+our $mandata = [
+		[qw(this 20 0)],
+		[qw(is   30 1)],
+		[qw(a    40 2)],
+		[qw(test 1  3)],
+	       ];
+our $nmancols = $#{$mandata->[0]}+1;
+
 ##--------------------------------------
 ## Main Window
 $w = Gtk2::Window->new('toplevel');
@@ -28,8 +36,8 @@ $w->add($vbox);
 $bbox = Gtk2::HButtonBox->new;
 $bbox->set_layout('spread'); # 'default-style' 'spread' 'edge' 'start' 'end'
 
-$btest = Gtk2::Button->new('Test');
-$btest->signal_connect('clicked',
+$bsel = Gtk2::Button->new('Selected');
+$bsel->signal_connect('clicked',
 		       sub {
 			 #$sel = $sl->get_selection;
 			 #@rows = $sel->get_selected_rows();
@@ -39,13 +47,29 @@ $btest->signal_connect('clicked',
 			 @rowis = $sl->get_selected_indices;
 			 print "selected_indices=", join(', ', @rowis), "\n";
 		       });
-$bbox->add($btest);
+$bbox->add($bsel);
+
+$brelist = Gtk2::Button->new('Rebuild List');
+$brelist->signal_connect('clicked',
+			 sub {
+			   push(@$mandata,
+				[("dummy_".(scalar(@$mandata))), 1, scalar(@$mandata)],
+			       );
+			   doSimpleList3();
+			 });
+$bbox->add($brelist);
 
 $bquit = Gtk2::Button->new('Quit');
 $bquit->signal_connect('clicked', sub { exit(0); });
 $bbox->add($bquit);
 
 $vbox->pack_end($bbox, 0,0,5);
+
+##--------------------------------------
+## label
+$lab = Gtk2::Label->new("Label with <b>Bold</b> text");
+$lab->set_use_markup(1);
+$vbox->pack_end($lab,0,0,5);
 
 ##--------------------------------------
 ## Fonts
@@ -135,8 +159,61 @@ sub doSimpleList2 {
   ## SimpleList: pack it
   $vbox->pack_start($scrolled, 1,1,5);
 }
-doSimpleList2;
+#doSimpleList2;
 
+
+##--------------------------------------
+## SimpleList3
+sub doSimpleList3 {
+  $sl->destroy if ($sl);
+  $sl = Gtk2::SimpleList->new('Word'=>'text',
+			      'Freq'=>'int',
+			      'ID'=>'int',
+			     );
+
+  ##--------------------------------------
+  ## SimpleList: formatting
+  set_column_alignment($sl, 0, 0.0);
+  set_column_alignment($sl, $_, 1.0) foreach (1..2);
+
+  ##--------------------------------------
+  ## SimpleList: properties
+  $sl->set_reorderable(0);
+
+  ##-- sorting
+  @cols = $sl->get_columns;
+  $cols[$_]->set_sort_column_id($_) foreach (0..$#cols);
+  $cols[$_]->set_resizable(1) foreach (0..$#cols);
+  $cols[0]->set_expand(1);
+
+  ##-- alternating colors
+  $sl->set('rules-hint'=>1);
+
+  ##--------------------------------------
+  ## SimpleList: data
+  @{$sl->{data}} = @$mandata;
+  $sl->columns_autosize();
+
+  ##--------------------------------------
+  ## SimpleList: scroll it
+  $scrolled->destroy if ($scrolled);
+  $scrolled = Gtk2::ScrolledWindow->new(undef,undef);
+  $scrolled->set_policy('automatic', 'automatic');
+  $scrolled->add($sl);
+
+  ##--------------------------------------
+  ## SimpleList: Scrolled: pack it
+  $vbox->pack_start($scrolled, 1,1,5);
+  $scrolled->show_all;
+
+  ##--------------------------------------
+  ## SimpleList: selection
+  $sel = $sl->get_selection;
+  $sel->set_mode('multiple');
+  $sel->unselect_all;
+
+}
+doSimpleList3;
 
 
 ##--------------------------------------
