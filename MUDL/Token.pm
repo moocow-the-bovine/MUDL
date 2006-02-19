@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Token.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -40,11 +40,14 @@ sub attributeNames { return grep { $_ ne 'text' && $_ ne 'tag' } keys(%{$_[0]});
 ## %attributes = $tok->attributes
 sub attributes { return map { $_=>$_[0]{$_} } $_[0]->attributeNames; }
 
+## @attributeValues = $tok->attributeValues
+sub attributeValues { return map { $_[0]{$_} } $_[0]->attributeNames; }
+
 ## $val = $tok->getAttribute($attr)
 ## $val = $tok->setAttribute($attr,$val)
 *getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
 sub attribute {
-  return (exists($_[2])
+  return ($#_ > 1
 	  ? $_[0]{$_[1]}=$_[2]
 	  : $_[0]{$_[1]});
 }
@@ -158,27 +161,31 @@ sub init {
 
 ## $txt = $tok->text()
 ## $txt = $tok->text($txt)
-sub text { return (exists($_[1]) ? $_[0][0]=$_[1] : $_[0][0]); }
+sub text { return ($#_ > 0 ? $_[0][0]=$_[1] : $_[0][0]); }
 
 ## $tag = $tok->tag()
 ## $tag = $tok->tag($tag)
-sub tag { return (exists($_[1]) ? $_[0][1]=$_[1] : $_[0][1]); }
+sub tag { return ($#_ > 0 ? $_[0][1]=$_[1] : $_[0][1]); }
 
 ## @attributeNames = $tok->attributeNames()
 sub attributeNames { return (0..$#{$_[0]}-2); }
 
 ## %attributes = $tok->attributes
-sub attributes { return map { $_-2=>$_[0][$_] } 0..$#{$_[0]}-2; }
+sub attributes { return map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2; }
+
+## @attributeValues = $tok->attributeValues
+sub attributeValues { return map { $_[0][$_+2] } 0..$#{$_[0]}-2; }
 
 ## $val = $tok->getAttribute($attr)
 ## $val = $tok->setAttribute($attr,$val)
 *getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
 sub attribute {
+  
   return ($_[1] eq 'text'
-	  ? $_[0]->text(exists($_[2]) ? $_[2] : qw())
+	  ? $_[0]->text($#_ > 1 ? $_[2] : qw())
 	  : ($_[1] eq 'tag'
-	     ? $_[0]->tag(exists($_[2]) ? $_[2] : qw())
-	     : (exists($_[2])
+	     ? $_[0]->tag($#_ > 1 ? $_[2] : qw())
+	     : ($#_ > 1
 		? $_[0][int($_[1])+2]=$_[2]
 		: $_[0][int($_[1])+2])));
 }
@@ -412,7 +419,7 @@ sub init {
 
 ## $txt = $tok->text()
 ## $txt = $tok->text($txt)
-sub text { return (exists($_[1]) ? ${$_[0]}=$_[1] : ${$_[0]}); }
+sub text { return ($#_ > 0 ? ${$_[0]}=$_[1] : ${$_[0]}); }
 
 ## $tag = $tok->tag()
 ## $tag = $tok->tag($tag)
