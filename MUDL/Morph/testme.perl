@@ -8,6 +8,9 @@ use MUDL::CorpusIO;
 use MUDL::CmdUtils;
 use PDL;
 
+use Encode qw(encode decode);
+use utf8;
+#use encoding qw(iso-8859-1);
 
 ##--------------------------------------------------
 ## initialization
@@ -140,9 +143,12 @@ sub debugModel {
 ## debug: signature matches
 
 ## $stems = sigStems($sig);
-sub sigStems {
+sub sigStems0 {
   our ($sigstr) = shift;
-  $sigstr = 'NULL|ed' if (!$sigstr);
+
+  print STDERR "DEBUG: sigStems()\n";
+
+  $sigstr = 'NULL|en' if (!$sigstr);
   our $sig   = $morph->str2sig($sigstr);
   our @suffs = unpack('(S/a*)*', $sig);
 
@@ -161,7 +167,49 @@ sub sigStems {
 		   ($prefix,$qid)=@_;
 
 		   $stems->{$pta->labels2chars($prefix)} = undef
-		     if (qMatchesSuffs($pta,$qid,\@suffs_prefixes,\@suffs));
+		     #if (qMatchesSuffs($pta,$qid,\@suffs_prefixes,\@suffs));
+		     if (0);
+
+		   return $MUDL::Gfsm::FreqTrie::TRAVERSE_CONTINUE;
+		 });
+
+  $pta_fsm->root($pta_root);
+}
+
+sub makeSta {
+  print STDERR "$0: makeSta()\n";
+  our $pta = $morph->{pta};
+  our $pfsm = $pta->{fsm};
+  our $sfsm = $pta->{fsm}->reverse;
+}
+loadmorph();
+makeSta();
+
+sub sigStems {
+  our ($sigstr) = shift;
+  print STDERR "DEBUG: sigStems()\n";
+
+  $sigstr = 'NULL|en' if (!$sigstr);
+  our $sig   = $morph->str2sig($sigstr);
+  our @suffs = unpack('(S/a*)*', $sig);
+
+  our $pta      = $morph->{pta};
+  our $pta_fsm  = $pta->{fsm};
+  our $pta_root = $pta_fsm->root;
+
+  ##-- create a recognizer for this suffix-set
+  our $suff_fsm = $pta_fsm->shadow;
+  $suff_fsm->add_paths([unpack('S*',$_)],[], 0.0, 0,1,1) foreach (@suffs);
+  our @suffs_prefixes = map { pack('S*', @{$_->{lo}}) } @{$suff_fsm->paths};
+
+  our $stems={};
+  our ($prefix,$qid);
+  $pta->traverse(sub {
+		   ($prefix,$qid)=@_;
+
+		   $stems->{$pta->labels2chars($prefix)} = undef
+		     #if (qMatchesSuffs($pta,$qid,\@suffs_prefixes,\@suffs));
+		     if (0);
 
 		   return $MUDL::Gfsm::FreqTrie::TRAVERSE_CONTINUE;
 		 });
@@ -214,22 +262,31 @@ sub qMatchesSuffs {
   return $rc && !%sph && !%sh;
 }
 
-our @null_en_ling =
-  map { Encode::decode('iso-8859-1', $_) }
-  (qw(öffentlich einfach fest gemeinsam hektisch million präsident student wohnung),
-   qw(amtsgericht einrichtung fraktion genannt krankheit ortschaft preiswert versicherung),
-   qw(angebot entschied fremd gespräch mannschaft partei punkt vorstellung),
-   qw(archiv erfolg gefahr gewinn meist parteilos region würdigt),
-   qw(begabt fand gefeiert höher menschlich präsentiert schrift wanderung),
-  );
+##--------------------------------------------------
+## debug: signature matches: data
 
-our @null_en_ling_only =
-  map { Encode::decode('iso-8859-1', $_) }
-  (qw(schrift million fraktion fremd partei fest wohnung mannschaft meist erfolg öffentlich));
+BEGIN {
+  our $src_encoding = 'utf-8';
+  our @null_en_ling =
+    #map { decode($src_encoding, $_) }
+      (qw(Ã¶ffentlich einfach fest gemeinsam hektisch million prÃ¤sident student wohnung),
+       qw(amtsgericht einrichtung fraktion genannt krankheit ortschaft preiswert versicherung),
+       qw(angebot entschied fremd gesprÃ¤ch mannschaft partei punkt vorstellung),
+       qw(archiv erfolg gefahr gewinn meist parteilos region wÃ¼rdigt),
+       qw(begabt fand gefeiert hÃ¶her menschlich prÃ¤sentiert schrift wanderung),
+      );
 
-our @null_en_me_only =
-  map { Encode::encode('iso-8859-1', $_) }
-  (qw(ihn uhr früher arbeitet));
+  our $ls = 'gesprÃ¤ch';
+  #our $lsu = decode($src_encoding,$ls);
+
+  our @null_en_ling_only =
+    #map { decode($src_encoding, $_) }
+      (qw(schrift million fraktion fremd partei fest wohnung mannschaft meist erfolg Ã¶ffentlich));
+
+  our @null_en_me_only =
+    #map { decode($src_encoding, $_) }
+      (qw(arbeitet frÃ¼her ihn uhr));
+}
 
 sub get_ling_me_diffs {
   our @null_en_me = sort(map {Encode::decode('utf-8',$_)} keys(%$stems));
@@ -244,12 +301,20 @@ sub get_ling_me_diffs {
   @null_en_me_only = sort(keys(%null_en_me_only));
   $null_en_me_only{$_} = join(' | ',stem2suffs($_)) foreach (keys(%null_en_me_only));
 }
+get_ling_me_diffs;
 
 sub stem2suffs {
   my ($stem,$encoding) = @_;
-  $stem = Encode::decode($encoding,$stem) if (defined($encoding));
+  $stem = Encode::decode($encoding,$stem) if (defined($encoding)
+					      && ($encoding ne 'utf-8'
+						  ||
+						  !utf8::is_utf8($stem)));
   my $root_tmp = $morph->{pta}{fsm}->root;
   my $qid = $morph->{pta}->getStateChars($stem);
+  if (!defined($qid)) {
+    warn("stem2suffs($stem): unknown stem '$stem'");
+    return qw();
+  }
   $morph->{pta}{fsm}->root($qid);
   my @tsuffs = map { $morph->{pta}->labels2chars($_->{lo}) } @{$morph->{pta}{fsm}->paths};
   $morph->{pta}{fsm}->root($root_tmp);
