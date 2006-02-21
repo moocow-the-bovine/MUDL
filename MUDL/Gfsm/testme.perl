@@ -216,7 +216,39 @@ sub genidr {
   #push(@related, [100000,$Gfsm::noState]);
   $idr->insert(@$_) foreach (@related);
 }
-genidr;
+#genidr;
+
+##--------------------------------------------------
+## FreqTriePair
+use MUDL::Gfsm::FreqTriePair;
+sub gentpair {
+  $tp = MUDL::Gfsm::FreqTriePair->new();
+  foreach $w (@words) {
+    $tp->addPathChars($w,1);
+  }
+}
+#gentpair;
+
+sub proftpair {
+  $tp = MUDL::Gfsm::FreqTriePair->new();
+  $cr = MUDL::CorpusIO->fileReader('utest-nl.t');
+  $sent = [];
+  $maxtoks = 5000 if (!defined($maxtoks));
+  for ($i=0; defined($sent=$cr->getSentence) && (!$maxtoks || $i < $maxtoks); $i += @$sent) {
+    @$sent = splice(@$sent,0,($maxtoks-$i)) if ($i+@$sent > $maxtoks);
+    $tp->addPathChars($_->text) foreach (@$sent);
+  }
+}
+
+sub test_tp {
+  proftpair;
+  $tp->index;
+
+  $suff = 'rechtlichen';
+  our $qsta = $tp->{sta}->getStateChars($suff);
+  our @qpta = split(/ /, $tp->{s2p}[$qsta]);
+}
+test_tp;
 
 
 ##--------------------------------------------------

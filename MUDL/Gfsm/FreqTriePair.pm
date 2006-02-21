@@ -11,7 +11,7 @@ use MUDL::Gfsm::FreqTrie qw(:all);
 
 use Carp qw(carp croak);
 use strict;
-our @ISA = qw(MUDL::Object);
+our @ISA = qw(MUDL::Gfsm::FreqTrie);
 
 ##======================================================================
 ## Constructors
@@ -28,6 +28,17 @@ our @ISA = qw(MUDL::Object);
 ##   + data:
 ##       pta=>$pta,                   ##-- a MUDL::Gfsm::FreqTrie
 ##       sta=>$sta,                   ##-- a MUDL::Gfsm::FreqTrie
+##
+##       pairs=>\%pairs,              ##-- (pack('L2',$qpta,$qsta)=>undef,...)
+##
+##       ##--------------------------
+##       ## Equivalence maps: 2^Q_{PTA} <-> 2^Q_{STA}
+##       ##  + we *should* use an id-relation for this, but it's too expensive to construct
+##             and to store
+##       ##  + otherwise, we should use pack(), but pack-template '*' is limited to 512 items (ack)
+##       ##  + so, we use split() and join() instead...
+##       p2s=>\@p2s,                ##-- [$qid_pta] => join(' ', sort {$a<=>$b} @q_sta)
+##       s2p=>\@s2p,                ##-- [$qid_sta] => join(' ', sort {$a<=>$b} @q_pta)
 sub new {
   my ($that,%args) = @_;
   my $tp = bless {
@@ -35,6 +46,11 @@ sub new {
 		  add_to_arcs=>1,
 		  add_to_state_final=>0,
 		  add_to_path_final=>1,
+
+		  ##-- relation data
+		  pairs=>{},
+		  p2s=>[],
+		  s2p=>[],
 
 		  ##-- user args
 		  %args,
@@ -48,7 +64,7 @@ sub new {
     qw(add_to_arcs add_to_state_final add_to_path_final);
 
   $tp->{pta} = MUDL::Gfsm::FreqTrie->new(abet=>$tp->{abet},reversed=>0) if (!$tp->{pta});
-  $tp->{sta} = MUDL::Gfsm::FreqTrie->new(abet=>$tp->{abet},reversed=>0) if (!$tp->{sta});
+  $tp->{sta} = MUDL::Gfsm::FreqTrie->new(abet=>$tp->{abet},reversed=>1) if (!$tp->{sta});
   $tp->{pta}{keys %subargs} = values(%subargs);
   $tp->{sta}{keys %subargs} = values(%subargs);
 
@@ -74,59 +90,59 @@ sub clear {
 ## Methods: Manipulation
 ##======================================================================
 
+## $tp = $tp->index()
+##  + constructs id-relations $tp->{p2s}, $tp->{s2p} from $tp->{pairs}
+sub index {
+  my $tp = shift;
+
+  my $pairs = $tp->{pairs};
+  my $p2s = $tp->{p2s};
+  my $s2p = $tp->{s2p};
+
+  ##-- build maps
+  @$p2s = qw();
+  @$s2p = qw();
+  my ($pair,$qpta,$qsta);
+  foreach $pair (sort keys %$pairs) {
+    ($qpta,$qsta) = unpack('LL', $pair);
+    $p2s->[$qpta] .= $qsta.' ';
+    $s2p->[$qsta] .= $qpta.' ';
+  }
+
+  ##-- sort map values
+  $_ = join(' ', sort {$a<=>$b} split(/ /,$_)) foreach (@$p2s);
+  $_ = join(' ', sort {$a<=>$b} split(/ /,$_)) foreach (@$s2p);
+
+  ##-- sort tries
+  $tp->{pta}{fsm}->arcsort(Gfsm::ASMLower);
+  $tp->{sta}{fsm}->arcsort(Gfsm::ASMLower);
+
+  return $tp;
+}
+
 ## $tp = $tp->addPathLabels(\@labels)
 ## $tp = $tp->addPathLabels(\@labels,$freq)
 ##  + adds $freq to path \@labels
 ##  + $freq defaults to 1
-##  + implicitly reverses \@labels if $tp->{reversed} is true
 sub addPathLabels {
   my ($tp,$labs,$freq) = @_;
   $freq = 1 if (!defined($freq));
 
   my @add_path_args = @$tp{qw(add_to_arcs add_to_state_final add_to_path_final)};
-  my $qids_pta = $tp->{pta}{fsm}->add_path($labs,           [], $freq, @add_path_args);
-  my $qids_sta = $tp->{sta}{fsm}->add_path([reverse @$labs],[], $freq, @add_path_args);
+  my $qids_pta = $tp->{pta}{fsm}->add_path_states($labs,            [], $freq, @add_path_args);
+  my $qids_sta = $tp->{sta}{fsm}->add_path_states([reverse @$labs], [], $freq, @add_path_args);
 
   ##-- save equivalence relation
-  my ($i, $qpta, $qsta);
+  my ($i);
   foreach $i (0..$#{$qids_pta}) {
-    $qpta = $qids_pta->[$i]
-    $qsta = $qids_sta->[$#$qids_sta-$i];
-    
+    $tp->{pairs}{pack('LL', $qids_pta->[$i], $qids_sta->[$#$qids_sta-$i])} = undef;
   }
 
   return $tp;
 }
 
-## $tp = $tp->addPathStrings(\@strings_or_tokens)
-## $tp = $tp->addPathStrings(\@strings_or_tokens,$freq)
-##  + ensures that all text strings in \@strings_or_tokens are mapped to labels
-##  + calls addPathLabels(\@labels)
-*addPathTokens = *addPathSentence = \&addPathStrings;
-sub addPathStrings {
-  #my ($tp,$strings,$freq) = @_;
-  #return $tp->addPathLabels($tp->strings2labels($strings,1), $freq);
-  return $_[0]->addPathLabels($_[0]->strings2labels($_[1],1), $_[2]);
-}
-
-## $tp = $tp->addPathChars($word)
-## $tp = $tp->addPathChars($word,$freq)
-##  + ensures that all characters in $word are mapped to labels
-##  + calls addPathLabels(\@labels)
-sub addPathChars {
-  #my ($tp,$word,$freq) = @_;
-  #return $tp->addPathLabels($tp->chars2labels($word,1), $freq);
-  return $_[0]->addPathLabels($_[0]->chars2labels($_[1],1), $_[2]);
-}
-
-## $tp = $tp->addPathVector($vec)
-## $tp = $tp->addPathVector($vec,$freq)
-##  + calls addPathLabels(\@labels)
-sub addPathVector {
-  #my ($tp,$vec,$freq) = @_;
-  #return $tp->addPathLabels($tp->vector2labels($vec), $freq);
-  return $_[0]->addPathLabels($_[0]->vector2labels($_[1]), $_[2]);
-}
+## $tp = $tp->addPath{Strings|Chars|Vector}(...)
+##  + inherited from MUDL::Gfsm::FreqTrie
 
 ##======================================================================
 ## Methods: Lookup

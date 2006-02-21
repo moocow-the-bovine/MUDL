@@ -277,37 +277,25 @@ sub vector2chars { return $_[0]->labels2chars(vector2labels($_[1])); }
 sub getStateLabels {
   my ($trie,$labs) = @_;
   return undef if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
-
-  my $fsm = $trie->{fsm};
-  my $qid = $fsm->root;
-  return undef if ($qid == $Gfsm::noState);
-
-  my ($lab);
-  foreach $lab ($trie->{reversed} ? reverse(@$labs) : @$labs) {
-    $qid = $fsm->find_arc_lower($qid,$lab);
-    return undef if ($qid == $Gfsm::noState);
-  }
-  return $qid;
+  my ($qid,$lo_i) = $trie->{fsm}->find_prefix(($trie->{reversed} ? [reverse @$labs] : $labs), []);
+  return $lo_i == @$labs ? $qid : undef;
 }
 
 ## $qid = $trie->getStateStrings(\@strings);
 ##  + gets state-id for address \@strings
 sub getStateStrings {
-  #my ($trie,$strings) = @_;
   return $_[0]->getStateLabels($_[0]->strings2labels($_[1],0));
 }
 
 ## $qid = $trie->getStateChars($word);
 ##  + gets state-id for $word
 sub getStateChars {
-  #my ($trie,$word) = @_;
   return $_[0]->getStateLabels($_[0]->chars2labels($_[1],0));
 }
 
 ## $qid = $trie->getStateVector($vector);
 ##  + gets state-id for $vector
 sub getStateVector {
-  #my ($trie,$vec) = @_;
   return $_[0]->getStateLabels(vector2labels($_[1]));
 }
 

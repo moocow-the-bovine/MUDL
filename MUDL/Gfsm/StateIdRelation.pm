@@ -44,10 +44,15 @@ sub invert {
   return $idr2;
 }
 
+## undef = $idr->index()
+##  + sorts arcs by lower-labels
+sub index { $_[0]->arcsort(Gfsm::ASMLower); }
+
 
 ##======================================================================
 ## Methods: Manipulation
 ##======================================================================
+
 
 ## $pair_id = $idr->insert($qid1,$qid2)
 sub insert {
