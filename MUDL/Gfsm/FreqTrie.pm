@@ -13,8 +13,17 @@ use MUDL::Object;
 
 use Carp qw(carp croak);
 
+
 use strict;
-our @ISA = qw(MUDL::Object);
+our @ISA = qw(Exporter MUDL::Object);
+
+our %EXPORT_TAGS =
+  (
+   vecutils => [qw(labels2vector vector2labels)],
+  );
+$EXPORT_TAGS{all} = [map { @$_ } values(%EXPORT_TAGS)];
+our @EXPORT_OK = @{$EXPORT_TAGS{all}};
+our @EXPORT = qw();
 
 ##======================================================================
 ## Constants & class methods
@@ -36,20 +45,17 @@ sub epsilonString { return '<epsilon>'; }
 ##       abet=>$mudl_gfsm_alphabet,
 ##       reversed=>$bool,             ##-- whether to implicitly reverse path-addresses (arrays,vectors,etc.)
 ##
-##       ##-- add_paths flags:
-##       add_to_arcs => $bool,        ##-- add_paths(): arcs? (default=1)
-##       add_to_state_final => $bool, ##-- add_paths(): final-weight for all visited states? (default=0)
-##       add_to_path_final => $bool,  ##-- add_paths(): final-weight for path-final state?   (default=1)
+##       ##-- add_path() flags:
+##       add_to_arcs => $bool,        ##-- add_path(): arcs? (default=1)
+##       add_to_state_final => $bool, ##-- add_path(): final-weight for all visited states? (default=0)
+##       add_to_path_final => $bool,  ##-- add_path(): final-weight for path-final state?   (default=1)
 sub new {
   my ($that,%args) = @_;
   my $trie = bless {
 		    ##-- guts
-		    fsm=>MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal), ##-- acceptor with Real semiring
-		    abet=>MUDL::Gfsm::Alphabet->new(),
-		    #rfsm=>undef, ##-- reverse-lookup fsm
 		    reversed=>$that->reverseDefault(),
 
-		    ##-- add_paths() flags:
+		    ##-- add_path() flags:
 		    add_to_arcs=>1,
 		    add_to_state_final=>0,
 		    add_to_path_final=>1,
@@ -58,7 +64,15 @@ sub new {
 		    %args,
 		   }, ref($that)||$that;
 
-  ##-- structure stuff
+  ##-- fsm
+  $trie->{fsm} = MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal) ##-- acceptor with Real semiring
+    if (!$trie->{fsm});
+
+  ##-- alphabet
+  $trie->{abet} = MUDL::Gfsm::Alphabet->new()
+    if (!$trie->{abet});
+
+  ##-- ensure that epsilon is defined
   $trie->ensureEpsilon;
 
   return $trie;
@@ -121,7 +135,7 @@ sub reverseLookupFsm {
 ## Methods: Lookup : Suffixes
 ##======================================================================
 
-## \@suffix_label_vectors = $trie->suffixesState($qid)
+## \@suffix_label_arrays = $trie->suffixesState($qid)
 sub suffixesState {
   my ($trie,$qid) = @_;
   return qw() if (!defined($qid));
@@ -132,25 +146,25 @@ sub suffixesState {
   return \@suffixes;
 }
 
-## \@suffix_label_vectors = $trie->suffixesLabels(\@labels)
+## \@suffix_label_arrays = $trie->suffixesLabels(\@labels)
 sub suffixesLabels {
   my ($trie,$labs) = @_;
   return $trie->suffixesState($trie->getStateLabels($labs));
 }
 
-## \@suffix_label_vectors = $trie->suffixesStrings(\@strings)
+## \@suffix_label_arrays = $trie->suffixesStrings(\@strings)
 sub suffixesStrings {
   my ($trie,$strs) = @_;
   return $trie->suffixesState($trie->getStateStrings($strs));
 }
 
-## \@suffix_label_vectors = $trie->suffixesChars($chars)
+## \@suffix_label_arrays = $trie->suffixesChars($chars)
 sub suffixesChars {
   my ($trie,$chars) = @_;
   return $trie->suffixesState($trie->getStateChars($chars));
 }
 
-## \@suffix_label_vectors = $trie->suffixesVector($vec)
+## \@suffix_label_arrays = $trie->suffixesVector($vec)
 sub suffixesVector {
   my ($trie,$vec) = @_;
   return $trie->suffixesVectors($trie->getStateVector($vec));
@@ -166,11 +180,11 @@ sub suffixesVector {
 
 ## $vec = $trie->labels2vector(\@labs)
 ##   + no implicit reversal
-sub labels2vector { return pack('S*',@{$_[1]}); }
+sub labels2vector { return pack('S*',@{$_[0]}); }
 
 ## $labs = $trie->vector2labels($vec)
 ##   + no implicit reversal
-sub vector2labels { return [unpack('S*',$_[1])]; }
+sub vector2labels { return [unpack('S*',$_[0])]; }
 
 ##--------------------------------------------------------------
 ## Methods: Lookup : Strings -> Labels
@@ -196,7 +210,7 @@ sub strings2labels {
 ## $vec = $trie->strings2vector(\@strings_or_tokens)
 ## $vec = $trie->strings2vector(\@strings_or_tokens,$autocreate)
 ##   + no implicit reversal
-sub strings2vector { return $_[0]->labels2vector($_[0]->strings2labels(@_[1..$#_])); }
+sub strings2vector { return labels2vector($_[0]->strings2labels(@_[1..$#_])); }
 
 
 ## $labels = $trie->chars2labels($word_or_token)
@@ -219,7 +233,7 @@ sub chars2labels {
 
 ## $vec = $trie->chars2vector($word_or_token)
 ## $vec = $trie->chars2vector($word_or_token,$autocreate)
-sub chars2vector { return $_[0]->labels2vector($_[0]->chars2labels(@_[1..$#_])); }
+sub chars2vector { return labels2vector($_[0]->chars2labels(@_[1..$#_])); }
 
 ##--------------------------------------------------------------
 ## Methods: Lookup : Labels -> Strings
@@ -232,7 +246,7 @@ sub labels2strings {
 }
 
 ## $strings = $trie->vector2strings($vec)
-sub vector2strings { return $_[0]->labels2strings($_[0]->vector2labels($_[1])); }
+sub vector2strings { return $_[0]->labels2strings(vector2labels($_[1])); }
 
 
 ## $word = $trie->labels2chars(\@labels)
@@ -250,7 +264,7 @@ sub labels2chars {
 }
 
 ## $chars = $trie->vector2chars($vec)
-sub vector2chars { return $_[0]->labels2chars($_[0]->vector2labels($_[1])); }
+sub vector2chars { return $_[0]->labels2chars(vector2labels($_[1])); }
 
 ##======================================================================
 ## Methods: Lookup : State-ID
@@ -294,7 +308,7 @@ sub getStateChars {
 ##  + gets state-id for $vector
 sub getStateVector {
   #my ($trie,$vec) = @_;
-  return $_[0]->getStateLabels($_[0]->vector2labels($_[1]));
+  return $_[0]->getStateLabels(vector2labels($_[1]));
 }
 
 
@@ -354,7 +368,7 @@ sub ensureEpsilon {
 sub addPathLabels {
   my ($trie,$labs,$freq) = @_;
   $freq = 1 if (!defined($freq));
-  $trie->{fsm}->add_paths(
+  $trie->{fsm}->add_path(
 			  ($trie->{reversed} ? [reverse(@$labs)] : $labs),
 			  [],
 			  1,
@@ -371,8 +385,6 @@ sub addPathLabels {
 ##  + calls addPathLabels(\@labels)
 *addPathTokens = *addPathSentence = \&addPathStrings;
 sub addPathStrings {
-  #my ($trie,$strings,$freq) = @_;
-  #return $trie->addPathLabels($trie->strings2labels($strings,1), $freq);
   return $_[0]->addPathLabels($_[0]->strings2labels($_[1],1), $_[2]);
 }
 
@@ -381,8 +393,6 @@ sub addPathStrings {
 ##  + ensures that all characters in $word are mapped to labels
 ##  + calls addPathLabels(\@labels)
 sub addPathChars {
-  #my ($trie,$word,$freq) = @_;
-  #return $trie->addPathLabels($trie->chars2labels($word,1), $freq);
   return $_[0]->addPathLabels($_[0]->chars2labels($_[1],1), $_[2]);
 }
 
@@ -390,9 +400,7 @@ sub addPathChars {
 ## $trie = $trie->addPathVector($vec,$freq)
 ##  + calls addPathLabels(\@labels)
 sub addPathVector {
-  #my ($trie,$vec,$freq) = @_;
-  #return $trie->addPathLabels($trie->vector2labels($vec), $freq);
-  return $_[0]->addPathLabels($_[0]->vector2labels($_[1]), $_[2]);
+  return $_[0]->addPathLabels(vector2labels($_[1]), $_[2]);
 }
 
 ##======================================================================
@@ -478,7 +486,7 @@ sub toVectorHash {
   #my ($prefix,$qid);
   $trie->traverse(sub {
 		    #($prefix,$qid)=@_;
-		    $h->{$trie->labels2vector($_[0])} = $fsm->final_weight($_[1]);
+		    $h->{labels2vector($_[0])} = $fsm->final_weight($_[1]);
 		   return $TRAVERSE_CONTINUE;
 		  });
   return $h;

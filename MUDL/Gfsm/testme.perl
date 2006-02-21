@@ -17,7 +17,8 @@ use PDL;
 ##--------------------------------------------------
 ## create a freq trie
 BEGIN {
-  our @words = qw(a as aa aas ab abs abc abcs);
+  #our @words = qw(a as aa aas ab abs abc abcs);
+  our @words = qw(aha ab abs abc abcs);
   our ($bos,$eos);
   #($bos,$eos) = ('#','#');
   ($bos,$eos) = ('','');
@@ -206,6 +207,16 @@ sub idxtrie {
 }
 
 
+##--------------------------------------------------
+## StateIdRelation
+use MUDL::Gfsm::StateIdRelation;
+sub genidr {
+  $idr = MUDL::Gfsm::StateIdRelation->new;
+  @related = ([0,1],[0,2],[0,3], [1,1],[1,2]);
+  #push(@related, [100000,$Gfsm::noState]);
+  $idr->insert(@$_) foreach (@related);
+}
+genidr;
 
 
 ##--------------------------------------------------
