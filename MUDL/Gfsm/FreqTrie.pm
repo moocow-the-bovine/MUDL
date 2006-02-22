@@ -11,8 +11,8 @@ use MUDL::Gfsm::Automaton;
 use MUDL::Gfsm::Alphabet;
 use MUDL::Object;
 
+use Encode qw(encode decode);
 use Carp qw(carp croak);
-
 
 use strict;
 our @ISA = qw(Exporter MUDL::Object);
@@ -49,6 +49,9 @@ sub epsilonString { return '<epsilon>'; }
 ##       add_to_arcs => $bool,        ##-- add_path(): arcs? (default=1)
 ##       add_to_state_final => $bool, ##-- add_path(): final-weight for all visited states? (default=0)
 ##       add_to_path_final => $bool,  ##-- add_path(): final-weight for path-final state?   (default=1)
+##
+##       ##-- for character extraction
+##       encoding=>$encoding_or_undef, ##-- encoding to use for labels2chars() and labels2strings()
 sub new {
   my ($that,%args) = @_;
   my $trie = bless {
@@ -60,6 +63,9 @@ sub new {
 		    add_to_state_final=>0,
 		    add_to_path_final=>1,
 
+		    ##-- encoding
+		    encoding=>undef,
+
 		    ##-- user args
 		    %args,
 		   }, ref($that)||$that;
@@ -67,6 +73,10 @@ sub new {
   ##-- fsm
   $trie->{fsm} = MUDL::Gfsm::Automaton->newTrie(0, Gfsm::SRTReal) ##-- acceptor with Real semiring
     if (!$trie->{fsm});
+
+  ##-- rfsm
+  #$trie->{rfsm} = $trie->{fsm}->reverse
+  #  if (!$trie->{rfsm});
 
   ##-- alphabet
   $trie->{abet} = MUDL::Gfsm::Alphabet->new()
@@ -88,48 +98,44 @@ sub clear {
   return $trie;
 }
 
-##======================================================================
-## Methods: trie reversal
-##======================================================================
-
-## $trie = $trie->_reverse()
-##  + reverses contents of trie: PTA to STA (destructive)
-sub _reverse {
-  my $trie = shift;
-  my $fsm = $trie->{fsm};
-  $fsm->_reverse;
-  $fsm->_rmepsilon;
-  $fsm->_determinize;
-  $fsm->_connect;
-  $fsm->renumber_states;
-  return $trie;
-}
-
-## $rtrie = $trie->reverseTrie()
-##  + returns copy of trie, reversed: PTA to STA (destructive)
-*sta2pta = *pta2sta = \&reverseTrie;
-sub reverseTrie {
-  my $trie = shift;
-  my $rtrie = bless { %$trie }, ref($trie);
-  $rtrie->{abet} = $trie->{abet}->clone;
-  $rtrie->{fsm}  = $trie->{fsm}->clone;
-  $rtrie->{reversed} = !$trie->{reversed};
-  $rtrie->_reverse;
-  return $rtrie;
-}
-
 
 ##======================================================================
-## Methods: reverse-indexing
+## Methods: reverse indexing, reverse lookup
 ##======================================================================
 
-## $rfsm = $trie->reverseLookupFsm()
+## $rfsm = $trie->reverseIndex()
 ##  + returns a Gfsm::Automaton suitable for reverse-lookup (state-id => path)
 ##  + only call this once you have added all data to the trie
-sub reverseLookupFsm {
+##  + populates $trie->{rfsm}
+sub reverseIndex {
   my $trie = shift;
-  return $trie->{fsm}->reverse;
+  return $trie->{rfsm} = $trie->{fsm}->reverse;
 }
+
+## \@label_array = $trie->stateLabels($qid)
+##   + requires $trie->{rfsm}
+sub stateLabels {
+  my ($trie,$qid) = @_;
+  return undef if (!defined($qid) || $qid == $Gfsm::noState);
+  my ($rfsm,$rfsm_root_tmp,$labels);
+  $rfsm = $trie->{rfsm};
+  $rfsm_root_tmp = $rfsm->root;
+  $rfsm->root($qid);
+  $labels = $rfsm->paths->[0]{lo};
+  @$labels = reverse(@$labels) if (!$trie->{reversed});
+  $rfsm->root($rfsm_root_tmp);
+  return $labels;
+}
+
+## \@string_array = $trie->stateStrings($qid)
+sub stateStrings { return $_[0]->labels2strings($_[0]->stateLabels($_[1])); }
+
+## $chars = $trie->stateChars($qid)
+sub stateChars { return $_[0]->labels2chars($_[0]->stateLabels($_[1])); }
+
+## $vec = $trie->stateVector($qid)
+sub stateVector { return labels2vector($_[0]->stateLabels($_[1])); }
+
 
 ##======================================================================
 ## Methods: Lookup : Suffixes
@@ -142,32 +148,34 @@ sub suffixesState {
   my $root_tmp = $trie->{fsm}->root;
   $trie->{fsm}->root($qid);
   my @suffixes = map { $_->{lo} } @{$trie->{fsm}->paths};
+  if ($trie->{reversed}) { @$_ = reverse(@$_) foreach (@suffixes); }
   $trie->{fsm}->root($root_tmp);
   return \@suffixes;
 }
 
 ## \@suffix_label_arrays = $trie->suffixesLabels(\@labels)
-sub suffixesLabels {
-  my ($trie,$labs) = @_;
-  return $trie->suffixesState($trie->getStateLabels($labs));
-}
+sub suffixesLabels { return $_[0]->suffixesState($_[0]->getStateLabels($_[1])); }
 
-## \@suffix_label_arrays = $trie->suffixesStrings(\@strings)
+## \@suffix_string_arrays = $trie->suffixesStrings(\@strings)
 sub suffixesStrings {
-  my ($trie,$strs) = @_;
-  return $trie->suffixesState($trie->getStateStrings($strs));
+  my $suffs = $_[0]->suffixesState($_[0]->getStateStrings($_[1]));
+  $_ = $_[0]->labels2string($_) foreach (@$suffs);
+  return $suffs;
+
 }
 
-## \@suffix_label_arrays = $trie->suffixesChars($chars)
+## \@suffix_words = $trie->suffixesChars($chars)
 sub suffixesChars {
-  my ($trie,$chars) = @_;
-  return $trie->suffixesState($trie->getStateChars($chars));
+  my $suffs = $_[0]->suffixesState($_[0]->getStateChars($_[1]));
+  $_ = $_[0]->labels2chars($_) foreach (@$suffs);
+  return $suffs;
 }
 
-## \@suffix_label_arrays = $trie->suffixesVector($vec)
+## \@suffix_vectors = $trie->suffixesVector($vec)
 sub suffixesVector {
-  my ($trie,$vec) = @_;
-  return $trie->suffixesVectors($trie->getStateVector($vec));
+  my $suffs = $_[0]->suffixesState($_[0]->getStateVector($_[1]));
+  $_ = labels2vector($_) foreach (@$suffs);
+  return $suffs;
 }
 
 
@@ -242,7 +250,11 @@ sub chars2vector { return labels2vector($_[0]->chars2labels(@_[1..$#_])); }
 sub labels2strings {
   my ($trie,$labels) = @_;
   my $abet = $trie->{abet};
-  return [ map { $abet->find_key($_) } @$labels ];
+  return [
+	  (defined($trie->{encoding})
+	   ? (map { decode($trie->{encoding},$abet->find_key($_)) } @$labels)
+	   : (map { $abet->find_key($_) } @$labels))
+	 ];
 }
 
 ## $strings = $trie->vector2strings($vec)
@@ -255,12 +267,20 @@ sub vector2strings { return $_[0]->labels2strings(vector2labels($_[1])); }
 sub labels2chars {
   my ($trie,$labels) = @_;
   my $abet = $trie->{abet};
-  return join('',
-	      map {
-		(defined($_) && $_ != $Gfsm::noLabel
-		 ? $abet->find_key($_)
-		 : $abet->find_key($Gfsm::epsilon))
-	      } @$labels);
+  return (defined($trie->{encoding})
+	  ? join('',
+		 map {
+		   (defined($_) && $_ != $Gfsm::noLabel
+		    ? decode($trie->{encoding},$abet->find_key($_))
+		    : decode($trie->{encoding},$abet->find_key($Gfsm::epsilon)))
+		 } @$labels)
+	  : join('',
+		 map {
+		   (defined($_) && $_ != $Gfsm::noLabel
+		    ? $abet->find_key($_)
+		    : $abet->find_key($Gfsm::epsilon))
+		 } @$labels)
+	 );
 }
 
 ## $chars = $trie->vector2chars($vec)
@@ -299,43 +319,44 @@ sub getStateVector {
   return $_[0]->getStateLabels(vector2labels($_[1]));
 }
 
+##======================================================================
+## Methods: Lookup : State-Path
+##======================================================================
+
+## \@qids = $trie->getStatePathLabels(\@labels);
+##  + gets state-id path for longest known prefix of address \@labels
+##  + implicitly reverses \@labels if $trie->{reversed} is true
+##  + returns undef if no state is defined
+sub getStatePathPathLabels {
+  my ($trie,$labs) = @_;
+  return undef if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
+  return $trie->{fsm}->find_prefix_states(($trie->{reversed} ? [reverse @$labs] : $labs), []);
+}
+
+## \@qids = $trie->getStatePathStrings(\@strings);
+##  + gets state-id path for longest known prefix of \@strings
+sub getStatePathStrings {
+  return $_[0]->getStatePathLabels($_[0]->strings2labels($_[1],0));
+}
+
+## \@qids = $trie->getStatePathChars($word);
+##  + gets state-id path for longest known prefix of $word
+sub getStatePathChars {
+  return $_[0]->getStatePathLabels($_[0]->chars2labels($_[1],0));
+}
+
+## \@qids = $trie->getStatePathVector($vector);
+##  + gets state-id path for longest known prefix of $vector
+sub getStatePathVector {
+  return $_[0]->getStatePathLabels(vector2labels($_[1]));
+}
+
 
 ##======================================================================
 ## Methods: Lookup : Frequency
 ##======================================================================
 
-## $freq = $trie->getFreqState($id_or_undef)
-##  + returns 0 if $qid is invalid
-sub getFreqState {
-  my ($trie,$qid) = @_;
-  return defined($qid) && $qid < $trie->{fsm}->n_states ? $trie->{fsm}->final_weight($qid) : 0;
-}
-
-## $freq = $trie->getFreqLabels(\@labels);
-##  + gets stored frequency for \@labels
-##  + implicitly reverses \@labels if $trie->{reversed} is true
-sub getFreqLabels {
-  return $_[0]->getFreqState($_[0]->getStateLabels($_[1]));
-}
-
-## $freq = $trie->getFreqStrings(\@strings);
-##  + gets stored frequency for \@strings
-sub getFreqStrings {
-  return $_[0]->getFreqState($_[0]->getStateStrings($_[1]));
-}
-
-## $freq = $trie->getFreqChars($word);
-##  + gets stored frequency for $word
-sub getFreqChars {
-  return $_[0]->getFreqState($_[0]->getStateChars($_[1]));
-}
-
-## $freq = $trie->getFreqVector($vec);
-##  + gets stored frequency for vector $vec
-sub getFreqVector {
-  return $_[0]->getFreqState($_[0]->getStateVector($_[1]));
-}
-
+##-- gone
 
 ##======================================================================
 ## Methods: Manipulation
@@ -438,11 +459,11 @@ sub traverse {
 ## Methods: Conversion
 ##======================================================================
 
-## $hash = $trie->toHash()
-## $hash = $trie->toHash(\%h,%opts)
+## \%hash = $trie->asStaeIdHash()
+## \%hash = $trie->asStateIdHash(\%h,%opts)
 ##  %opts: sep=>$symbol_separator_char
-*asHash = \&toHash;
-sub toHash {
+*asStateIdHash = \&toStateIdHash;
+sub toStateIdHash {
   my ($trie,$h,%opts) = @_;
   $h = {} if (!$h);
   my $sep = defined($opts{sep}) ? $opts{sep} : ' ';
@@ -450,31 +471,31 @@ sub toHash {
   #my ($prefix,$qid);
  $trie->traverse(sub {
 		   #($prefix,$qid)=@_;
-		   $h->{ join($sep, @{$trie->labels2strings($_[0])}) } = $fsm->final_weight($_[1]);
+		   $h->{ join($sep, @{$trie->labels2strings($_[0])}) } = $_[1];
 		   return $TRAVERSE_CONTINUE;
 		 });
   return $h;
 }
 
-## $hash = $trie->toCharHash()
-## $hash = $trie->toCharHash(\%h)
-*asCharHash = \&toCharHash;
-sub toCharHash {
+## $hash = $trie->toCharStateIdHash()
+## $hash = $trie->toCharStateIdHash(\%h)
+*asCharStateIdHash = \&toCharStateIdHash;
+sub toCharStateIdHash {
   my ($trie,$h) = @_;
-  return $trie->toHash($h,sep=>'');
+  return $trie->toStateIdHash($h,sep=>'');
 }
 
-## $hash = $trie->toVectorHash()
-## $hash = $trie->toVectorHash(\%h)
-*asVectorHash = *asVecHash = *toVecHash = \&toVectorHash;
-sub toVectorHash {
+## $hash = $trie->toVectorStateIdHash()
+## $hash = $trie->toVectorStateIdHash(\%h)
+*asVectorStateIdHash = *asVecStateIdHash = *toVecStateIdHash = \&toVectorStateIdHash;
+sub toVectorStateIdHash {
   my ($trie,$h) = @_;
   $h = {} if (!$h);
   my $fsm = $trie->{fsm};
   #my ($prefix,$qid);
   $trie->traverse(sub {
 		    #($prefix,$qid)=@_;
-		    $h->{labels2vector($_[0])} = $fsm->final_weight($_[1]);
+		    $h->{labels2vector($_[0])} = $_[1];
 		   return $TRAVERSE_CONTINUE;
 		  });
   return $h;
