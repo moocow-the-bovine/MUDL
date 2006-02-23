@@ -14,6 +14,9 @@ use Gtk2;
 use Gtk2::SimpleList;
 use Gtk2::SimpleMenu;
 
+use PDL;
+use PDL::EditDistance;
+
 use Carp;
 use strict;
 our @ISA = qw(MUDL::Object);
@@ -286,7 +289,8 @@ sub create_word_list {
   set_column_alignment($wl, 2, 0.5); ##-- analyzed?
 
   foreach (0..$#cols) {
-    $cols[$_]->set('expand'=>($_==0 ? 1 : 0));
+    #$cols[$_]->set('expand'=>($_==0 ? 1 : 0));
+    $cols[$_]->set('expand'=>0);
     $cols[$_]->set('min-width'=>0);
     $cols[$_]->set('resizable'=>1);
     set_column_renderer_property($wl, $_, 'mode', 'inert');
@@ -535,7 +539,11 @@ sub create_edit_fst {
 
   ##--------------------------------------
   ## Analysis list
-  my $alist = $frame->{alist} = Gtk2::SimpleList->new('Analysis'=>'text','Weight'=>'double');
+  my $alist = $frame->{alist} = Gtk2::SimpleList->new('Segments'=>'text',
+						      'Distance'=>'int',
+						      'Analysis'=>'text',
+						      'Weight'=>'double',
+						      ''=>'text');
   #$alist->set_size_request(100,100);
   $alist->set_headers_visible(1);
   $alist->set_reorderable(0);
@@ -545,10 +553,24 @@ sub create_edit_fst {
   $alist->set_reorderable(0);
   my @cols = $alist->get_columns;
   $cols[$_]->set_sort_column_id($_) foreach (0..$#cols);
-  $cols[0]->set_expand(1);
 
   ##-- alternating colors for each row
   $alist->set('rules-hint'=>1);
+
+  ##--------------------------------------
+  ## Analysis List: column properties
+  set_column_alignment($alist, 0, 0.0); ##-- segments
+  set_column_alignment($alist, 1, 1.0); ##-- distance
+  set_column_alignment($alist, 2, 0.0); ##-- analysis
+  set_column_alignment($alist, 3, 1.0); ##-- weight
+
+  foreach (0..$#cols) {
+    #$cols[$_]->set('expand'=>($_<=1 ? 1 : 0));
+    $cols[$_]->set('expand'=>0);
+    $cols[$_]->set('min-width'=>0);
+    $cols[$_]->set('resizable'=>1);
+    set_column_renderer_property($alist, $_, 'mode', 'inert');
+  }
 
   ##--------------------------------------
   ## Analysis List: scrolling
@@ -816,21 +838,63 @@ sub select_word {
 
   ##-- populate FST analysis list
   my $alist = $gui->{editFST}{alist};
-  @{$alist->{data}} = qw();
+  my @adata = qw();
   if ($gui->{data}{fst} && $gui->{data}{labs}) {
-    my @labs  = (
+    my @wlabs  = (
 		 grep { $_ ne $Gfsm::noLabel }
 		 map { $gui->{data}{labs}->find_label($_) }
 		 split(//,Encode::encode($gui->{encoding},$word))
 		);
-    my $res   = $gui->{data}{fst}->lookup(\@labs);
-    $res->connect;
+    my $res   = $gui->{data}{fst}->lookup(\@wlabs);
+    $res->_connect;
     my $paths = $res->paths;
-    my ($path);
-    @{$alist->{data}} =
-      (map {
-	[join('', map { $gui->{data}{labs}->find_key($_) } @{$_->{hi}}), $_->{w}]
-      } @$paths);
+    my $segsep     = '.';
+    my $segsep_lab = $gui->{data}{labs}->find_label($segsep);
+    my $wpdl       = pdl(ushort,\@wlabs);
+    my ($path,$an,$s,@slabs,$spdl,$spdl_sep_i,@costs, $dmat,$amat,$wpath,$spath,$pathlen, $wseg);
+    foreach $path (@$paths) {
+      $an = join('', map { $gui->{data}{labs}->find_key($_) } @{$path->{hi}});
+
+      ##-- convert morph analysis to pseudo-segments
+      $s = $segsep.$an.$segsep;
+      $s =~ s/[\(\)\\\#\~\*\|\.]+/$segsep/g;
+      $s =~ s/([A-Z])/$segsep$1/g;
+      $s =~ tr/A-ZÄÖÜ/a-zäöü/;
+      $s =~ s/\Q$segsep\E+/$segsep/og;
+
+      ##-- align input word with segments
+      @slabs = ( map { $gui->{data}{labs}->find_label($_) } split(//,$s) );
+      $spdl       = pdl(ushort,\@slabs);
+      $spdl_sep_i = which($spdl==$segsep_lab)+1;
+      @costs = edit_costs_static(long, $wpdl->nelem, $spdl->nelem, 0,1,1);
+      $costs[0]->dice_axis(1, $spdl_sep_i) .= 999; ##-- separators don't match anywhere
+      #$costs[1]->dice_axis(1, $spdl_sep_i) .= 0;   ##-- separator insertion ain't cheap
+      $costs[2]->dice_axis(1, $spdl_sep_i) .= 999; ##-- don't substitute separators anywhere
+      ($dmat,$amat) = edit_align_full($wpdl,$spdl,@costs);
+      ($wpath,$spath,$pathlen) = edit_bestpath($amat);
+
+      ##-- get segmented string
+      $wseg = join('',
+		map { $gui->{data}{labs}->find_key($_) }
+		map {
+		  ($wpath->at($_) >= 0
+		   ? $wpdl->at($wpath->at($_))
+		   : ($spath->at($_) >= 0 && $spdl->at($spath->at($_)) == $segsep_lab
+		      ? $segsep_lab
+		      : qw()))
+		} (0..($pathlen-1))
+	       );
+      $wseg =~ s/^\Q$segsep\E+//;
+      $wseg =~ s/\Q$segsep\E+$//;
+
+      ##-- add to data
+      push(@adata,
+	   [ $wseg,
+	     $dmat->at($dmat->dim(0)-1,$dmat->dim(1)-1) - $spdl_sep_i->nelem,
+	     $an, $path->{w}, '' ]);
+    }
+    ##-- sort alist data
+    @{$alist->{data}} = sort { $a->[1] <=> $b->[1] } @adata;
   }
 }
 
@@ -1083,3 +1147,4 @@ sub apidummy {
 			$name));
   };
 }
+
