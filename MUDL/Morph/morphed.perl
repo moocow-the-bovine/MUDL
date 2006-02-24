@@ -17,8 +17,9 @@ main;
 
 
 sub debug_select_word {
-  $gui->{data} = $gui->loadFile('00-utest-tiny+morph.bin');
+  #$gui->{data} = $gui->loadFile('00-utest-tiny+morph.bin');
+  $gui->{data}->loadCorpus('00-utest-tiny.t');
+  $gui->{data}{analyses} = $gui->{data}{analyses}->loadNativeFile('00-utest-tiny.analyses');
   $gui->populateWordList;
-  $gui->select_word();
 }
 

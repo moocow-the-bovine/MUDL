@@ -7,17 +7,14 @@
 ##======================================================================
 
 package MUDL::Morph::Editor;
+use MUDL::Morph::Analyses;
 use MUDL::Object;
 use MUDL::Corpus::Buffer::Pdl;
 use MUDL::Enum;
 use MUDL::EDist;
+use MUDL::Map;
 
-use MUDL::Gfsm::Automaton;
-use MUDL::Gfsm::Alphabet;
 use PDL;
-
-use utf8;
-use Encode;
 
 use strict;
 our @ISA = qw(MUDL::Object);
@@ -37,8 +34,14 @@ sub new {
                                  ##  $occs = pack('(LS)*', $sentidx,$occidx, ...)
      corpus=>undef, ##-- a MUDL::Corpus::Buffer::Pdl
 
-     fst=>MUDL::Gfsm::Automaton->new, ##-- morph fst
-     labs=>MUDL::Gfsm::Alphabet->new, ##-- morph labels
+     segsep=>'.',   ##-- segment-separator character
+
+     ##-- analyses
+     analyses=>MUDL::Morph::Analyses->new(), ##-- word-text -> analysis map
+
+     ##-- model
+     w2seg=>[],     ##-- word-id -> segmented word text
+     morphs=>{},    ##-- pseudo-set of morphs (text)
 
      ##-- gui
      gui=>undef,
@@ -57,13 +60,33 @@ sub new {
   return $me;
 }
 
+
+##======================================================================
+## Manipulators
+##======================================================================
+
+## $me->clear()
+##  + clear all object content
+sub clear {
+  my $me = shift;
+  $me->clearCorpus;
+  $me->{wenum}->clear;
+  $me->{analyses}->clear;
+}
+
+##======================================================================
+## I/O: Analyses
+##======================================================================
+
+##-- ... just use {analyses} element directly
+
 ##======================================================================
 ## I/O: Corpus
 ##======================================================================
 
 ## $me->loadCorpus($file,%args)
 ##  + load corpus into the object
-##  + corpus may be analyzed (token tag=best-lemma, analyses=lemma1, ..., lemmaN)
+##  + corpus may NOT be analyzed (token tag=best-lemma, analyses=lemma1, ..., lemmaN)
 ##  + populates $me->{wenum}, $me->{wfreq}, ...?
 sub loadCorpus {
   my ($me,$file,%args) = @_;
@@ -83,12 +106,64 @@ sub loadCorpus {
   }
 }
 
-## $me->clearCorpus($file,%args)
-##  + clear object contents
+## $me->clearCorpus()
+##  + clear corpus-specific object content
 sub clearCorpus {
   my $me = shift;
-  $me->{wenum}->clear;
+  #$me->{wenum}->clear;
   %{$me->{wfreq}} = qw();
   %{$me->{woccs}} = qw();
   $me->{corpus}->clear;
 }
+
+
+1;
+
+##======================================================================
+## Docs
+=pod
+
+=head1 NAME
+
+MUDL - MUDL Unsupervised Dependency Learner
+
+=head1 SYNOPSIS
+
+ use MUDL;
+
+=cut
+
+##======================================================================
+## Description
+=pod
+
+=head1 DESCRIPTION
+
+...
+
+=cut
+
+##======================================================================
+## Footer
+=pod
+
+=head1 ACKNOWLEDGEMENTS
+
+perl by Larry Wall.
+
+=head1 AUTHOR
+
+Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 2004, Bryan Jurish.  All rights reserved.
+
+This package is free software.  You may redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+perl(1)
+
+=cut

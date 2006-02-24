@@ -137,16 +137,22 @@ sub create_menubar {
       item_type=>'<Branch>',
       children=>[
 		 ##-- File: Open
-		 _Open => {
-			   callback => sub { $gui->menu_file_open; },
-			   accelerator=>'<ctrl>O',
-			  },
+		 '_Open Project' => {
+				     callback => sub { $gui->menu_project_open; },
+				     accelerator=>'<ctrl>O',
+				    },
 
 		 ##-- File: Save
-		 _Save => {
-			   callback => sub { $gui->menu_file_save; },
-			   accelerator=>'<ctrl>S',
-			  },
+		 '_Save Project' => {
+				     callback => sub { $gui->menu_project_save; },
+				     accelerator=>'<ctrl>S',
+				    },
+
+		 ##-- File: Save
+		 '_Clear Project' => {
+				      callback => sub { $gui->menu_project_clear; },
+				      accelerator=>'<ctrl>C',
+				     },
 
 		 ##-- File: Separator
 		 Separator => { item_type=>'<Separator>' },
@@ -183,35 +189,35 @@ sub create_menubar {
 		 ##-- Corpus: Clear
 		 _Clear => {
 			    callback => sub { $gui->menu_corpus_clear; },
-			    accelerator=>'<ctrl>C',
+			    #accelerator=>'<ctrl>C',
 			   },
 		],
      },
 
      ##-------------------------
-     ## Menu: FST-Morphology
-     'FS_T' =>
+     ## Menu: Analyses
+     '_Analyses' =>
      {
       item_type=>'<Branch>',
       children=>[
-		##-- FST-Morphology: Load FST
-		 'Load FS_T' => {
-				 callback => sub { $gui->menu_morph_fst_load; },
-				 #accelerator=>'<ctrl>T',
-				},
+		 ##-- Analyses: Load
+		 '_Load' => {
+			    callback => sub { $gui->menu_analyses_load; },
+			    #accelerator=>'<ctrl>T',
+			   },
 
-		 ##-- FST-Morphology: Load Labels
-		 'Load L_abels'  => {
-				     callback => sub { $gui->menu_morph_labs_load; },
-				     #accelerator=>'<ctrl>A',
-				    },
+		 ##-- Analyses: Save
+		 '_Save' => {
+			     callback => sub { $gui->menu_analyses_save; },
+			     #accelerator=>'<ctrl>T',
+			    },
 
-		 ##-- FST-Morphologys: Separator
+		 ##-- Analyses: Separator
 		 Separator => { item_type=>'<Separator>' },
 
-		 ##-- FST-Morphlogy: Clear
+		 ##-- Analyses: Clear
 		 Clea_r => {
-			    callback => sub { $gui->menu_morph_clear; },
+			    callback => sub { $gui->menu_analyses_clear; },
 			    #accelerator=>'<ctrl>R',
 			   },
 		],
@@ -250,7 +256,7 @@ sub create_word_frame {
 
 
   #$wf->set_usize(256,0);
-  $nb->set_size_request(256,200);
+  $nb->set_size_request(256,256);
   $wf->add($wvb);
 }
 
@@ -321,6 +327,7 @@ sub create_word_list {
   ##--------------------------------------
   ## Word List: scrolling
   my $scrolled = $wf->{scrolled} = Gtk2::ScrolledWindow->new(undef,undef);
+  $scrolled->set_shadow_type('in');
   $scrolled->set_border_width(5);
   $scrolled->set_policy('automatic','automatic');
   $scrolled->add($wl);
@@ -346,14 +353,15 @@ sub create_word_info {
   $wfi->add($vbox);
 
   ##-- Info: Table
-  my $tab = $wfi->{tab} = Gtk2::Table->new(4,2);
+  my $tab = $wfi->{tab} = Gtk2::Table->new(5,2);
   $vbox->pack_start($tab, 1,1,0);
 
   ##-- Info: Table contents
-  @$wfi{qw(wordLab wordVal)} = $gui->label_value_pair($tab, 0, 'Word:', '-undef-');
-  @$wfi{qw(idLab   idVal)}   = $gui->label_value_pair($tab, 1, 'ID:', '-undef-');
-  @$wfi{qw(freqLab freqVal)} = $gui->label_value_pair($tab, 2, 'Freq:', '-undef-');
-  @$wfi{qw(anLab   anVal)} = $gui->label_value_pair($tab, 3, 'Analyzed:', '-undef-');
+  @$wfi{qw(nwordsLab nwordsVal)} = $gui->label_value_pair($tab, 0, '# Words:', '0');
+  @$wfi{qw(wordLab wordVal)} = $gui->label_value_pair($tab, 1, 'Word:', '-undef-');
+  @$wfi{qw(idLab   idVal)}   = $gui->label_value_pair($tab, 2, 'ID:', '-undef-');
+  @$wfi{qw(freqLab freqVal)} = $gui->label_value_pair($tab, 3, 'Freq:', '-undef-');
+  @$wfi{qw(anLab   anVal)} = $gui->label_value_pair($tab, 4, 'Analyzed:', '-undef-');
 
   ##-- Info: Scrolled
   $gui->scroll_widget($wfi,scroll_policy=>[qw(automatic never)]);
@@ -375,7 +383,7 @@ sub create_word_filters {
   $vbox->set_border_width(0);
   $wff->add($vbox);
 
-  my $wfftab = $wff->{tab} = Gtk2::Table->new(3, 2);
+  my $wfftab = $wff->{tab} = Gtk2::Table->new(4, 2);
   $vbox->pack_start($wfftab, 1,1,0);
 
   ##-- Minimum Frequency
@@ -399,6 +407,14 @@ sub create_word_filters {
   my $wff_regex = $wff->{regex} = Gtk2::Entry->new();
   $wff_regex->set_width_chars(0);
   $gui->labelled_widget($wfftab, 2, 'Regex:', $wff_regex);
+
+  ##-- Analyzed?
+  my $wff_anl_adj  = $wff->{anl_adj}  = Gtk2::Adjustment->new(-1, -1, 1, 1, 1, 0);
+  my $wff_anl_spin = $wff->{anl_spin} = Gtk2::SpinButton->new($wff_anl_adj, 1.0, 0);
+  $wff_anl_spin->set_width_chars(0);
+  $wff_anl_spin->set_wrap(1);
+  $wff_anl_spin->set_update_policy('always'); ##???
+  $gui->labelled_widget($wfftab, 3, "Analyzed?:", $wff_anl_spin);
 
   ##-- ButtonBox
   my $bbox = $wff->{bbox} = Gtk2::HButtonBox->new();
@@ -436,15 +452,18 @@ sub create_detail_frame {
   $df->add($dfvp);
 
   ##-- detail frame: kwic area
-  $gui->create_context_area();
+  $gui->create_detail_context_area();
 
   ##-- detail frame: edit area
-  $gui->create_edit_area();
+  $gui->create_detail_edit_area();
+
+  ##-- detail frame: notebook
+  $gui->create_detail_edit_notebook_area();
 }
 
 ##--------------------------------------------------------------
 ## GUI: Initialization: Detail: Context Area
-sub create_context_area {
+sub create_detail_context_area {
   my $gui = shift;
 
   my $cf = $gui->{contexts} = Gtk2::Frame->new('Contexts');
@@ -484,6 +503,7 @@ sub create_context_area {
 
   ##-- KWIC CList: scroll it
   my $scrolled = $cf->{kwicScrolled} = Gtk2::ScrolledWindow->new(undef,undef);
+  $scrolled->set_shadow_type('in');
   $scrolled->set_border_width(5);
   $scrolled->set_policy('automatic','automatic');
   $scrolled->add($kwic);
@@ -496,41 +516,86 @@ sub create_context_area {
 
 ##--------------------------------------------------------------
 ## GUI: Initialization: Detail: Edit Area
-sub create_edit_area {
+sub create_detail_edit_area {
+  my $gui = shift;
+
+  ##--------------------------------------
+  ## Basic
+  my $frame = $gui->{editf} = Gtk2::Frame->new;
+  $frame->set_shadow_type('none');
+  $frame->set_border_width(5);
+
+  my $vbox = $frame->{vbox} = Gtk2::VBox->new;
+  $frame->add($vbox);
+
+  ##--------------------------------------
+  ## Edit area
+  my $eframe = $frame->{manEditFrame} = Gtk2::Frame->new('Edit');
+  $eframe->set_shadow_type('etched-in');
+  $eframe->set_border_width(0);
+  $vbox->pack_start($eframe, 0,1,0);
+
+  my $evbox  = $eframe->{vbox}     = Gtk2::VBox->new;
+  my $ehbox  = $eframe->{hbox}     = Gtk2::HBox->new;
+  $eframe->add($evbox);
+  $evbox->pack_start($ehbox, 1,1,5);
+
+  my $elab   = $frame->{manEditLabel} = Gtk2::Label->new('<b>Segments:</b>');
+  $elab->set_use_markup(1);
+  my $eentry = $frame->{manEditEntry} = Gtk2::Entry->new();
+
+  my $apply = $frame->{manEditApply} = Gtk2::Button->new('  Apply  ');
+  $apply->signal_connect('clicked', sub { $gui->edit_apply_clicked(); });
+
+  $ehbox->pack_end($apply, 0,0,5);
+  $ehbox->pack_start($elab, 0,0,5);
+  $ehbox->pack_start($eentry, 1,1,5);
+
+  ##-- pack it
+  $gui->{detailf}{vpaned}->add2($frame);
+}
+
+##--------------------------------------------------------------
+## GUI: Initialization: Detail: Notebook area
+sub create_detail_edit_notebook_area {
   my $gui = shift;
 
   ##-- edit notebook
-  my $enb = $gui->{editnb} = Gtk2::Notebook->new;
+  my $enb = $gui->{detailnb} = Gtk2::Notebook->new;
   $enb->set_tab_pos('top');
   $enb->set_show_tabs(1);
   $enb->set_scrollable(1);
   $enb->set_border_width(5);
 
-  ##-- edit notebook: FST
-  $gui->create_edit_fst;
+  ##-- edit notebook: analyses
+  $gui->create_edit_detail_analyses_page();
+
+  ##-- edit notebook: Morphs
+  $gui->create_detail_edit_trie_page('Morphs');
 
   ##-- edit notebook: Prefixes
-  $gui->create_edit_trie_page('Prefixes');
+  #$gui->create_detail_edit_trie_page('Prefixes');
 
   ##-- edit notebook: Stems
-  $gui->create_edit_trie_page('Stems');
+  #$gui->create_detail_edit_trie_page('Stems');
 
   ##-- edit notebook: Suffixes
-  $gui->create_edit_trie_page('Suffixes');
+  #$gui->create_detail_edit_trie_page('Suffixes');
 
   ##-- pack it
   $enb->set_size_request(200,200);
-  $gui->{detailf}{vpaned}->add2($enb);
+  #$gui->{detailf}{vpaned}->add2($enb);
+  $gui->{editf}{vbox}->pack_end($enb, 1,1,0);
 }
 
 ##--------------------------------------------------------------
-## GUI: Initialization: Detail: Edit: FST
-sub create_edit_fst {
+## GUI: Initialization: Detail: Edit: Analyses
+sub create_edit_detail_analyses_page {
   my $gui = shift;
 
   ##--------------------------------------
   ## Basic
-  my $frame = $gui->{editFST} = Gtk2::Frame->new;
+  my $frame = $gui->{editAnalyses} = Gtk2::Frame->new;
   $frame->set_shadow_type('none');
   $frame->set_border_width(5);
 
@@ -573,8 +638,19 @@ sub create_edit_fst {
   }
 
   ##--------------------------------------
+  ## Analysis List: selection
+  my $sel = $alist->get_selection;
+  $sel->set_mode('single');
+
+  #$wl->signal_connect('select-row', sub { $gui->select_word(@_); }); #?
+  #$wl->signal_connect('row-activated', sub { $gui->select_word(@_); }); #?
+  $sel->signal_connect('changed', sub { $gui->select_analysis(@_); });
+
+
+  ##--------------------------------------
   ## Analysis List: scrolling
   my $scrolled = $alist->{scrolled} = Gtk2::ScrolledWindow->new(undef,undef);
+  $scrolled->set_shadow_type('in');
   $scrolled->set_border_width(5);
   $scrolled->set_policy('automatic','automatic');
   $scrolled->add($alist);
@@ -592,7 +668,7 @@ sub create_edit_fst {
   ##--------------------------------------
   ## notebook page (scrolled)
   $gui->scroll_widget($frame, scroll_policy=>[qw(automatic automatic)]);
-  $gui->{editnb}->append_page($frame->{scrolled}, 'FST');
+  $gui->{detailnb}->append_page($frame->{scrolled}, 'Analyses');
 }
 
 ##--------------------------------------------------------------
@@ -602,7 +678,7 @@ sub create_edit_fst {
 ##  %args:
 ##   + title=>$title  ## default: $key
 ##   + ...
-sub create_edit_trie_page {
+sub create_detail_edit_trie_page {
   my ($gui,$key,%args) = @_;
 
   my $title = $args{title} ? $args{title} : $key;
@@ -612,7 +688,7 @@ sub create_edit_trie_page {
 
   ##-- pack it
   $gui->scroll_widget($frame,scroll_policy=>[qw(automatic automatic)]);
-  $gui->{editnb}->append_page($frame->{scrolled},$key);
+  $gui->{detailnb}->append_page($frame->{scrolled},$key);
 }
 
 
@@ -741,6 +817,7 @@ sub populateWordList {
   my $me = $gui->{data};
   my $wenum = $me->{wenum};
   my $wfreq = $me->{wfreq};
+  my $analyses = $gui->{data}{analyses};
 
   ##-- clear gui
   $gui->create_word_list();
@@ -751,25 +828,34 @@ sub populateWordList {
   my $fmin  = $gui->{filters}{min_adj}->get_value;
   my $fmax  = $gui->{filters}{max_adj}->get_value;
   my $fre   = $gui->{filters}{regex}->get_text;
+  my $fan   = $gui->{filters}{anl_adj}->get_value;
 
   ##-- set sort-column
   my @cols = $wl->get_columns;
 
   ##-- add all words (filtering)
-  my ($wid,$word,$wordfreq,$rowi,@row);
+  my ($wid,$word_utf8,$word,$wordfreq,$wordanalyzed);
   foreach $wid (0..$#{$wenum->{id2sym}}) {
-    $word = $wenum->{id2sym}[$wid];
-    $word = Encode::encode($gui->{encoding},$word) if (defined($gui->{encoding}));
-    $wordfreq = $wfreq->{$wid};
+    $word_utf8 = $wenum->{id2sym}[$wid];
+    $word      = Encode::encode($gui->{encoding},$word_utf8) if (defined($gui->{encoding}));
+    $wordfreq  = $wfreq->{$wid};
+
+    $wordanalyzed = defined($analyses) && $analyses->has_analyses_utf8($word_utf8) ? 1 : 0;
 
     next if ( ($fmin > 0 && $wordfreq < $fmin)
 	      ||
 	      ($fmax > 0 && $wordfreq > $fmax)
 	      ||
-	      ($fre ne '' && $word !~ m/$fre/) );
+	      ($fre ne '' && $word !~ m/$fre/)
+	      ||
+	      ($fan >= 0  && $wordanalyzed != $fan)
+	    );
 
-    push(@{$wl->{data}}, [$word,$wordfreq,0,$wid]);
+    push(@{$wl->{data}}, [ $word, $wordfreq, $wordanalyzed, $wid, ]);
   }
+
+  ##-- update info: number of matching words
+  $gui->{wordinfo}{nwordsVal}->set_text(scalar(@{$wl->{data}}));
 
   $gui->select_word();
 }
@@ -781,6 +867,7 @@ sub populateWordList {
 sub select_word {
   my $gui = shift;
   my $wl = $gui->{wordf}{list};
+
   my ($i) = $wl->get_selected_indices;
 
   ##-- clear kwic list
@@ -810,7 +897,9 @@ sub select_word {
   my $kwic = $gui->{contexts}{kwic};
   my $corpus = $gui->{data}{corpus};
   my $wenum = $gui->{data}{wenum};
-  my @occs = unpack('(LS)*', $gui->{data}{woccs}{$wid});
+  my @occs = (defined($gui->{data}{woccs}{$wid})
+	      ? unpack('(LS)*', $gui->{data}{woccs}{$wid})
+	      : qw());
 
   my ($sentid,$occid,@sent,@kwic);
   while (@occs) {
@@ -836,66 +925,77 @@ sub select_word {
   ##-- now resize kwic columns
   $kwic->columns_autosize;
 
-  ##-- populate FST analysis list
-  my $alist = $gui->{editFST}{alist};
-  my @adata = qw();
-  if ($gui->{data}{fst} && $gui->{data}{labs}) {
-    my @wlabs  = (
-		 grep { $_ ne $Gfsm::noLabel }
-		 map { $gui->{data}{labs}->find_label($_) }
-		 split(//,Encode::encode($gui->{encoding},$word))
-		);
-    my $res   = $gui->{data}{fst}->lookup(\@wlabs);
-    $res->_connect;
-    my $paths = $res->paths;
-    my $segsep     = '.';
-    my $segsep_lab = $gui->{data}{labs}->find_label($segsep);
-    my $wpdl       = pdl(ushort,\@wlabs);
-    my ($path,$an,$s,@slabs,$spdl,$spdl_sep_i,@costs, $dmat,$amat,$wpath,$spath,$pathlen, $wseg);
-    foreach $path (@$paths) {
-      $an = join('', map { $gui->{data}{labs}->find_key($_) } @{$path->{hi}});
+  ##-- populate analysis list
+  my $alist = $gui->{editAnalyses}{alist};
+  if ($gui->{data}{analyses}) {
+    my $wtext         = Encode::decode($gui->{encoding},$word);
+    my @segmentations = sort {
+      $a->[1] <=> $b->[1] || $a->[3] <=> $b->[3] || $a->[0] cmp $b->[0] || $a->[2] cmp $b->[2]
+    } $gui->{data}{analyses}->segmentations_utf8($wtext);
 
-      ##-- convert morph analysis to pseudo-segments
-      $s = $segsep.$an.$segsep;
-      $s =~ s/[\(\)\\\#\~\*\|\.]+/$segsep/g;
-      $s =~ s/([A-Z])/$segsep$1/g;
-      $s =~ tr/A-ZÄÖÜ/a-zäöü/;
-      $s =~ s/\Q$segsep\E+/$segsep/og;
-
-      ##-- align input word with segments
-      @slabs = ( map { $gui->{data}{labs}->find_label($_) } split(//,$s) );
-      $spdl       = pdl(ushort,\@slabs);
-      $spdl_sep_i = which($spdl==$segsep_lab)+1;
-      @costs = edit_costs_static(long, $wpdl->nelem, $spdl->nelem, 0,1,1);
-      $costs[0]->dice_axis(1, $spdl_sep_i) .= 999; ##-- separators don't match anywhere
-      #$costs[1]->dice_axis(1, $spdl_sep_i) .= 0;   ##-- separator insertion ain't cheap
-      $costs[2]->dice_axis(1, $spdl_sep_i) .= 999; ##-- don't substitute separators anywhere
-      ($dmat,$amat) = edit_align_full($wpdl,$spdl,@costs);
-      ($wpath,$spath,$pathlen) = edit_bestpath($amat);
-
-      ##-- get segmented string
-      $wseg = join('',
-		map { $gui->{data}{labs}->find_key($_) }
-		map {
-		  ($wpath->at($_) >= 0
-		   ? $wpdl->at($wpath->at($_))
-		   : ($spath->at($_) >= 0 && $spdl->at($spath->at($_)) == $segsep_lab
-		      ? $segsep_lab
-		      : qw()))
-		} (0..($pathlen-1))
-	       );
-      $wseg =~ s/^\Q$segsep\E+//;
-      $wseg =~ s/\Q$segsep\E+$//;
-
-      ##-- add to data
-      push(@adata,
-	   [ $wseg,
-	     $dmat->at($dmat->dim(0)-1,$dmat->dim(1)-1) - $spdl_sep_i->nelem,
-	     $an, $path->{w}, '' ]);
-    }
-    ##-- sort alist data
-    @{$alist->{data}} = sort { $a->[1] <=> $b->[1] } @adata;
+    ##-- add to data
+    @{$alist->{data}} = map {
+      [
+       Encode::encode($gui->{encoding},$_->[0]),
+       $_->[1],
+       Encode::encode($gui->{encoding},$_->[2]),
+       $_->[3],
+       '',
+      ]
+    } @segmentations;
   }
+
+  ##-- populate analysis edit-entry
+  my ($wseg);
+  if (defined($wseg=$gui->{data}{w2seg}[$wid])) {
+    $wseg = Encode::encode($gui->{encoding},$wseg);
+  } elsif (@{$gui->{editAnalyses}{alist}{data}}) {
+    $wseg = $gui->{editAnalyses}{alist}{data}[0][0];
+  } else {
+    $wseg = '';
+  }
+  $gui->{editf}{manEditEntry}->set_text($wseg);
+}
+
+##======================================================================
+## Guts: Analysis Selection
+##======================================================================
+
+sub select_analysis {
+  my $gui = shift;
+  my $alist = $gui->{editAnalyses}{alist};
+  my ($i) = $alist->get_selected_indices;
+  my $adata = defined($i) ? $alist->{data}[$i] : undef;
+
+  ##-- set edit entry value
+  $gui->{editf}{manEditEntry}->set_text($adata ? $adata->[0] : '');
+}
+
+##======================================================================
+## GUI: Apply segmentation edits
+##======================================================================
+
+sub edit_apply_clicked {
+  my $gui  = shift;
+
+  my $wseg = $gui->{editf}{manEditEntry}->get_text();
+  if (!defined($wseg) || $wseg eq '') {
+    $gui->error_dialog(undef, "Apply segmentation:\n", "enter segmented text first!");
+    return;
+  }
+  $wseg = Encode::decode($gui->{encoding},$wseg);
+
+  ##-- add morphs
+  my @morphs = split(/\Q$gui->{data}{analyses}{segsep}\E+/, $wseg);
+  @{$gui->{data}{morphs}}{@morphs} = qw();
+
+
+  ##-- set segmented word
+  my $wl = $gui->{wordf}{list};
+  my ($i) = $wl->get_selected_indices;
+  return if (!defined($i));
+  my ($word,$freq,$an,$wid) = @{$wl->{data}[$i]};
+  $gui->{data}{w2seg}[$wid]  = $wseg;
 }
 
 ##======================================================================
@@ -1037,34 +1137,85 @@ sub file_save_dialog {
 
 
 ##======================================================================
-## Guts: I/O: Editor Data
+## Guts: I/O: Editor Project Data
 ##======================================================================
 
-## undef = $gui->menu_file_open()
-sub menu_file_open {
+## undef = $gui->menu_project_open()
+sub menu_project_open {
   my $gui = shift;
 
-  $gui->file_open_dialog('data',
-			(ref($gui)."::Open Data File"),
+  $gui->file_open_dialog('project',
+			(ref($gui)."::Open Project Data File"),
 			sub {
-			  if (!($gui->{data} = $gui->{data}->loadFile($_[0]))) {
-			    $gui->error_dialog(undef,"Error loading data file\n", "'$_[0]'");
+			  my ($loaded);
+			  if ( ($loaded = $gui->{data}->loadFile($_[0])) ) {
+			    $gui->{data} = $loaded;
+			  } else {
+			    $gui->error_dialog(undef,"Error loading project data file\n", "'$_[0]'");
 			  }
 			  $gui->populateWordList();
 			});
 }
 
-## undef = $gui->menu_file_save()
-sub menu_file_save {
+## undef = $gui->menu_project_save()
+sub menu_project_save {
   my $gui = shift;
-  $gui->file_save_dialog('data',
-			 (ref($gui)."::Save Data File"),
+  $gui->file_save_dialog('project',
+			 (ref($gui)."::Save Project Data File"),
 			 0,
 			 sub {
 			   if (!$gui->{data}->saveFile($_[0])) {
-			     $gui->error_dialog(undef,"Error saving data file\n", "'$_[0]'");
+			     $gui->error_dialog(undef,"Error saving project data file\n", "'$_[0]'");
 			   }
 			 });
+}
+
+## undef = $gui->menu_project_clear()
+sub menu_project_clear {
+  my $gui = shift;
+  $gui->{data}->clear;
+  $gui->{data}{analyses}->clear;
+  $gui->populateWordList;
+}
+
+##======================================================================
+## Guts: I/O: Analysis Map
+##======================================================================
+
+## undef = $gui->menu_analyses_load()
+sub menu_analyses_load {
+  my $gui = shift;
+
+  $gui->file_open_dialog('analyses ',
+			(ref($gui)."::Open Analysis Map File"),
+			sub {
+			  my ($loaded);
+			  if ( ($loaded=$gui->{data}{analyses}->loadFile($_[0])) ) {
+			    @{$gui->{data}{analyses}}{keys %$loaded} = values %$loaded;
+			    $gui->populateWordList;
+			  } else {
+			    $gui->error_dialog(undef,"Error loading analysis map file\n", "'$_[0]'");
+			  }
+			});
+}
+
+## undef = $gui->menu_analyses_save()
+sub menu_analyses_save {
+  my $gui = shift;
+  $gui->file_save_dialog('analyses',
+			 (ref($gui)."::Save Analysis Map File"),
+			 0,
+			 sub {
+			   if (!$gui->{data}{analyses}->saveFile($_[0])) {
+			     $gui->error_dialog(undef,"Error saving analysis map file\n", "'$_[0]'");
+			   }
+			 });
+}
+
+## undef = $gui->menu_analyses_clear()
+sub menu_analyses_clear {
+  my $gui = shift;
+  $gui->{data}{analyses}->clear;
 }
 
 
@@ -1093,46 +1244,6 @@ sub menu_corpus_clear {
   $gui->populateWordList;
 }
 
-##======================================================================
-## Guts: I/O: Morphology
-##======================================================================
-
-sub menu_morph_fst_load {
-  my $gui = shift;
-
-  my $fst = $gui->{data}{fst};
-  $fst = $gui->{data}{fst} = MUDL::Gfsm::Automaton->new() if (!$fst);
-
-  $gui->file_open_dialog('morph_fst',
-			(ref($gui)."::Load Morphology FST"),
-			sub {
-			  if (!$fst->load($_[0])) {
-			    $gui->error_dialog(undef, "Error loading morphology FST file:\n", $_[0]);
-			  }
-			});
-}
-
-sub menu_morph_labs_load {
-  my $gui = shift;
-  my $labs = $gui->{data}{labs};
-
-  $labs = $gui->{data}{labs} = MUDL::Gfsm::Alphabet->new() if (!$labs);
-
-  $gui->file_open_dialog('morph_labs',
-			(ref($gui)."::Load Morphology Labels"),
-			sub {
-			  if (!$labs->load($_[0])) {
-			    $gui->error_dialog(undef, "Error loading morphology labels file:\n", $_[0]);
-			  }
-			});
-}
-
-sub menu_morph_clear {
-  my $gui = shift;
-  $gui->{data}{fst}->clear if ($gui->{data}{fst});
-  $gui->{data}{labs}->clear if ($gui->{data}{labs});
-}
-
 
 ##======================================================================
 ## Utilities: dummy API functions
@@ -1147,4 +1258,6 @@ sub apidummy {
 			$name));
   };
 }
+
+1;
 
