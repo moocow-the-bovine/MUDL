@@ -72,6 +72,8 @@ sub clear {
   $me->clearCorpus;
   $me->{wenum}->clear;
   $me->{analyses}->clear;
+  @{$me->{w2seg}} = qw();
+  %{$me->{morphs}} = qw();
 }
 
 ##======================================================================

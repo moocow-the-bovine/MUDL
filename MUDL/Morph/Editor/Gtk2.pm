@@ -276,6 +276,7 @@ sub create_word_list {
 					       'Word'=>'text',
 					       'Freq'=>'int',
 					       'An?'=>'bool',
+					       #'App?'=>'bool',
 					       'ID'=>'hidden',
 					      );
   ##--------------------------------------
@@ -293,6 +294,7 @@ sub create_word_list {
   set_column_alignment($wl, 0, 0.0); ##-- word
   set_column_alignment($wl, 1, 1.0); ##-- freq
   set_column_alignment($wl, 2, 0.5); ##-- analyzed?
+  #set_column_alignment($wl, 3, 0.5); ##-- applied?
 
   foreach (0..$#cols) {
     #$cols[$_]->set('expand'=>($_==0 ? 1 : 0));
@@ -543,10 +545,22 @@ sub create_detail_edit_area {
   my $elab   = $frame->{manEditLabel} = Gtk2::Label->new('<b>Segments:</b>');
   $elab->set_use_markup(1);
   my $eentry = $frame->{manEditEntry} = Gtk2::Entry->new();
+  my $keyval_enter  = Gtk2::Gdk->keyval_from_name('Enter');
+  my $keyval_return = Gtk2::Gdk->keyval_from_name('Return');
+  $eentry->signal_connect('key-press-event',
+			  sub {
+			    my $keyval = $_[1]->keyval;
+			    $gui->edit_apply_clicked()
+			      if ($keyval==$keyval_enter || $keyval==$keyval_return);
+			  });
 
   my $apply = $frame->{manEditApply} = Gtk2::Button->new('  Apply  ');
   $apply->signal_connect('clicked', sub { $gui->edit_apply_clicked(); });
 
+  my $revoke = $frame->{manEditRevoke} = Gtk2::Button->new('  Revoke  ');
+  $revoke->signal_connect('clicked', sub { $gui->edit_revoke_clicked(); });
+
+  $ehbox->pack_end($revoke, 0,0,5);
   $ehbox->pack_end($apply, 0,0,5);
   $ehbox->pack_start($elab, 0,0,5);
   $ehbox->pack_start($eentry, 1,1,5);
@@ -817,7 +831,8 @@ sub populateWordList {
   my $me = $gui->{data};
   my $wenum = $me->{wenum};
   my $wfreq = $me->{wfreq};
-  my $analyses = $gui->{data}{analyses};
+  #my $analyses = $me->{analyses};
+  my $w2seg = $me->{w2seg};
 
   ##-- clear gui
   $gui->create_word_list();
@@ -840,7 +855,8 @@ sub populateWordList {
     $word      = Encode::encode($gui->{encoding},$word_utf8) if (defined($gui->{encoding}));
     $wordfreq  = $wfreq->{$wid};
 
-    $wordanalyzed = defined($analyses) && $analyses->has_analyses_utf8($word_utf8) ? 1 : 0;
+    #$wordanalyzed = defined($analyses) && $analyses->has_analyses_utf8($word_utf8) ? 1 : 0;
+    $wordanalyzed = defined($w2seg->[$wid]) && $w2seg->[$wid] ne '' ? 1 : 0;
 
     next if ( ($fmin > 0 && $wordfreq < $fmin)
 	      ||
@@ -994,9 +1010,26 @@ sub edit_apply_clicked {
   my $wl = $gui->{wordf}{list};
   my ($i) = $wl->get_selected_indices;
   return if (!defined($i));
+
   my ($word,$freq,$an,$wid) = @{$wl->{data}[$i]};
   $gui->{data}{w2seg}[$wid]  = $wseg;
+
+  $wl->{data}[$i][2] = 1; ##-- mark as analyzed
 }
+
+sub edit_revoke_clicked {
+  my $gui  = shift;
+
+  ##-- set segmented word
+  my $wl = $gui->{wordf}{list};
+  my ($i) = $wl->get_selected_indices;
+  return if (!defined($i));
+
+  my ($word,$freq,$an,$wid) = @{$wl->{data}[$i]};
+  $gui->{data}{w2seg}[$wid] = undef;
+  $wl->{data}[$i][2] = 0; ##-- mark as un-analyzed
+}
+
 
 ##======================================================================
 ## GUI: Dialogs
