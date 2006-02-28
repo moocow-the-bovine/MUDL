@@ -6,6 +6,13 @@
 *.bin
 *.txt
 
+*.tfst
+*.afst
+*.gfst
+
+*.lab
+*.scl
+
 utest-nl.*
 utrain-nl.*
 
