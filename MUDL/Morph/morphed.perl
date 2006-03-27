@@ -1,5 +1,6 @@
 #!/usr/bin/perl -w
 
+use lib '.';
 use lib '../..';
 use MUDL::Morph::Editor;
 use MUDL::Morph::Editor::Gtk2;

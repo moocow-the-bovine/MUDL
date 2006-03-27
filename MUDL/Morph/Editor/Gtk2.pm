@@ -970,7 +970,7 @@ sub select_word {
   } elsif (@{$gui->{editAnalyses}{alist}{data}}) {
     $wseg = $gui->{editAnalyses}{alist}{data}[0][0];
   } else {
-    $wseg = '';
+    $wseg = Encode::encode($gui->{encoding},$word);
   }
   $gui->{editf}{manEditEntry}->set_text($wseg);
 }
@@ -1017,6 +1017,20 @@ sub edit_apply_clicked {
   $gui->{data}{w2seg}[$wid]  = $wseg;
 
   $wl->{data}[$i][2] = 1; ##-- mark as analyzed
+
+  ##-- jump to next
+  $gui->select_next_word();
+  $gui->{editf}{manEditEntry}->activate();
+}
+
+sub select_next_word {
+  my $gui = shift;
+  my $wl  = $gui->{wordf}{list};
+  my ($i) = $wl->get_selected_indices();
+  if ($i < $#{$wl->{data}}) {
+    $wl->unselect($i);
+    $wl->select($i+1);
+  }
 }
 
 sub edit_revoke_clicked {

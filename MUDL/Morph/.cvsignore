@@ -11,8 +11,9 @@
 *.gfst.gz
 *.lab
 
-*utest-nl.*
-*utrain-nl.*
+*utest-*
+*utrain-*
+*ufull-*
 
 
 save
