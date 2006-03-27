@@ -766,7 +766,8 @@ sub label_value_pair {
   my $val = Gtk2::Label->new($valtxt);
   $val->set_justify('left');
   $val->set_alignment(0.0, 0.5);
-  $val->set_ellipsize($args{'valellipsize'} ? $args{'valellipsize'} : 'none');
+  $val->set_ellipsize($args{'valellipsize'} ? $args{'valellipsize'} : 'none')
+    if ($val->can('set_ellipsize'));
 
   return $gui->labelled_widget($table,$row,$labtxt,$val,
 			       labstyle=>'label',
@@ -799,7 +800,8 @@ sub labelled_widget {
 
   my $lab = Gtk2::Label->new("<b>".$labtxt."</b>");
   $lab->set_use_markup(1);
-  $lab->set_ellipsize($args{'labellipsize'} ? $args{'labellipsize'} : 'none');
+  $lab->set_ellipsize($args{'labellipsize'} ? $args{'labellipsize'} : 'none')
+    if ($lab->can('set_ellipsize'));
 
   ## gtk_misc_set_alignment(label, xalign, yalign)
   ##  + the align parameter is a float [0.0, 1.0], where 0.0 is top/left, 1.0 is
