@@ -128,13 +128,14 @@ sub vmsg {
 ##  + good idea as a prelude to $mp->toHMM()
 sub squish {
   my $mp=shift;
-  delete(@$mp{qw(
-		 prof pprof ctrprof curprof
-		 tenum_k tenum_ltk
-		 cm cm_k
-		 t2tk tk2t ugs_k
-		 cdata cmask
-		)});
+  delete(@$mp{
+	      qw(prof pprof ctrprof curprof),
+	      qw(tenum_k tenum_ltk),
+	      #qw(cm cm_k),
+	      qw(cm_k),
+	      qw(t2tk tk2t ugs_k),
+	      qw(cdata cmask),
+	     });
   return $mp;
 }
 
@@ -265,13 +266,18 @@ sub toHMM {
   my $unknown = $hmm->{unknown};
   my $uid     = $oenum->{sym2id}{$unknown};
 
+  ##-- $o2o : HMM O indices of all known observations
   my $o2o = sequence(long,$M);
   $o2o    = $o2o->where($o2o != $uid);
 
+  ##-- $q2c->at($qid) = $clusterid
   my $q2c = pdl(long, [ @{$cenum->{sym2id}}{ @{$qenum->{id2sym}} } ]);
+
+  ##-- $o2t->at($oid) = $targetid
   my $o2t = pdl(long, [ @{$tenum->{sym2id}}{ @{$oenum->{id2sym}}[$o2o->list] } ]);
 
-  ##-- create observation probability matrix
+  ##----------------------------
+  ## create observation frequency matrix
   my $bmode = $args{bmode};
   $bmode = 'invert' if (!defined($bmode));
   $mp->vmsg($vl_info, "toHMM(): observation probabilities (mode='$bmode')\n");
@@ -286,12 +292,14 @@ sub toHMM {
       ##-- exponential bonus: looks good
       my $bonus = $1;
       $bf_o->inplace->pow($bonus);
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
       ##-- beta-dependent exponential bonus: not so hot
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
     elsif ($bmode =~ /\+pebbonus-([\d\.]+)-([\d\.]+)/) {
       ##-- beta-dependent exp-linear function: not so hot
@@ -299,6 +307,7 @@ sub toHMM {
       my $ebonus  = $2;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow($ebonus * ($tbeta->dice($o2t)->slice("*1,")**-1 + $pbonus));
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
 
     #$bf_o   /= $bf_o->sumover->slice("*1,");
@@ -340,17 +349,20 @@ sub toHMM {
       $cidi->dice(0,$o2t)->slice("(0),") .= $cids;
       $cidi->dice(1,$o2t)->slice("(0),") .= sequence(long,$o2t->nelem);
       $bf_o->indexND($cidi)    += $bonus;
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
     elsif ($bmode =~ /\+ebonus-([\d\.]+)/) {
       ##-- exponential bonus: looks good at 7 <= $bonus <= 8
       my $bonus = $1;
       $bf_o->inplace->pow($bonus);
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
     elsif ($bmode =~ /\+ebbonus-([\d\.]+)/) {
       ##-- beta-dependent exponential bonus: not so hot
       my $bonus  = $1;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow( $bonus * $tbeta->dice($o2t)->slice("*1,")**-1 );
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
     elsif ($bmode =~ /\+pebbonus-([\d\.]+)-([\d\.]+)/) {
       ##-- beta-dependent exp-linear function: not so hot
@@ -358,39 +370,54 @@ sub toHMM {
       my $ebonus  = $2;
       my $tbeta  = $mp->{tbeta};
       $bf_o->inplace->pow($ebonus * ($tbeta->dice($o2t)->slice("*1,")**-1 + $pbonus));
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
     elsif ($bmode =~ /\+eipwbonus-([\-\d\.]+)/) {
       ##-- inverse wordprob exponential bonus: \fhat(w,c) = \phat(c|w) ** (p(w)**-$bonus)
       my $bonus = $1;
       my $ugn = $ugp->sum;
       $bf_o->inplace->pow($bonus * $ugp->dice_axis(1,$o2t)**(-1));
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
     }
 
     ##-- back to ye olde grinde
+    if ($bmode =~ /\+mask/) {
+      $bf_o *= $mp->{phatm}->dice($q2c,$o2t);
+      $bf_o->xchg(0,1) /= $bf_o->sumover; ##-- re-normalize
+    }
     $bf_o *= $ugp->dice_axis(1,$o2t);
-    $bf_o *= $mp->{phatm}->dice($q2c,$o2t) if ($bmode =~ /\+mask/);
-
-    ##-- possibly hack (old)
-    #if ($args{hackb}) {
-    #  $args{bhacked} = $bf / $bf->sum;
-    #}
   } else {
     confess(ref($mp), "::toHMM(): unknown observation probability mode '$bmode'!");
   }
 
-  ##-- name classes
+  ##----------------------------
+  ## observations: number of types
+  $mp->vmsg($vl_info, "toHMM(): cluster sizes\n");
+  my $btypec = $mp->{cm}->clusterSizes()->index($q2c);
+
+  ##----------------------------
+  ## observations: unknown handling: by number of types
+  if (defined($args{smoothu}) && $args{smoothu} =~ /^types-([\d\.]+)/) {
+    $args{smoothutotal} = $1;
+    $args{smoothu} = 'types';
+  }
+
+  ##----------------------------
+  ## name classes
   $mp->vmsg($vl_info, "toHMM(): cluster names\n");
-  my $q2o = zeroes(long,2,$N);
-  $bf->xchg(0,1)->maximum_n_ind($q2o);
+  my $cemask = $mp->{cm}->clusterElementMask();
+  my $q2o    = zeroes(long,2,$N);
+  ($bf->dice_axis(1,$o2o) * $cemask->dice($q2c,$o2t))->xchg(0,1)->maximum_n_ind($q2o);
   my ($cstr,$cid);
   foreach $cid (0..($N-1)) {
     #($cstr=$qenum->symbol($cid)) ~= tr/0-9/A-J/;
     #$cstr .= join('_', map { $oenum->symbol($_) } $q2o->slice(",($cid)")->list);
     ##--
-    $cstr = join('_', $qenum->symbol($cid), map { $oenum->symbol($_) } $q2o->slice(",($cid)")->list);
+    $cstr = join('_', $qenum->symbol($cid), map { $oenum->symbol($_) } $o2o->index($q2o->slice(",($cid)"))->list);
     $qenum->addIndexedSymbol($cstr, $cid);
   }
 
+  ##----------------------------
   ##-- arc probabilities
   my $af  = zeroes($hmm->{type}, $N, $N);
   my $pif = zeroes($hmm->{type}, $N);
@@ -446,19 +473,6 @@ sub toHMM {
 	  next;			##-- ignore "real" unknowns (?)
 	}
       }
-      ##-- smooth, Laplace-like (NOT HERE: now in MUDL::HMM, where it belongs)
-      #my $minf  = $af->where($af!=0)->min;
-      #my $minf2 = $pif->where($pif!=0)->min;
-      #$minf     = $minf2 if ($minf2 < $minf);
-
-      #$minf2 = $omegaf->where($omegaf!=0)->min;
-      #$minf = $minf2 if ($minf2 < $minf);
-
-      #$minf = 0.5 if ($minf > 0.5);
-
-      #$af  += $minf/2;
-      #$pif += $minf/2;
-      #$omegaf += $minf/2;
     }
     else { #if ($arcmode eq 'estimate')
       ##-- loop: 'estimate'
@@ -499,19 +513,22 @@ sub toHMM {
   #@$mp{qw(af bf pif omegaf)} = ($af,$bf,$pif,$omegaf);
   #return ($af,$bf,$hmm,$c2q,$t2o,$ugp); ##-- DEBUG
 
-  ##-- compile
+  ##----------------------------
+  ## compile
   $mp->vmsg($vl_info, "toHMM(): compile()\n");
-  $hmm->compilePdls($af,$bf,$pif,$omegaf,%args);
+  $hmm->compilePdls($af,$bf,$pif,$omegaf, btypec=>$btypec,%args);
 
-  ##-- possibly hack
-  #if ($args{hackb}) {
-  #  require PDL::HMM;
-  #  no strict 'subs';
-  #  my $hmmb = $hmm->{b}->dice_axis(1,$o2o);
-  #  $hmmb .= $args{bhacked}->dice_axis(1,$o2o);
-  #  $hmmb->inplace->log;
-  #  $hmmb->inplace->setnantobad->inplace->setbadtoval(PDL::HMM::logzero);
-  #}
+  ##----------------------------
+  ## restrict
+  if (defined($args{restrictby})) {
+    if ($args{restrictby} =~ /^freq-z([\d\.\+\-e]+)\+q([\d\.]+)/) {
+      $mp->vmsg($vl_info, "toHMM(): restrictByValue (zero=>$1,Q=>$2)\n");
+      $hmm->restrictByValue($hmm->bf(), zero=>$1, Q=>$2);
+    }
+    elsif ($args{restrictby} ne 'none') {
+      confess(ref($mp), "::toHMM(): unknown restriction method '$args{restrictby}'!");
+    }
+  }
 
   ##-- return
   return $hmm;
