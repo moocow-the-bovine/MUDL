@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 ##
 ## File: MUDL::CorpusIO::TT.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -12,6 +12,7 @@ use MUDL::CorpusIO;
 use MUDL::Token;
 use MUDL::Sentence;
 use IO::File;
+use Encode qw(encode decode);
 
 use strict;
 use Carp;
@@ -25,6 +26,7 @@ use MUDL::CorpusIO;
 use MUDL::Token;
 use MUDL::Sentence;
 use IO::File;
+use Encode qw(encode decode);
 use strict;
 use Carp;
 MUDL::Object->import('dummy');
@@ -36,6 +38,7 @@ sub new {
 		    allow_empty_sentences=>0,
 		    nsents=>0,
 		    ntoks=>0,
+		    encoding=>'UTF-8', ##-- default encoding
 		    %args,
 		   }, ref($that)||$that;
   return $self;
@@ -69,19 +72,20 @@ sub fromString {
   $cr->{fh}->close() if (defined($cr->{fh}));
   $cr->{fh} = IO::Scalar->new(\$string)
     or croak( __PACKAGE__ , "::fromString(): open failed: $!");
-  binmode($cr->{fh}, ':utf8');
+  #binmode($cr->{fh}, ':utf8');
 }
 
 ## undef = $cr->fromFile($filename)
 ## undef = $cr->fromFh($fh)
 *fromFh = \&fromFile;
 sub fromFile {
-  my ($cr,$file) = @_;
+  my ($cr,$file,%args) = @_;
   $cr->{fh}->close() if (defined($cr->{fh}));
   $cr->{fh} = ref($file) ? $file : IO::File->new("<$file");
   croak( __PACKAGE__ , "::fromFile(): open failed for '$file': $!") if (!$cr->{fh});
   $cr->{filename} = $file;
-  binmode($cr->{fh}, ':utf8');
+  @$cr{keys %args} = values(%args);
+  #binmode($cr->{fh}, ':utf8');
 }
 
 ## \@sentence_or_undef = $cr->getSentence();
@@ -96,16 +100,16 @@ sub getSentence {
     chomp $line;
     next if ($line =~ /^\%\%/);
     if ($line =~ /^\s*$/) {
-      if (@$sent || $args{allow_empty_sentences}) {
+      if (@$sent || $cr->{allow_empty_sentences} || $args{allow_empty_sentences}) {
 	$cr->{nsents}++;
 	return $sent;
       }
       next;
     }
-    push(@$sent, bless [ split(/\s*\t+\s*/, $line) ], 'MUDL::Token::TT');
+    push(@$sent, bless [ split(/\s*\t+\s*/, decode($cr->{encoding},$line)) ], 'MUDL::Token::TT');
     $cr->{ntoks}++;
   }
-  if (@$sent || $args{allow_empty_sentences}) {
+  if (@$sent || $cr->{allow_empty_sentences} || $args{allow_empty_sentences}) {
     $cr->{nsents}++;
     return $sent;
   }
@@ -127,7 +131,7 @@ sub getToken {
     }
 
     $cr->{ntoks}++;
-    return bless [split(/\s*\t+\s*/, $line)], 'MUDL::Token::TT';
+    return bless [split(/\s*\t+\s*/, $cr->decode($cr->{encoding},$line))], 'MUDL::Token::TT';
   }
   return undef;
 }
@@ -138,6 +142,7 @@ sub getToken {
 ## I/O : TT : Writer
 ########################################################################
 package MUDL::CorpusWriter::TT;
+use Encode qw(encode decode);
 use Carp;
 MUDL::Object->import('dummy');
 our @ISA = qw(MUDL::CorpusWriter);
@@ -148,7 +153,8 @@ our @ISA = qw(MUDL::CorpusWriter);
 ##      layers => \@binmode_layer_flags
 sub new {
   my ($that,%args) = @_;
-  my $cw = bless { layers=>[qw(:utf8)], %args }, ref($that)||$that;
+  #my $cw = bless { layers=>[qw(:utf8)], %args }, ref($that)||$that;
+  my $cw = bless { layers=>[], encoding=>'UTF-8', %args }, ref($that)||$that;
   return $cw;
 }
 
@@ -172,11 +178,12 @@ sub toString {
 ## undef = $cw->toFile($filename_or_fh)
 *toFh = \&toFile;
 sub toFile {
-  my ($cw,$file) = @_;
+  my ($cw,$file,%args) = @_;
   $cw->{fh}->close() if (defined($cw->{fh}));
   $cw->{fh} = ref($file) ? $file : IO::File->new(">$file");
   croak( __PACKAGE__ , "::toFile(): open failed for '$file': $!") if (!$cw->{fh});
   binmode($cw->{fh}, $_) foreach (@{$cw->{layers}});
+  @$cw{keys %args} = values(%args);
 }
 
 ## undef = $cw->putSentence(\@sent);
@@ -188,10 +195,10 @@ sub putSentence {
   my ($tok);
   foreach $tok (@$sent) {
     if (ref($tok)) {
-      $fh->print($tok->saveNativeString);
+      $fh->print(encode($cw->{encoding},$tok->saveNativeString));
       #$fh->print(join("\t", $tok->{text}, @{$tok->{details}}), "\n");
     } else {
-      $fh->print($tok, "\n");
+      $fh->print(encode($cw->{encoding},$tok), "\n");
     }
   }
   $fh->print("\n");
@@ -203,11 +210,11 @@ sub putToken {
   return undef if (!$cw->{fh});
 
   if (ref($tok)) {
-    $cw->{fh}->print($tok->saveNativeString);
+    $cw->{fh}->print(encode($cw->{encoding},$tok->saveNativeString));
     #$cw->{fh}->print(join("\t", $tok->{text}, @{$tok->{details}}), "\n");
   } elsif (defined($tok)) {
     #$cw->{fh}->print($tok, "\n");
-    $cw->{fh}->print($tok, "\n");
+    $cw->{fh}->print(encode($cw->{encoding},$tok), "\n");
   } else {
     $cw->{fh}->print("\n");
   }

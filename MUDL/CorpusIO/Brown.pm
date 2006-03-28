@@ -1,20 +1,20 @@
 ##-*- Mode: CPerl -*-
 ##
-## File: MUDL::CorpusIO::LOB.pm
+## File: MUDL::CorpusIO::Brown.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpora: I/O: LOB format
+##  + MUDL unsupervised dependency learner: corpora: I/O: Brown format
 ##======================================================================
 
-package MUDL::CorpusIO::LOB;
+package MUDL::CorpusIO::Brown;
 use strict;
 use Carp;
 
 
 ########################################################################
-## I/O : LOB : Reader
+## I/O : Brown : Reader
 ########################################################################
-package MUDL::CorpusReader::LOB;
+package MUDL::CorpusReader::Brown;
 use MUDL::CorpusIO::Separated;
 
 use strict;
@@ -25,10 +25,10 @@ our @ISA = qw(MUDL::CorpusReader::Separated);
 sub new {
   my ($that,%args) = @_;
   return $that->SUPER::new(
-			   tagsplit=>qr(_),
-			   tagjoin=>'_',
-			   commentre=>qr(^%%),         ##-- LOB comment string?
-			   ignorewords=>{'^'=>undef},  ##-- ignorable words
+			   tagsplit=>qr(\/),
+			   tagjoin=>'/',
+			   commentre=>qr(^%%),         ##-- Brown comment string?
+			   ignorewords=>{},            ##-- ignorable words?
 			   %args
 			  );
 }
@@ -63,9 +63,9 @@ sub new {
 
 
 ########################################################################
-## I/O : LOB : Writer
+## I/O : Brown : Writer
 ########################################################################
-package MUDL::CorpusWriter::LOB;
+package MUDL::CorpusWriter::Brown;
 use Carp;
 use strict;
 MUDL::Object->import('dummy');
