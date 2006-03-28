@@ -80,12 +80,12 @@ sub loadNativeString {
 
 
 ##======================================================================
-## I/O: LOB
+## I/O: LOB | Brown
 
-## $str = $tok->saveLobStrint()
+## $str = $tok->saveSepString($sep)
 ##  + only saves 'text', 'tag', and numerically keyed attributes
-sub saveLobString {
-  return join("_",
+sub saveSepString {
+  return join((defined($_[1]) ? $_[1] : '/'),
 	      (grep {
 		defined($_)
 	      }
@@ -93,15 +93,19 @@ sub saveLobString {
 	       (map { $_[0]{$_} } (sort { $a <=> $b } grep { /^\d+$/ } keys(%{$_[0]}))))
 	     );
 }
+*saveBrownString = \&saveSepString;
+sub saveLobString { $_[0]->saveSepString('_',@_[1..$#_]); }
 
-## $tok = $tok->loadLobString($str)
-sub loadLobString {
-  my ($tok,$str) = @_;
+## $tok = $tok->loadSepString($sepre,$str)
+sub loadSepString {
+  my ($tok,$sepre,$str) = @_;
   $tok = $tok->new() if (!ref($tok));
-  my @fields = split(/\_/,$str);
+  my @fields = split(/\Q$sepre\E/,$str);
   @$tok{qw(text tag),0..($#fields-2)} = @fields;
   return $tok;
 }
+sub loadBrownString { $_[0]->loadSepString('/', @_[1..$#_]); }
+sub loadLobString   { $_[0]->loadSepString('_', @_[1..$#_]); }
 
 
 ##======================================================================

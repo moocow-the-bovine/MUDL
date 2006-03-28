@@ -12,6 +12,7 @@ use MUDL::Token;
 use MUDL::Sentence;
 use IO::File;
 use Carp;
+use Encode qw(encode decode);
 
 our $VERSION = 0.01;
 our @ISA = qw(MUDL::Object);
@@ -29,13 +30,24 @@ use Carp;
 ##  + new reader for $filename
 ##  + $filename may be prefixed with 'fmt:'
 our %FORMATS =
-  (xml => 'XML',
+  (
+   ##-- XML
+   xml => 'XML',
+   ##-- TT
    ttt  => 'TT',
    tt  => 'TT',
    t => 'TT',
+   ##-- Brown
+   bt => 'Brown',
+   btt => 'Brown',
+   bttt => 'Brown',
+   brown => 'Brown',
+   ##-- Lob
    lob => 'LOB',
+   ##-- aliases
    native => 'TT',
    tnt => 'TT',
+   ##- default
    #DEFAULT => 'XML',
    DEFAULT => 'TT',
   );
@@ -61,7 +73,7 @@ sub formatReader {
   } else {
     $obj = $class->new(@args);
   }
-  $obj->fromFile($file);
+  $obj->fromFile($file,@args);
   return $obj;
 }
 
@@ -91,7 +103,7 @@ sub formatWriter {
   } else {
     $obj = $class->new(@args);
   }
-  $obj->toFile($file);
+  $obj->toFile($file,@args);
   return $obj;
 }
 
@@ -160,7 +172,9 @@ our @ISA = qw(MUDL::CorpusIO);
 ########################################################################
 
 use MUDL::CorpusIO::TT;
-use MUDL::CorpusIO::LOB;
+use MUDL::CorpusIO::Separated;
+#use MUDL::CorpusIO::LOB;
+#use MUDL::CorpusIO::Brown;
 use MUDL::CorpusIO::XML;
 
 ########################################################################
