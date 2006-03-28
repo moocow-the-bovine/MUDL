@@ -29,6 +29,8 @@ sub new {
     my @unsafe = split(/\,/, $cf->{unsafe_str});
     %{$cf->{unsafe}} = map { $_=>undef } @unsafe;
   }
+
+  return $cf;
 }
 
 
@@ -59,9 +61,9 @@ sub helpString {
   return
     (''
      ."Filter out sentences containing \"unsafe\" tags in input corpus.\n"
-     ."Options:\n",
+     ."Options:\n"
      ."  unsafe=>\%set,       ##-- pseudo-set of unsafe tags (default: NIL,nil,'')\n"
-     ."  unsafe_str=>$str,    ##-- comma-separated list of unsafe tags\n"
+     ."  unsafe_str=>\$str,    ##-- comma-separated list of unsafe tags\n"
     );
 }
 
