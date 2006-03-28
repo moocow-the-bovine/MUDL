@@ -79,8 +79,8 @@ sub test3 {
   ##-- SETUP: A() [from Pdl]
   use vars qw($ad $bd);
 
-  $ad = MUDL::Dist::Nary->new();
-  $bd = MUDL::Dist::Nary->new();
+  our $ad = MUDL::Dist::Nary->new();
+  our $bd = MUDL::Dist::Nary->new();
 
   %{$ad->{nz}} = ("$bos\tA"=>12, "$bos\tB"=>8,                ##-- f(bos->)=20
 		  "A\tA"=>15,    "A\tB"=>10,   "A\t$eos"=>5,  ##-- f(A->)=30
@@ -96,12 +96,11 @@ sub test3 {
 		 );
 
   ##-- separate
-  use vars qw($ad0);
-  $ad0 = $ad->copy;
+  our $ad0 = $ad->copy;
+  our ($pid,$omegad);
   ($ad,$pid,$omegad) = $hmm->separateArcDist($ad);
 
   ##-- test ground
-  use vars qw($aed $bed $af $bf $pif $omegaf $omegap);
   $aed = $ad->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$qenum,$qenum]));
   $bed = $bd->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$qenum,$oenum]));
   $pied = $pid->toEDist($qenum);
@@ -117,6 +116,74 @@ sub test3 {
   ($N,$M,$a,$a1,$b,$b1,$pi,$omega) = @$hmm{qw(N M a a1 b b1 pi omega)};
   $ap=exp($a); $a1p=exp($a1); $bp=exp($b); $pip=exp($pi); $omegap=exp($omega);
 }
+
+##----------------------------------------------------------------------
+## Restriction test
+##----------------------------------------------------------------------
+sub test3q {
+  ##-- initialize
+  test1;
+  $qenum->addSymbol('C');
+  $oenum->addSymbol('c');
+
+  our $ad = MUDL::Dist::Nary->new();
+  our $bd = MUDL::Dist::Nary->new();
+
+  %{$ad->{nz}} = ("$bos\tA"=>12, "$bos\tB"=>8, "$bos\tC"=>1,             ##-- f(bos->)=21
+		  "A\tA"=>15,    "A\tB"=>10,   "A\tC"=>1, "A\t$eos"=>5,  ##-- f(A->)=31
+		  "B\tA"=>3,     "B\tB"=>7,    "B\tC"=>1, "B\t$eos"=>15, ##-- f(B->)=26
+		  "C\tA"=>1,     "C\tB"=>1,    "C\tC"=>1, "C\t$eos"=>1,  ##-- f(C->)=4
+		  ##                                                     ##   sum(.->)=82
+		  ##f(->A)=31    f(->B)=26     f(->C)=4,  f(->eos)=21    ##   sum(->.)=82
+		 );
+
+  %{$bd->{nz}} = ("A\ta"=>15, "A\tb"=>0, "A\tc"=>1,  ## f(A@)=
+		  "B\ta"=> 0, "B\tb"=>5, "B\tc"=>2,  ## f(B@)=
+		  "C\ta"=> 0, "C\tb"=>0, "C\tc"=>3,  ## f(C@)=
+		  ##                                 ## sum(.@)=
+		  ##f(@a)=      f(@b)=     f(@c)=    ## sum(@.)=
+		 );
+
+  ##-- separate
+  our $ad0 = $ad->copy;
+  our ($pid,$omegad);
+  ($ad,$pid,$omegad) = $hmm->separateArcDist($ad);
+
+  ##-- test ground
+  our $aed = $ad->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$qenum,$qenum]));
+  our $bed = $bd->toEDist(MUDL::Enum::Nary->new(nfields=>2,enums=>[$qenum,$oenum]));
+  our $pied = $pid->toEDist($qenum);
+  our $omegaed = $omegad->toEDist($qenum);
+
+  our $af = $aed->toPDL;
+  our $bf = $bed->toPDL;
+  our $pif = $pied->toPDL;
+  our $omegaf = $omegaed->toPDL;
+
+  $hmm->compilePdls($af,$bf,$pif,$omegaf,
+		    smoothb=>'none',
+		    smoothu=>'types',
+		   );
+  $hmm->restrictByValue($hmm->bf(),zero=>1e-6,Q=>2);
+
+  our ($N,$M,$a,$a1,$b,$b1,$pi,$omega) = @$hmm{qw(N M a a1 b b1 pi omega)};
+  our $ap=exp($a);
+  our $a1p=exp($a1);
+  our $bp=exp($b);
+  our $pip=exp($pi);
+  our $omegap=exp($omega);
+
+  ##-- oq mask
+  our $oq   = pdl($hmm->{oq});
+  our $oqok = $oq >= 0;
+  our $oqmask = zeroes(byte,$bf->dims);
+  our $oqyvals = $oq->yvals;
+  our $oqwhich = scalar($oqok->whichND);
+  $oqmask->indexND($oq->indexND($oqwhich)->cat($oqyvals->indexND($oqwhich))->xchg(0,1)) .= 1;
+
+  print "test complete.\n";
+}
+test3q;
 
 ##----------------------------------------------------------------------
 ## Alternate model
@@ -257,7 +324,7 @@ sub test1d {
 
   return;
 }
-test1d();
+#test1d();
 
 
 ##----------------------------------------------------------------------

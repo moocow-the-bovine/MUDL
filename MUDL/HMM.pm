@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::HMM.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -42,24 +42,49 @@ our $ONE  = 0;
 ##    ##-- alphabet
 ##    bos => $bos_str,     ## bos-string (__$) : used only for native I/O
 ##    eos => $eos_str      ## eos-string (__$) : used only for native I/O
-#     unknown => $unk_str, ## unknown-string ('@UNKNOWN')
+##    unknown => $unk_str, ## unknown-string ('@UNKNOWN')
 ##    oenum => $enum,      ## observation-alphabet enum
 ##    qenum => $enum,      ## state-label enum
 ##    ##
 ##    ##-- properties
 ##    N => number of states
 ##    M => alphabet size
-##    atotal => total a count  ## (for native I/O) (includes omega)
-##    btotal => total b count  ## (for native I/O)
+##    atotal => total a count   ## (for native I/O) (includes omega)
+##    btotal => total b count   ## (for native I/O)
 ##    pitotal => total pi count ## (for native I/O)
-##    type=>PDL::Type,         ## computation datatype (default=double)
+##    type=>PDL::Type,          ## computation datatype (default=double)
 ##    ##
-##    ##-- smoothing
-##    smoothb=>$which,        ## how to smooth B for unknowns on compile:
-##                             #  known values: qw(hapax all uniform_c uniform none)
-##                             #  default='uniform'
-##    smoothbmin=>$cutoff,    ## for smoothb=>'hapax', minimum value (default=1.1*min($bf))
-##    smoothbval=>$prob,      ## for smoothb=>'uniform', probability value p(u|c) [default=0.5*min(f(w,c))/max(f(c))]
+##    ##-- Compilation: B:unknown(types), A+Omega,Pi, B,B:unknown(uniform), smooth:A,smooth:B, restrict:B
+##    ##
+##    ##-- Unknown handling
+##    smoothu=>$how,          ## how to smooth $b(c,$u) for unknown $u on compile():
+##                             #  known values:
+##                             #   none   : no action (unknown entry in $bf is populated by user)
+##                             #   uniform: uses smoothb=>'uniform'
+##                             #   types  : uses $args{btypec} : pdl(N) : c=>|{w | p(w,c) > 0}|
+##                             #            -> auto-computed if not given
+##                             #  default='none'
+##    smoothutotal=>$total,   ## for smoothu=>'types', total frequency to alot to unknown token
+##                             #  default=1
+##    ##
+##    ##-- State restriction: TODO
+##    dorestrict => $bool,    ## if true, HMM will use restrictive methods
+##
+##    ##
+##    ##-- smoothing: B
+##    smoothb=>$how,          ## how to smooth B matrix on compile:
+##                             #  known values: qw(joint=uniform none)
+##                             #  default='none'
+##
+##    smoothbval=>$prob,      ## for smoothb=>'uniform', probability coefficient $lambdab
+##                             #  used to compute $b(i,k) from joint MLE $bjp(i,k) as:
+##                             #   $b(i,k) = ( $bjp(i,k) + $lambdab ) / sum_m( $bjp(i,m) + $lambdab )
+##                             #   p(w|c) [default=min(f(w,c))/max(f(c))]
+##
+##    smoothbcoeff=>$coeff    ## for smoothb=>'unfiform' probability coefficient $coeff
+##                             #   used to compute $lambdab as:
+##                             #     $lambdab = $coeff * min( {$b(i,k) | $b(i,k) !~ 0}_{i<N, k<M} )
+##                             #   default=0.01
 ##    ##
 ##    ##-- parameters
 ##    a1 => $unigram_prob_pdl ## pdl (N)  : $a1->at($i)   ~ log(p($i)) [arc] # for smoothing, lex save, etc.
@@ -68,6 +93,7 @@ our $ONE  = 0;
 ##    b => $obs_prob_pdl,     ## pdl (N,M): $b->at($i,$k) ~ log(p($k  @  $i))
 ##    pi => $init_prob_pdl,   ## pdl (N)  : $pi->at($i)   ~ log(p($i | init)) # uses 'bos' marker in text model
 ##    omega => $final_probs,  ## pdl (N)  : $omega->at($i)~ log(p(eos | $i))  # uses 'eos' marker in text model
+##    oq    => $restrict_pdl, ## pdl (Q,M): $oq->at($x,$k)~ $q s.t. p($q,$k)!=0, where Q is max ambiguity rate
 ##    ##
 ##    ##-- Native I/O
 ##    afd => $dist_nary,      ## source for A: may use bos,eos
@@ -82,9 +108,17 @@ sub new {
 			      atotal=>100000,
 			      btotal=>100000,
 			      verbose=>0,
-			      smoothb=>'uniform',
+			      ##-- smooth: b
+			      smoothb=>'none',
 			      smoothbval=>undef,
 			      smoothbmin=>undef,
+			      ##-- smooth: b(u,*)
+			      smoothu=>'none',
+			      smoothutotal=>undef,
+			      ##-- state restricttion
+			      dorestrict=>0,
+			      Q=>undef,
+			      oq=>undef,
 			      %args);
   return $hmm->resize(%args);
 }
@@ -162,6 +196,14 @@ sub grow {
   ##     p'(unk|q) = p'(w_new|q) = p(unk|q) / (1+M'-M) , \forall q \in Q
   $bu -= log(1+$Mnew-$Mold);
   $b->slice(":,$Mold:-1") .= $bu;
+
+  ##-- assign:
+  ##     oq(w_new) = oq(unk)   if hmm is restrictive
+  if ($hmm->{dorestrict}) {
+    my $oqu = $hmm->{oq}->slice(":,$unk");
+    $hmm->{oq}->reshape($hmm->{oq}->dim(0), $Mnew);
+    $hmm->{oq}->slice(":,$Mold:-1") .= $oqu;
+  }
 
   ##-- update expectation matrix, if applicable
   if (defined($hmm->{eb})) {
@@ -295,18 +337,41 @@ sub omegaf {
 ##  + $pif    : pdl($N) : $pif   ->at($i)    = f(BOS--> $i)
 ##  + $omegaf : pdl($N) : $omegaf->at($i)    = f($i --> $EOS)
 ##  + %args
-##    + smoothb=>$which, smoothbmin=>$cutoff,
+##    + smoothb=>$which, smoothbmin=>$cutoff, ...
 sub compilePdls {
-  my ($hmm,$af,$bf,$pif,$omegaf,%args) = @_;
+  my ($hmm,$af,$bf0,$pif,$omegaf,%args) = @_;
 
-  ($hmm->compileArcs($af,$omegaf,%args)
-   && $hmm->compileB($bf,%args)
-   && $hmm->compilePi($pif,%args)
-   && $hmm->smootha(%args)
-   && $hmm->smoothb(%args)
-   && return $hmm);
+  ##-- check sizes
+  if ($af->dim(0) != $af->dim(1)) {
+    confess(ref($hmm)."::compilePdls(): bad state-dimensions ",
+	    $af->dim(0), "!=", $af->dim(1), "in \$af()!\n");
+  }
+  if ($bf0->dim(0) != $af->dim(1)) {
+    confess(ref($hmm)."::compilePdls(): bad state-dimension: ",
+	    $bf0->dim(0), "!=", $af->dim(0), "in \$bf()!\n");
+  }
 
-  return undef;
+  ##-- resize HMM
+  $hmm->resize( N=>$bf0->dim(0), M=>$bf0->dim(1) )
+    if ($bf0->dim(0) != $hmm->{N} || $bf0->dim(1) != $hmm->{M});
+
+  ##-- pre-compilation: adjust frequencies
+  my $bf = $hmm->compileUnknownBF($bf0,%args);
+
+  my $rc = (1
+	    && $hmm->compileArcs($af,$omegaf,%args)
+	    && $hmm->compilePi($pif,%args)
+	    && $hmm->compileB($bf,%args)
+	    && $hmm->compileUnknownB(%args)
+	    && $hmm->smootha(%args)
+	    && $hmm->smoothb(%args)
+	    #&& $hmm->compileRestrict(%args)
+	   );
+
+  ##-- delete temporaries
+  delete(@$hmm{qw(bzmask lambdab)});
+
+  return $rc ? $hmm : undef;;
 }
 
 
@@ -345,10 +410,7 @@ sub compileArcs {
 ##--------------------------------------------------------------
 ## $hmm = $hmm->compileB($bf,%args)
 ##  + $bf: pdl($N,$M) : $bf->at($i,$k) = f($k  @  $i)
-##  + %args
-##     smoothb=>$type,       ##-- how to smooth unknown values (default=$hmm->{smoothb})
-##     smoothbmin=>$cutoff,  ##-- cutoff value for smoothing
-##     smoothbval=>$prob,    ##-- for smoothb='uniform'
+##  + %args:
 sub compileB {
   my ($hmm,$bf,%args) = @_;
 
@@ -369,86 +431,170 @@ sub compileB {
 }
 
 ##--------------------------------------------------------------
-## $hmm = $hmm->smoothb_old($how,%args)
-##  + smooths observation probabilities
-##  + args may include how=>$method
-sub smoothb_old {
-  my ($hmm,%args) = @_;
-  my $smooth = $args{smoothb} ? $args{smoothb} : $args{how} ? $args{how} : $hmm->{smoothb};
+## $bfu = $hmm->compileUnknownBF($bf,%args)
+##  + %args:
+##      + smoothu=>$how,
+##      + smoothutotal=>$total,   ## for smoothu=>'types', total frequency to alot to unknown token
+##                                 #  default=1
+sub compileUnknownBF {
+  my ($hmm,$bf0,%args) = @_;
 
-  my ($b,$b1) = @$hmm{qw(b b1)};
-  my $bj     = $b + $b1;
-  my $bzmask = $b->approx(logzero);
+  my $how = defined($args{smoothu}) ? $args{smoothu} : $hmm->{smoothu};
+  return $bf0 if (!defined($how) || $how eq 'none');
 
+  ##-- sanity check(s)
+  if ($how ne 'uniform' && $how ne 'types') {
+    confess(ref($hmm), "compileUnknownBF(): unknown unknown-handling method '$how'!");
+  }
+  return $bf0 if ($how ne 'types'); ##-- only types are handled here
 
-  ##-- NO special handling for 'unknown' token
-  if ($smooth eq 'uniform') {
-    my ($smoothbval);
-    ##-- get value
-    if (defined($args{smoothbval})) {
-      $smoothbval = pdl($args{smoothbval});
-    } else {
-      $smoothbval = $bj->where(!$bzmask)->flat->minimum->exp / 2; ##-- default smoothing val: 1/2 min p(w|c)
+  if ($how eq 'types') {
+    my $btypec = $args{btypec};
+    if (!defined($btypec)) {
+      ##-- get number of observation types admitting each tag
+      my $bzmask = $bf0->approx(0);
+      $btypec    = (!$bzmask)->xchg(0,1)->sumover;
     }
-    #$bj->where($bzmask) .= $smoothbval->log;
-    #$bj->where($bzmask)->inplace->logadd($smoothbval); ## p'(w,c) = p(w,c) + p_min
 
-    $bj->where($bzmask)->inplace->logadd($smoothbval); ## p'(w,c) = p(w,c) + p_min
-  }
-  elsif ($smooth eq 'uniform_c') {
-    ##-- unknown-handling: use uniform *counts*
-    #confess(ref($hmm), "::smoothb(): uniform_c smoothing is obsolete!");
+    ##-- get total frequency to alot to unknown token
+    my $utotal = pdl($hmm->{type}, $args{smoothutotal} ? $args{smoothutotal} : 1);
 
-    my $lpmin = 0.5*minimum($bj->where(!$bzmask));
-    $bj->where($bzmask) .= $lpmin;
-  }
-  elsif ($smooth eq 'hapax') {
-    ###-- unknown-handling: use hapax legomena: f(state,unknown) = sum_{w:f(w)=min(f(w))} f(state,w)
+    ##-- get new b-freuency pdl $bf, and 'unknown' column slice $bfu
+    my $uid  = $hmm->{oenum}->addSymbol($hmm->{unknown});
+    my $bf   = pdl($hmm->{type}, $bf0);
+    my $bfu  = $bf->slice(",($uid)");
 
-    confess(ref($hmm), "::smoothb(): hapax smoothing is gone!");
+    ##-- assign f(q,$u) = utotal * (ntypes(q) / sum_r(ntypes(r)))
+    $bfu .= $btypec;
+    $bfu /= $btypec->sumover;
+    $bfu *= $utotal;
 
-    my $Fw    = $bj->logsumover;
-
-    $args{smoothbmin} = $hmm->{smoothbmin} if (!defined($args{smoothbmin}));
-    my $fmin  = defined($args{smoothbmin}) ? $args{smoothbmin} : (1.1 + min($Fw->where(!$bzmask)));
-
-    #print STDERR "smooth: hapax: fmin=$fmin\n";
-    my $hapax_i = which( (!$bzmask) & ($Fw <= $fmin) );
-
-    #$bj->slice(",($ui)") .= $bf->dice_axis(1,$hapax_i)->xchg(0,1)->sumover;
-    $bj->where($bzmask)   .= $bj->dice_axis(1,$hapax_i)->xchg(0,1)->logsumover - log(pdl($bzmask->which->nelem));
-
-    ##print STDERR "smooth: bf(:,ui)=", $bf->slice(",($ui)"), "\n";
-  }
-  elsif ($smooth eq 'all') {
-    ##-- unknown-handling: use all data: f(state,unknown) = |{w : f(w,state)!=0}|
-
-    confess(ref($hmm), "::smoothb(): 'all' smoothing method is gone!");
-
-    #my $fwtnz_i = (!$bzmask)->whichND;
-    #my ($fwtnz_n,$fwtnz_v) = $fwtnz_i->slice("(0)")->qsort->rle;
-    #my $fwtnz_which = $fwtnz_n->which;
-    ##$bf->slice(",($ui)")->index($fwtnz_v->index($fwtnz_which)) .= $fwtnz_n->index($fwtnz_which);
-    #$bj->where($bzmask) .= $fwtnz_n->index($fwtnz_which);
-  }
-  elsif ($smooth && $smooth ne 'none') {
-    carp(ref($hmm)."::compileB(): ignoring unknown B-smoothing flag '$smooth'\n");
+    return $bf;
   }
 
-  ##-- renormalize
-  $b1 .= $bj->xchg(0,1)->logsumover;
-  $b1 -= $b1->logsumover;
-  $b  .= $bj - $b1;
+  ##-- no action
+  return $bf0;
+}
 
-  ##-- pseudo-zero
-  $b->inplace->setnantobad->inplace->setbadtoval($ZERO);
+##--------------------------------------------------------------
+## $hmm = $hmm->compileUnknownB(%args)
+##  + %args:
+##      + smoothu=>$how
+sub compileUnknownB {
+  my ($hmm,%args) = @_;
+
+  my $how = defined($args{smoothu}) ? $args{smoothu} : $hmm->{smoothu};
+  return $hmm if (!defined($how) || $how eq 'none');
+
+  ##-- sanity check
+  if ($how ne 'uniform' && $how ne 'types') {
+    confess(ref($hmm), "compileUnknown(): unknown unknown-handling method '$how'!");
+  }
+  return $hmm if ($how eq 'types'); ##-- already compiled
+
+  if ($how eq 'uniform') {
+    ##-- uniform distribution: use $hmm->smoothb()
+    my $uid    = $hmm->{oenum}{sym2id}{$hmm->{unknown}};
+    my $uwhich = zeroes(byte, $hmm->{b}->dims);
+    $uwhich->slice(",$uid") .= 1;
+    $hmm->smoothb(smoothb=>'uniform',smoothbmask=>$uwhich);
+  }
+
+  return $hmm;
+}
+
+
+##--------------------------------------------------------------
+## $hmm = $hmm->restrictByMask($mask,%args)
+##  + %args
+##     + restrict=>$mask,
+##     + dorestrict=>$bool,
+sub restrictByMask {
+  my ($hmm,$rmask,%args) = @_;
+
+  ##-- Set HMM restrictive flag
+  $hmm->{dorestrict} = 1;
+
+  ##-- get restriction matrix size
+  my $rnnz = $rmask->nnz;
+  my $Q    = $hmm->{Q} = $rnnz->max;
+
+  ##-- build restriction matrix
+  my $oq   = $hmm->{oq} = zeroes(long, $Q, $hmm->{M})-1;
+  my ($m);
+  foreach $m (0..($hmm->{M}-1)) {
+    $oq->slice("0:".($rnnz->at($m)-1).",($m)") .= $rmask->slice(",($m)")->which;
+  }
+
+  ##-- force zero values
+  $hmm->{b}->where(!$rmask) .= $ZERO;
+
+  return $hmm;
+}
+
+
+##--------------------------------------------------------------
+## $hmm = $hmm->restrictByValue($bf,%args)
+##  + %args
+##     + zero=>$max_zero_value,
+##     + Q   =>$max_ambiguity_rate,
+sub restrictByValue {
+  my ($hmm,$bf,%args) = @_;
+
+  ##-- Set HMM restrictive flag
+  $hmm->{dorestrict} = 1;
+
+  ##-- get zero mask $bfzero
+  my $bfzval   = defined($args{zero}) ? $args{zero} : 0;
+  my $bfnzmask = ($bf > $bfzval)->inplace->convert(byte);
+
+  ##-- get adjusted frequency pdl
+  my $bfq      = $bf * $bfnzmask;
+
+  ##-- get num/nonzeroes by tag
+  my $nnz    = $bfq->nnz;
+
+  ##-- Get restriction rate $Q
+  my $Q = $hmm->{Q} = $args{Q} ? $args{Q} : $nnz->max;
+  $nnz->where($nnz>$Q) .= $Q;
+
+  ##-- Generate $oq restriction matrix
+  my $oq     = $hmm->{oq} = zeroes(long, $Q, $bf->dim(1)) -1;
+  my $oqmask = zeroes(byte,$bf->dims);
+  my ($m,$mnz,$oqm);
+  foreach $m (0..($bf->dim(1)-1)) {
+    $mnz = $nnz->at($m)-1;
+    $oqm = $oq->slice("0:${mnz},($m)");
+    $bfq->slice(",($m)")->maximum_n_ind($oqm);
+    $oqmask->slice(",($m)")->index($oqm) .= 1;
+  }
+
+  ##-- force zeroes
+  $hmm->{b}->where(!$oqmask) .= logzero;
 
   return $hmm;
 }
 
 ##--------------------------------------------------------------
+## $mask = $hmm->restrictionMask()
+##  + gets restriction mask from $hmm->{oq}
+sub restrictionMask {
+  my $hmm = shift;
+  return ones(byte,$hmm->{b}->dims) if (!$hmm->{dorestrict});
+
+  my $oq      = $hmm->{oq};
+  my $oqwhich = scalar(whichND($oq >= 0));
+  my $rmask = zeroes(byte,$hmm->{b}->dims);
+  $rmask->indexND($oq->indexND($oqwhich)->cat($oq->yvals->indexND($oqwhich))->xchg(0,1)) .= 1;
+
+  return $rmask;
+}
+
+
+
+##--------------------------------------------------------------
 ## $hmm = $hmm->smoothb(%args)
-##  + smooths arc probabilities
+##  + smooths observation probabilities
 sub smoothb {
   my ($hmm,%args) = @_;
   my $how = defined($args{smoothb}) ? $args{smoothb} : $hmm->{smoothb};
@@ -462,47 +608,36 @@ sub smoothb {
   my ($b,$b1) = @$hmm{qw(b b1)};
 
   ##-- get (joint) probability pdls
-  my $bjp = $b + $b1;
-  $bjp->inplace->exp;
+  my $bjp = $hmm->bjoint(%args);
 
   ##-- get zero mask
-  my $bzmask     = $bjp->approx(0)->inplace->convert(byte);
+  my $bzmask = $bjp->approx(0)->inplace->convert(byte);
 
   ##-- get smoothing value
-  my ($lambda);
-  if (defined($args{smoothbval})) {
-    $lambda = pdl($args{smoothbval});
-  } else {
-    ##-- default smoothing val: $smoothbcoeff * min p(q_j|q_i)
-    my $smoothcoeff = defined($args{smoothbcoeff}) ? $args{smoothbcoeff} : 0.01; ##-- default smoothing coefficient: 0.01
+  my $lambda = defined($args{smoothbval}) ? $args{smoothbval} : $hmm->lambdab($bjp,%args);
 
-    ##-- get nonzero values
-    my $bjp_nz     = $bjp->where(!$bzmask);
-    if (!$bjp_nz->isempty) {
-      my $val = $smoothcoeff * $bjp_nz->minimum;
-      $lambda = $val if (!defined($lambda) || $val < $lambda);
-    }
+  ##-- check which elements to smooth
+  my $smoothbmask = defined($args{smoothbmask}) ? $args{smoothbmask} : ones(byte,$b->dims);
 
-    $lambda = pdl(1) if (!defined($lambda)); ##-- default: we had no nonzero values anyways...
-  }
+  ##-- get total smoothing mass
+  my $smoothmass = $lambda * $smoothbmask->flat->nnz;  #$lambda * pdl($b->nelem);
 
-  my $smoothmass = $lambda * pdl($b->nelem);
-  my $btotal = $bjp->xchg(0,1)->flat->sumover;
-  $btotal   += $smoothmass;
+  ##-- adjust total alotted frequency
+  my $btotal      = $bjp->xchg(0,1)->flat->sumover;
+  $btotal        += $smoothmass;
   $hmm->{btotal} *= $btotal;
 
-  my ($bsums);
   ##-- smoothing: b
-  $b += $b1;			##-- get joint dist (log)
-  $b->inplace->logadd($lambda->log);
+  $b += $b1;           			 ##-- get joint dist (log)
+  $b->where($smoothbmask)->inplace->logadd($lambda->log);
 
   ##-- normalization: bsums
-  $bsums = $b->xchg(0,1)->logsumover; ##-- asums(q) = \sum_{w \in O}} p(w,q) + $lambda
+  my $bsums = $b->xchg(0,1)->logsumover; ##-- bsums(q) = \sum_{w \in O} p(w,q) + $lambda
 
-  ##-- normalization: a, omega
-  $b     -= $bsums;
+  ##-- normalization: b
+  $b -= $bsums;                          ##--   b(q,w) = p'(w|q) = (p(w,q)+$lambda) /  bsums(q)
 
-  ##-- smoothing + normalization: b1 : b1(q) = p(q) = \sum_{w \in O} p'(w,q)
+  ##-- smoothing + normalization:                b1(q) = p'(q)   = \sum_{w \in O} p'(w,q)
   $b1 .= $bsums;
   $b1 -= $b1->logsumover;
 
@@ -510,8 +645,51 @@ sub smoothb {
   $b1->inplace->setnantobad->inplace->setbadtoval($ZERO);
   $b->inplace->setnantobad->inplace->setbadtoval($ZERO);
 
+  ##-- save temps
+  #$hmm->{bzmask} = $bzmask;
+  #$hmm->{lambdab} = $lambda;
+
   return $hmm;
 }
+
+##--------------------------------------------------------------
+## $lambda = $hmm->bjoint(%args)
+##  + gets joint $b probs
+sub bjoint {
+  my $hmm = shift;
+  my $bjp = $hmm->{b} + $hmm->{b1};
+  $bjp->inplace->exp;
+  return $bjp;
+}
+
+##--------------------------------------------------------------
+## $lambda = $hmm->lambdab($b_joint_probs,%args)
+##  + gets lambda $b coefficient
+##  + %args:
+##     smoothbcoeff=>$coeff,  # default: 0.01
+sub lambdab {
+  my ($hmm,$bjp,%args) = @_;
+
+  ##-- get zero mask
+  my $bzmask = $bjp->approx(0)->inplace->convert(byte);
+
+  ##-- get default smoothing val $lambdab: $smoothbcoeff * min p(q_j|q_i)
+  ##-- default smoothing coefficient: 0.01
+  my $smoothcoeff = defined($args{smoothbcoeff}) ? $args{smoothbcoeff} : 0.01;
+
+  ##-- get nonzero values
+  my $lambda = undef;
+
+  my $bjp_nz     = $bjp->where(!$bzmask);
+  if (!$bjp_nz->isempty) {
+    my $val = $smoothcoeff * $bjp_nz->minimum;
+    $lambda = $val if (!defined($lambda) || $val < $lambda);
+  }
+  $lambda = pdl(1) if (!defined($lambda)); ##-- default: we had no nonzero values anyways...
+
+  return $lambda;
+}
+
 
 ##--------------------------------------------------------------
 ## $hmm = $hmm->smootha(%args)
@@ -781,13 +959,13 @@ sub growFromReader {
 ##   + no bos/eos are added
 sub alpha {
   my ($hmm,$o) = @_;
-  return hmmalpha(@$hmm{qw(a b pi)}, $o);
+  return hmmalpha (@$hmm{qw(a b pi)}, $o);
 }
 ## $beta = $hmm->beta($seq)
 ##   + no bos/eos are added
 sub beta {
   my ($hmm,$o) = @_;
-  return hmmbeta(@$hmm{qw(a b omega)}, $o);
+  return hmmbeta (@$hmm{qw(a b omega)}, $o);
 }
 
 ## $logprob = $hmm->sequenceProbability($seq)
@@ -799,12 +977,42 @@ sub sequenceProbability {
   return logsumover($alpha->slice(':,-1') + $hmm->{omega});
 }
 
+##--------------------------------------------------------------
+## Text-probability: Sequences: Constrained
+
+## $alphaq = $hmm->alphaq($seq)
+sub alphaq {
+  my ($hmm,$o,$oq) = @_;
+  $oq = $hmm->{oq}->dice_axis(1,$o) if (!defined($oq));
+  return hmmalphaq(@$hmm{qw(a b pi)}, $o,$oq);
+}
+## $betaq = $hmm->betaq($seq)
+sub betaq {
+  my ($hmm,$o,$oq) = @_;
+  $oq = $hmm->{oq}->dice_axis(1,$o) if (!defined($oq));
+  return hmmbetaq(@$hmm{qw(a b omega)}, $o,$oq);
+}
+
+## $logprob = $hmm->sequenceProbability($seq)
+##   + no bos/eos are added
+*seqprobq = \&sequenceProbabilityq;
+sub sequenceProbabilityq {
+  my ($hmm,$o,$oq) = @_;
+  $oq        = $hmm->{oq}->dice_axis(1,$o) if (!defined($oq));
+  my $alphaq = hmmalphaq(@$hmm{qw(a b pi)}, $o,$oq);
+  my $oq2Ti  = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+  return logsumover($alphaq->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti));
+}
+
 
 ##--------------------------------------------------------------
 ## Text-probability: MUDL::Corpus::Model overrides
 
 ## $log_sentprob = $hmm->sentenceProbability_old($mudl_sentence)
 sub sentenceProbability {
+  if ($_[0]->{dorestrict}) {
+    return $_[0]->sequenceProbabilityq($_[0]->sentence2sequence($_[1]));
+  }
   return $_[0]->sequenceProbability($_[0]->sentence2sequence($_[1]));
 }
 
@@ -821,7 +1029,7 @@ sub readerProbability {
 
   my $logsum  = logzero;
   my $logprod = pdl(double,0); ##-- log(1)
-  my ($o,$id,$logp);
+  my ($o,$oq,$oq2Ti,$id,$logp);
   my $nsents = 0;
   my $entropy = 0;
   my $log2    = log(pdl(double,2));
@@ -833,10 +1041,19 @@ sub readerProbability {
     $ntoks += scalar(@$s);
 
     $o = $hmm->sentence2sequence($s);
-    $alpha->reshape($hmm->{N}, $o->dim(0));
-    hmmalpha($a,$b,$pi, $o, $alpha);
 
-    $logp     = logsumover($alpha->slice(":,-1") + $omega);
+    if ($hmm->{dorestrict}) {
+      $alpha->reshape($hmm->{Q}, $o->dim(0));
+      $oq    = $hmm->{oq}->dice_axis(1,$o);
+      hmmalphaq($a,$b,$pi, $o,$oq, $alpha);
+      $oq2Ti = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+      $logp  = logsumover($alpha->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti));
+    }
+    else {
+      $alpha->reshape($hmm->{N}, $o->dim(0));
+      hmmalpha($a,$b,$pi, $o, $alpha);
+      $logp     = logsumover($alpha->slice(":,-1") + $omega);
+    }
     $logsum->inplace->logadd($logp);
     $logprod += $logp;
     $entropy += $logp * -($logp/$log2);
@@ -884,13 +1101,21 @@ sub pdlBufferProbability {
   my $entropy = pdl(double, 0);
   my $log2 = log(pdl(double,2));
 
-  my ($o,$logp);
+  my ($o,$oq,$oq2Ti,$logp);
   my $alpha = zeroes($hmm->{type},1,1);
   foreach $o (@{$buf->{sents}}) {
-    $alpha->reshape($N, $o->dim(0));
-    hmmalpha($a,$b,$pi, $o, $alpha);
+    if ($hmm->{dorestrict}) {
+      $alpha->reshape($hmm->{Q}, $o->dim(0));
+      $oq    = $hmm->{oq}->dice_axis(1,$o);
+      hmmalphaq($a,$b,$pi, $o,$oq, $alpha);
+      $oq2Ti = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+      $logp  = logsumover($alpha->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti));
+    } else {
+      $alpha->reshape($N, $o->dim(0));
+      hmmalpha($a,$b,$pi, $o, $alpha);
+      $logp = logsumover($alpha->slice(",-1") + $omega);
+    }
 
-    $logp     = logsumover($alpha->slice(",-1") + $omega);
     $logsum->inplace->logadd($logp);
     $logprod += $logp;
     $entropy += exp($logp) * -($logp/$log2);
@@ -932,9 +1157,17 @@ sub expect0 {
 sub expect {
   my ($hmm,$o) = @_;
   my ($a,$b,$pi,$omega, $ea,$eb,$epi,$eomega) = @$hmm{qw(a b pi omega ea eb epi eomega)};
-  my $alpha = hmmalpha($a,$b,$pi,    $o);
-  my $beta  = hmmbeta ($a,$b,$omega, $o);
-  hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+  if ($hmm->{dorestrict}) {
+    my $oq = $hmm->{oq}->dice_axis(1,$o);
+    my $alphaq = hmmalphaq($a,$b,$pi,   $o,$oq);
+    my $betaq  = hmmbetaq ($a,$b,$omega, $o,$oq);
+    hmmexpectq($a,$b,$pi,$omega, $o,$oq, $ea,$eb,$epi,$eomega);
+  }
+  else {
+    my $alpha = hmmalpha($a,$b,$pi,    $o);
+    my $beta  = hmmbeta ($a,$b,$omega, $o);
+    hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+  }
   return ($ea,$eb,$epi,$eomega);
 }
 
@@ -963,6 +1196,8 @@ sub maximize {
   $hmm->smootha(%args) if ($args{maxa} && $args{smootha});
   $hmm->smoothb(%args) if ($args{maxb} && $args{smoothb});
 
+  $hmm->{b}->where(!$hmm->restrictionMask()) .= logzero if ($args{maxb} && $hmm->{restrict});
+
   return ($ahat,$bhat,$pihat,$omegahat);
 }
 
@@ -983,23 +1218,39 @@ sub expectReader {
   ($ea,$eb,$epi,$eomega) = $hmm->expect0()
     unless (defined($ea) && defined($eb) && defined($epi) && defined($eomega));
 
-  my ($s,$o);
+  my ($s,$o, $oq,$oq2Ti);
   my $alpha = zeroes($hmm->{type}, $N,128);
   my $beta  = zeroes($hmm->{type}, $N,128);
   my $log_prod_ps  = 0;
   while (defined($s=$cr->getSentence)) {
     $o = $hmm->sentence2sequence($s);
 
-    $alpha->reshape($N,$o->dim(0));
-    $beta ->reshape($N,$o->dim(0));
+    if ($hmm->{dorestrict}) {
+      $oq = $hmm->{oq}->dice_axis(1,$o);
+      $alpha->reshape($hmm->{Q},$o->dim(0));
+      $beta ->reshape($hmm->{Q},$o->dim(0));
 
-    hmmalpha($a,$b,$pi,    $o, $alpha);
-    hmmbeta ($a,$b,$omega, $o, $beta);
+      hmmalphaq($a,$b,$pi,    $o,$oq, $alpha);
+      hmmbetaq ($a,$b,$omega, $o,$oq, $beta);
 
-    hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+      hmmexpectq($a,$b,$pi,$omega, $o,$oq, $alpha,$beta, $ea,$eb,$epi,$eomega);
 
-    ##-- save text probability (multiply)
-    $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
+      ##-- save text probability (multiply)
+      $oq2Ti = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+      $log_prod_ps += logsumover($alpha->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti));
+    }
+    else {
+      $alpha->reshape($N,$o->dim(0));
+      $beta ->reshape($N,$o->dim(0));
+
+      hmmalpha($a,$b,$pi,    $o, $alpha);
+      hmmbeta ($a,$b,$omega, $o, $beta);
+
+      hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+
+      ##-- save text probability (multiply)
+      $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
+    }
   }
 
   return ($log_prod_ps, $ea,$eb,$epi,$eomega);
@@ -1067,7 +1318,7 @@ sub expectPdlBuffer {
   my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
   my ($ea,$eb,$epi,$eomega) = $hmm->expect0();
 
-  my ($o);
+  my ($o,$oq,$oq2Ti);
   my $alpha = zeroes($hmm->{type}, $N, 128);
   my $beta  = zeroes($hmm->{type}, $N, 128);
 
@@ -1077,13 +1328,29 @@ sub expectPdlBuffer {
     $alpha->reshape($N,$o->dim(0));
     $beta ->reshape($N,$o->dim(0));
 
-    hmmalpha($a,$b,$pi,    $o, $alpha);
-    hmmbeta ($a,$b,$omega, $o, $beta);
+    if ($hmm->{dorestrict}) {
+      $oq = $hmm->{oq}->dice_axis(1,$o);
+      $alpha->reshape($hmm->{Q},$o->dim(0));
+      $beta ->reshape($hmm->{Q},$o->dim(0));
 
-    hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+      hmmalphaq($a,$b,$pi,    $o,$oq, $alpha);
+      hmmbetaq ($a,$b,$omega, $o,$oq, $beta);
 
-    ##-- save text probability (multiply)
-    $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
+      hmmexpectq($a,$b,$pi,$omega, $o,$oq, $alpha,$beta, $ea,$eb,$epi,$eomega);
+
+      ##-- save text probability (multiply)
+      $oq2Ti = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+      $log_prod_ps += logsumover($alpha->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti));
+    }
+    else {
+      hmmalpha($a,$b,$pi,    $o, $alpha);
+      hmmbeta ($a,$b,$omega, $o, $beta);
+
+      hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+
+      ##-- save text probability (multiply)
+      $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
+    }
   }
 
   return ($log_prod_ps, $ea,$eb,$epi,$eomega);
@@ -1130,11 +1397,21 @@ sub bestpath {
 ## $bestpath = $hmm->viterbiPath($seq)
 sub viterbiPath {
   my ($hmm,$o) = @_;
-  my $delta = zeroes(double, $hmm->{N}, $o->dim(0));
-  my $psi   = zeroes(long,   $delta->dims);
-  hmmviterbi(@$hmm{qw(a b pi)}, $o, $delta, $psi);
-  my $qfinal = maximum_ind($delta->slice(":,-1") + $hmm->{omega})->at(0);
-  return hmmpath($psi, $qfinal);
+  if ($hmm->{dorestrict}) {
+    my $deltaq = zeroes(double, $hmm->{Q},$o->dim(0));
+    my $psiq   = zeroes(long,   $deltaq->dims);
+    my $oq     = $hmm->{oq}->dice_axis(1,$o);
+    hmmviterbiq(@$hmm{qw(a b pi)}, $o,$oq, $deltaq,$psiq);
+    my $oq2Ti   = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+    my $qfinalq = maximum_ind($deltaq->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti))->at(0);
+    return hmmpathq($oq, $psiq, $qfinalq);
+  } else {
+    my $delta = zeroes(double, $hmm->{N}, $o->dim(0));
+    my $psi   = zeroes(long,   $delta->dims);
+    hmmviterbi(@$hmm{qw(a b pi)}, $o, $delta, $psi);
+    my $qfinal = maximum_ind($delta->slice(":,-1") + $hmm->{omega})->at(0);
+    return hmmpath($psi, $qfinal);
+  }
 }
 
 
@@ -1418,21 +1695,89 @@ sub saveKanungoFh {
 ##======================================================================
 
 
+##======================================================================
+## I/O: binary
+##======================================================================
+
+## $ref = $obj->saveBinRef(@args)
+sub saveBinRef {
+  my $hmm = shift;
+
+  ##-- Check whether to use CCS storage
+  my $eps   = 1e-6;
+  my $b     = $hmm->{b};
+  my $bsize = $b->nelem * PDL::howbig($b->type);
+  my $nz    = $b->where($b > logzero);
+  my $nnz   = $nz->nelem;
+  my $ccsize= $b->dim(0)*PDL::howbig(long) + $nnz*(PDL::howbig(long)+PDL::howbig($b->type));
+  if ($bsize < $ccsize) {
+    ##-- CCS ain't worth it...
+    $hmm->{doccs} = 0;
+    return $hmm;
+  }
+
+  ##-- Use CCS storage
+
+  ##-- adjust B
+  $b->where($b->approx(0,$eps)) .= 1;
+  $b->where($b <= logzero)      .= 0;
+
+  ##-- encode B
+  my ($bn,$bm,$bptr,$browids,$bnzvals);
+  ($bn,$bm) = $b->dims;
+  ccsencodefull($b,
+		($bptr=zeroes(long,$bn)),
+		($browids=zeroes(long,$nnz)),
+		($bnzvals=zeroes(double,$nnz)));
+
+  ##-- rollback changes to {b}
+  $b->where($b==1) .= 0;
+  $b->where($b==0) .= logzero;
+
+  ##-- get save-as reference (new)
+  my $ref = { %$hmm };
+  delete($ref->{b});
+  @$ref{qw(doccs bn bm bptr browids bnzvals)} = (1,$bn,$bm,$bptr,$browids,$bnzvals);
+
+  return bless($ref, ref($hmm));
+}
+
+
+## $obj = $ref_blessed_as_obj->loadBinRef(@args)
+sub loadBinRef {
+  my ($hmm) = @_;
+
+  if ($hmm->{doccs}) {
+    ##-- decode B
+    $hmm->{b} = zeroes($hmm->{type}, @$hmm{qw(bn bm)});
+    ccsdecodefull(@$hmm{qw(bptr browids bnzvals)}, $hmm->{b});
+    delete(@$hmm{qw(doccs bn bm bptr browids bnzvals)});
+
+    ##-- re-adjust B
+    $hmm->{b}->where($hmm->{b}==0) .= logzero;
+    $hmm->{b}->where($hmm->{b}==1) .= 0;
+  }
+
+  return $hmm;
+}
+
 
 ##======================================================================
-## I/O: Storable hooks
+## I/O: Storable hooks (buggy)
 ##======================================================================
 
 ## ($serialized_string, @other_refs) = STORABLE_freeze($obj,$cloning_flag)
-sub STORABLE_freeze {
+## -- BUGGY
+sub STORABLE_freeze_buggy {
   my ($obj,$cloning) = @_;
   require PDL::IO::Storable;
   return if ($cloning);
 
   ##-- Check whether to use CCS storage
+  my $eps   = 1e-6;
   my $b     = $obj->{b};
   my $bsize = $b->nelem * PDL::howbig($b->type);
-  my $nz    = $b->where(!$b->approx(logzero));
+  my $nz    = $b->where($b > logzero);
   my $nnz   = $nz->nelem;
   my $ccsize= $b->dim(0)*PDL::howbig(long) + $nnz*(PDL::howbig(long)+PDL::howbig($b->type));
   if ($bsize < $ccsize) {
@@ -1443,17 +1788,16 @@ sub STORABLE_freeze {
   ##-- Use CCS storage
 
   ##-- adjust B
-  my $eps = 1e-6;
-  $b->where($b->approx(0,$eps))       .= 1;
-  $b->where($b->approx(logzero,$eps)) .= 0;
+  $b->where($b->approx(0,$eps)) .= 1;
+  $b->where($b <= logzero)      .= 0;
 
   ##-- encode B
   my ($bn,$bm,$bptr,$browids,$bnzvals);
   ($bn,$bm) = $b->dims;
-  ccsencodefulla($b, $eps,
-		 ($bptr=zeroes(long,$bn)),
-		 ($browids=zeroes(long,$nnz)),
-		 ($bnzvals=zeroes(double,$nnz)));
+  ccsencodefull($b,
+		($bptr=zeroes(long,$bn)),
+		($browids=zeroes(long,$nnz)),
+		($bnzvals=zeroes(double,$nnz)));
 
   ##-- return storable list
   return '', [
@@ -1464,7 +1808,8 @@ sub STORABLE_freeze {
 
 
 ## $obj = STORABLE_thaw($obj, $cloning_flag, $serialized_string, @other_refs)
-sub STORABLE_thaw {
+##  --> BUGGY
+sub STORABLE_thaw_buggy {
   my ($obj,$cloning,$serialized,$contents) = @_;
   require PDL::IO::Storable;
   return if ($cloning);

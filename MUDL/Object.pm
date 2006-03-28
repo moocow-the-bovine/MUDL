@@ -557,13 +557,24 @@ sub pdl2string {
 }
 
 ##======================================================================
+## I/O: Binary: Hooks
+##======================================================================
+
+## $ref = $obj->saveBinRef(@args)
+#sub saveBinRef { return $_[0]; }
+
+## $obj = $class_or_obj->loadBinRef($ref)
+#sub loadBinRef { return bless($_[1], ref($_[0])||$_[0]); }
+
+##======================================================================
 ## I/O: Binary: Save
 ##======================================================================
 
-## $str = $obj->saveBinString(@args)
+## $str = $obj->saveBinString(%args)
 sub saveBinString {
   my $obj = shift;
   my $ref = ref($obj) ? $obj : \$obj;
+  $ref = $obj->saveBinRef(@_) if (UNIVERSAL::can($obj,'saveBinRef'));
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
   return Storable::freeze($ref);
 }
@@ -578,7 +589,8 @@ sub saveBinFile {
     return undef;
   }
   binmode($fh);
-  my $rc = saveBinFh($obj,$fh,@_);
+  #my $rc = saveBinFh($obj,$fh,@_); ## ??
+  my $rc  = $obj->saveBinFh($fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
 }
@@ -586,12 +598,16 @@ sub saveBinFile {
 ## $bool = $obj->saveBinFh($fh,@args)
 sub saveBinFh {
   my ($obj,$fh) = splice(@_,0,2);
-  my $ref = ref($obj) ? $obj : \$obj;
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
+
+  my $ref = ref($obj) ? $obj : \$obj;
+  $ref = $obj->saveBinRef(@_) if (UNIVERSAL::can($obj,'saveBinRef'));
+
   if (!Storable::store_fd($ref, $fh)) {
     confess( __PACKAGE__ , "::saveBinFh(): Storable::store_fd() failed.\n");
     return undef;
   }
+
   return 1;
 }
 
@@ -603,7 +619,8 @@ sub saveBinFh {
 sub loadBinString {
   my $str = $_[1];
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
-  return Storable::thaw($str);
+  my $ref = Storable::thaw($str);
+  return UNIVERSAL::can($_[0],'loadBinRef') ? $_[0]->loadBinRef($ref) : $ref;
 }
 
 ## $obj_or_undef = $class_or_obj->loadBinFile($filename,@args)
@@ -616,7 +633,10 @@ sub loadBinFile {
     return undef;
   }
   binmode($fh);
-  my $rc = loadBinFh($obj,$fh,@_);
+
+  #my $rc = loadBinFh($obj,$fh,@_);
+  my $rc = $obj->loadBinFh($fh,@_);
+
   $fh->close() if (!ref($file));
   return $rc;
 }
@@ -625,11 +645,12 @@ sub loadBinFile {
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
-  if (!defined($obj=Storable::fd_retrieve($fh))) {
+  if (!defined($ref=Storable::fd_retrieve($fh))) {
     confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;
   }
-  return $obj;
+  eval "require $ref;"; ##-- hack
+  return UNIVERSAL::can($ref,'loadBinRef') ? $ref->loadBinRef() : $ref; ##-- BUGGY
 }
 
 
