@@ -40,6 +40,7 @@ sub new {
 			   tagjoin=>'/',
 			   commentre=>qr(^\%\%),
 			   ignorewords=>{},
+			   nfields=>0,           ##-- max # of fields to read
 			   %args,
 			  );
 }
@@ -71,7 +72,7 @@ sub getSentence {
   return undef if (!$cr->{fh} || $cr->{fh}->eof);
   $args{allow_empty_sentences}=0 if (!exists($args{allow_empty_sentences}));
 
-  my ($line,$toks);
+  my ($line,$toks,@fields,$njoin);
   my $sent = bless [], 'MUDL::Sentence';
   while (defined($line=$cr->{fh}->getline)) {
     chomp $line;
@@ -86,10 +87,19 @@ sub getSentence {
     $line =~ s/^\s+//; ##-- trim leading whitespace
 
     @$sent = map {
-      (defined($_) && !exists($cr->{ignorewords}{$_})
-       #? bless([split(/\_/, $_, 2)], 'MUDL::Token::TT')
-       ? bless([split($cr->{tagsplit},$_)], 'MUDL::Token::TT')
-       : qw())
+      @fields = (defined($_) && !exists($cr->{ignorewords}{$_})
+		 ? split($cr->{tagsplit},$_)
+		 : qw());
+      if ($cr->{nfields}) {
+	$njoin  = $cr->{nfields} > scalar(@fields) ? scalar(@fields) : $cr->{nfields};
+	$njoin  = $#fields-$njoin+1;
+	@fields = (
+		   grep { defined($_) && $_ ne '' }
+		   join($cr->{tagjoin}, @fields[0..$njoin]),
+		   @fields[($njoin+1)..$#fields]
+		  );
+      }
+      @fields ? bless([@fields], 'MUDL::Token::TT') : qw()
     } split(/\s+/, decode($cr->{encoding},$line));
     $cr->{ntoks} += @$sent;
     last;

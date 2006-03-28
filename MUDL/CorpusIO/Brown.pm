@@ -29,6 +29,7 @@ sub new {
 			   tagjoin=>'/',
 			   commentre=>qr(^%%),         ##-- Brown comment string?
 			   ignorewords=>{},            ##-- ignorable words?
+			   nfields=>2,                 ##-- maximum number of fields to parse
 			   %args
 			  );
 }
