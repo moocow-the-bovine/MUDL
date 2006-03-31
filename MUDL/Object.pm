@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Object.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -11,6 +11,7 @@ use MUDL::XML;
 use IO::File;
 use IO::Scalar;
 use Storable;
+use Data::Dumper;
 
 ## PDL::IO::Storable
 ##  + very tricky: can cause errors "%Config::Config is read-only"
@@ -115,7 +116,7 @@ sub clear { @{$_[0]} = qw(); return $_[0]; }
 
 
 ########################################################################
-## class MUDL::Array
+## class MUDL::Scalar
 ########################################################################
 package MUDL::Scalar;
 our @ISA = qw(MUDL::Object);
@@ -747,6 +748,99 @@ sub loadNativeFile {
 #}
 
 ##======================================================================
+## I/O: Perl: Save
+##======================================================================
+
+## $str = $obj->savePerlString(@args)
+##  + calls $obj->savePerlFh()
+sub savePerlString {
+  my $obj = shift;
+  my $str = '';
+  my $fh = IO::Scalar->new(\$str);
+  if (!$fh) {
+    confess( __PACKAGE__ , "::savePerlString(): open failed: $!");
+    return undef;
+  }
+  #binmode($fh,':utf8');
+
+  $obj->savePerlFh($fh,@_);
+  $fh->close();
+  return $str;
+}
+
+## $bool = $obj->savePerlFile($file,@args)
+##  + calls savePerlFh()
+sub savePerlFile {
+  my ($obj,$file) = splice(@_,0,2);
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  if (!$fh) {
+    confess( __PACKAGE__ , "::savePerlFile(): open failed for '$file': $!");
+    return undef;
+  }
+  #binmode($fh,':utf8');
+
+  my $rc = $obj->savePerlFh($fh,@_);
+  $fh->close() if (!ref($file));
+  return $rc;
+}
+
+## $bool = $obj->savePerlFh($fh,@args)
+##  + uses Data::Dumper
+sub savePerlFh {
+  my ($obj,$fh) = splice(@_,0,2);
+  my $dumper = Data::Dumper->new([$obj],[qw(obj)]);
+  $dumper->Purity(1)->Terse(1)->Sortkeys(1);
+  $fh->print($dumper->Dump);
+  return 1;
+}
+
+##======================================================================
+## I/O: Perl: Load
+##======================================================================
+
+## $obj = $obj->loadPerlString($str,@args)
+sub loadPerlString {
+  my ($obj,$str) = splice(@_,0,2);
+  my $fh = IO::Scalar->new(\$str);
+  if (!$fh) {
+    confess( __PACKAGE__ , "::loadPerlString(): open failed: $!");
+    return undef;
+  }
+  #binmode($fh,':utf8');
+
+  my $rc = $obj->loadPerlFh($fh,@_);
+  $fh->close();
+  return $rc;
+}
+
+## $obj = $obj->loadPerlFile($file,@args)
+##  + calls loadPerlFh()
+sub loadPerlFile {
+  my ($obj,$file) = splice(@_,0,2);
+  my $fh = ref($file) ? $file : IO::File->new("<$file");
+  if (!$fh) {
+    confess( __PACKAGE__ , "::loadPerlFile(): open failed for '$file': $!");
+    return undef;
+  }
+  #binmode($fh,':utf8');
+
+  my $rc = $obj->loadPerlFh($fh,@_);
+  $fh->close() if (!ref($file));
+  return $rc;
+}
+
+## $obj = $class_or_obj->loadPerlFh($fh,@args)
+##  + calls loadPerlString()
+sub loadPerlFh {
+  my ($obj,$fh) = @_;
+  eval('{ no strict qw(vars); $obj='.join('',<$fh>).' }');
+  if ($@) {
+    carp(ref($obj)."::loadPerlFh(): error: $@");
+  }
+  return $obj;
+}
+
+##======================================================================
 ## I/O: Generic: Modes
 ##======================================================================
 
@@ -759,6 +853,7 @@ sub ioModes {
 	  'native'  => __PACKAGE__->ioModeHash('Native'),
 	  'xml'     => __PACKAGE__->ioModeHash('XML'),
 	  'bin'     => __PACKAGE__->ioModeHash('Bin'),
+	  'perl'    => __PACKAGE__->ioModeHash('Perl'),
 	  ##--
 	  'DEFAULT' => __PACKAGE__->ioModeHash('Native'),
 	 };
@@ -804,6 +899,8 @@ sub fileSuffixModes {
 	  {regex=>qr/\.bin$/i,    mode=>'bin'},
 	  {regex=>qr/\.xml$/i,    mode=>'xml'},
 	  {regex=>qr/\.native$/i, mode=>'native'},
+	  {regex=>qr/\.perl$/i,   mode=>'perl'},
+	  {regex=>qr/\.pl$/i,     mode=>'perl'},
 	 ];
 }
 

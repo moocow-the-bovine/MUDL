@@ -357,6 +357,7 @@ sub compilePdls {
 
   ##-- pre-compilation: adjust frequencies
   my $bf = $hmm->compileUnknownBF($bf0,%args);
+  $bf->inplace->setnantobad->inplace->setbadtoval(0);
 
   my $rc = (1
 	    && $hmm->compileArcs($af,$omegaf,%args)
