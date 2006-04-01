@@ -110,6 +110,17 @@ sub _expand {
 }
 
 
+##======================================================================
+## Makefile Generation: for user-vars
+
+## $file = $mak->writeUserMakefile()
+## $file = $mak->writeUserMakefile($filename_or_fh)
+##  + writes variable assignments to a makefile
+sub writeUserMakefile {
+  my $cfg = shift;
+  return MUDL::Make::Vars->new()->assign($cfg->{uvars})->writeMakefile(file=>shift,target=>'');
+}
+
 
 1;
 

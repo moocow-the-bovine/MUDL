@@ -76,6 +76,22 @@ sub clear {
   return $mcol;
 }
 
+## $mcol2 = $mcol->subcollection(%args)
+##  + shared non-configuration elements (including vars)
+##  + %args are args to ref($mcol)->new()
+sub subcollection {
+  my $mcol = shift;
+  return ref($mcol)->new(
+			 makefiles=>$mcol->{makefiles},
+			 varfiles =>$mcol->{varfiles},
+			 vars     =>$mcol->{vars},
+			 rs       =>$mcol->{rs},
+			 fs       =>$mcol->{fs},
+			 ##-- User Args
+			 @_
+			);
+}
+
 ## DESTROY : hook: clear configs
 sub DESTROY { $_[0]->clear(); }
 
@@ -201,8 +217,8 @@ sub expandConfig {
 sub expandAll {
   my $mcol = shift;
   my ($ukey);
-  foreach $ukey (keys(%{$mcol->{configs}})) {
-    $mcol->expandConfig($mcol->{configs}{$ukey});
+  foreach $ukey (keys(%{$mcol->{uconfigs}})) {
+    $mcol->expandConfig($mcol->{uconfigs}{$ukey});
   }
   return $mcol;
 }
@@ -212,12 +228,93 @@ sub expandAll {
 sub expandMissing {
   my $mcol = shift;
   my ($ukey,$cfg);
-  foreach $ukey (keys(%{$mcol->{configs}})) {
-    $cfg = $mcol->{configs}{$ukey};
+  foreach $ukey (keys(%{$mcol->{uconfigs}})) {
+    $cfg = $mcol->{uconfigs}{$ukey};
     $mcol->expandConfig($cfg) if (!$cfg->{xvars} || !%{$cfg->{xvars}});
   }
   return $mcol;
 }
+
+
+##======================================================================
+## Search
+
+## @configs = $mcol->search(\&criterion_code)
+## @configs = $mcol->search( $criterion_str)
+##   + CODE ref: returns a list of all configs for which $criterion is true
+##     - if $criterion is a CODE ref, it is called with argument $cfg (config to test)
+##     - if $criterion is a string  , it is evaluated with variable $_ set to the config to test
+sub search {
+  my ($mcol,$crit) = @_;
+  return grep { $crit->($_) } values(%{$mcol->{uconfigs}}) if (ref($crit));
+
+  my ($rc);
+  return
+    (grep {
+      $rc=eval($crit);
+      carp(ref($mcol)."::search(): error evaluating search criteria '$crit': $@") if ($@);
+      $rc
+    } values(%{$mcol->{uconfigs}}));
+}
+
+## @configs = $mcol->vsearch($var_key, \&criterion_code)
+## @configs = $mcol->vsearch($var_key,  $criterion_str)
+##   + CODE ref: returns a list of all configs for which $criterion is true
+##     - if $criterion is a CODE ref, it is called with argument $cfg->{$var_key} (vars of config to test)
+##     - if $criterion is a string  , it is evaluated with variable %_ set to %{$cfg->{$var_key}}
+sub vsearch {
+  my ($mcol,$vkey,$crit) = @_;
+  return grep { $crit->($_->{$vkey}) } values(%{$mcol->{uconfigs}}) if (ref($crit));
+
+  my @configs = qw();
+  my ($cfg);
+  foreach $cfg (values(%{$mcol->{uconfigs}})) {
+    $_ = $cfg->{$vkey};
+    %_ = %$_;
+    push(@configs,$cfg) if (eval $crit);
+    carp(ref($mcol)."::vsearch(): error evaluating search criteria '$crit': $@") if ($@);
+  }
+  return @configs;
+}
+
+## @configs = $mcol->usearch(\&criterion_code)
+## @configs = $mcol->usearch( $criterion_str)
+##  + wrapper for $mcol->vsearch('uvars', $criterion)
+sub usearch { return $_[0]->vsearch('uvars', $_[1]); }
+
+## @configs = $mcol->xsearch(\&criterion_code)
+## @configs = $mcol->xsearch( $criterion_str)
+##  + wrapper for $mcol->vsearch('xvars', $criterion)
+sub xsearch { return $_[0]->vsearch('xvars', $_[1]); }
+
+
+##======================================================================
+## Collect (sub-collection creation)
+
+## $subcol = $mcol->collectConfigs(@configs)
+sub collectConfigs {
+  my ($mcol,@configs) = @_;
+  my $subcol = $mcol->subcollection();
+  %{$subcol->{uconfigs}} = map { $mcol->ukey($_)=>$_ } @configs;
+  %{$subcol->{xconfigs}} = map { $mcol->xkey($_)=>$_ } grep { $_->{xvars} && %{$_->{xvars}} } @configs;
+  return $subcol;
+}
+
+## $subcol = $mcol->collect(\&criterion_code)
+## $subcol = $mcol->collect( $criterion_str)
+##   + CODE ref: returns a list of all configs for which $criterion is true
+##     - if $criterion is a CODE ref, it is called with argument $cfg (config to test)
+##     - if $criterion is a string  , it is evaluated with variable $_ set to the config to test
+sub collect { return $_[0]->collectConfigs($_[0]->search($_[1])); }
+
+## $subcol = $mcol->vcollect($var_key, $criterion)
+sub vcollect { return $_[0]->collectConfigs($_[0]->vsearch(@_[1,2])); }
+
+## $subcol = $mcol->ucollect($criterion)
+sub ucollect { return $_[0]->collectConfigs($_[0]->usearch($_[1])); }
+
+## $subcol = $mcol->xcollect($criterion)
+sub xcollect { return $_[0]->collectConfigs($_[0]->xsearch($_[1])); }
 
 
 1;

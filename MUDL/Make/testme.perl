@@ -51,7 +51,7 @@ sub test2 {
 ## test3: Make::Collection
 sub test3 {
   #our @makefiles = qw(test.mak);
-  our @makefiles = qw(Default.mak);
+  our @makefiles = ('Default.mak');
 
   our $mcol = MUDL::Make::Collection->new(makefiles=>\@makefiles);
   $mcol->parse();
@@ -72,9 +72,47 @@ sub test3 {
   our $cfg1f = $mcol->ufind($uvars1);
   our $cfg2f = $mcol->ufind($uvars2);
 }
-test3;
+#test3;
 
 
+##--------------------------------------------------------------
+## test4: Make::Collection: biggish
+sub test4 {
+  our @makefiles = ('Default.mak');
+  our $mcol = MUDL::Make::Collection->new(makefiles=>\@makefiles);
+  $mcol->parse();
+
+  our $doexpand=1;
+
+  our @baseconfigs = ( { icorpus=>'utrain-nl.t', tcorpus=>'utest.tiny.ttt' },
+		       { icorpus=>'btrain.t', tcorpus=>'btrain.btiny.ttt' },
+		     );
+  #our @lrwhichs = qw(hb fbg);
+  our @lrwhichs = qw(hb);
+  our @stages  = (1..4);
+  our @emis    = (0..1);
+  $| = 1;
+  foreach $base (@baseconfigs) {
+    foreach $lrwhich (@lrwhichs) {
+      foreach $stage (@stages) {
+	foreach $emi (@emis) {
+	  print ".";
+	  $uvars = { %$base, lrwhich=>$lrwhich,stage=>$stage,,emi=>$emi };
+	  $mcol->uget($uvars,expand=>$doexpand);
+	}
+      }
+    }
+  }
+  print "\n";
+
+  $mcol->expandMissing();
+  #$mcol->savePerlFile('mcol.pl');
+
+  our @configs = $mcol->usearch('$_{stage} == 1');
+  $cfg = $configs[0];
+  $cfg->writeUserMakefile('-');
+}
+test4;
 
 ##--------------------------------------------------------------
 foreach $i (1..10) {

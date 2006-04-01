@@ -136,6 +136,10 @@ sub writeMakefile {
   elsif (!defined($file) || $file eq '') {
     ($fh,$file) = tempfile('tmpXXXXX',SUFFIX=>'.mak',UNLINK=>1);
   }
+  else {
+    $fh = IO::File->new(">$file")
+      or confess(ref($vars)."::writeMakefile(): open failed for '$file': $!");
+  }
 
   ##-- write makefile
   $fh->print(
@@ -154,11 +158,9 @@ sub writeMakefile {
 	    );
 
   ##-- cleanup
-  if (ref($file)) {
-    $fh->close();
-    return '?';
-  }
+  return '?' if (ref($file));
 
+  $fh->close();
   return $file;
 }
 
