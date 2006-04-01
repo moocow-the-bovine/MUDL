@@ -51,7 +51,7 @@ sub test2 {
 ## test3: Make::Collection
 sub test3 {
   #our @makefiles = qw(test.mak);
-  our @makefiles = qw(Config.mak);
+  our @makefiles = qw(Default.mak);
 
   our $mcol = MUDL::Make::Collection->new(makefiles=>\@makefiles);
   $mcol->parse();

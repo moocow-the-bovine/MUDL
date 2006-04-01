@@ -1,5 +1,5 @@
 ##----------------------------------------------------------------------
-## Common Variables
+## Default Variables
 
 ##-- induction corpus
 #icorpus ?= utest.t
@@ -26,87 +26,6 @@ tbase   ?= $(basename $(tcorpus))
 #scorpus ?= $(corpus:.t=.ttt)
 scorpus ?= $(icorpus:.t=.ttt)
 
-##----------------------------------------------------------------------
-## Common Options
-format ?= 1
-FMT = --format="$(format)"
-
-##----------------------------------------------------------------------
-## Frequency utilties
-PERL ?= perl
-FUBINDIR  ?= ../frequtils/
-CORPUS2CORPUS ?= $(FUBINDIR)corpus2corpus.perl $(FMT)
-CORPUS2PROFILE ?= $(FUBINDIR)corpus2profile.perl $(FMT)
-CORPUS2LRPROFILE ?= $(FUBINDIR)corpus2lrprofile.perl $(FMT)
-CORPUSFILTER ?= $(FUBINDIR)corpusfilter.perl $(FMT)
-TTJOIN       ?= $(FUBINDIR)ttjoin.perl
-
-DIST2EDIST ?= $(FUBINDIR)dist2edist.perl $(FMT)
-DIST2SET   ?= $(FUBINDIR)dist2set.perl $(FMT)
-DIST2RANK  ?= $(FUBINDIR)dist2rank.perl $(FMT)
-DISTPRUNE  ?= $(FUBINDIR)distprune.perl $(FMT) -dokeep=$(pkeep) -dobash=$(pbash) -bashto='$(pbashto)'
-
-MUDLCHURN ?= $(FUBINDIR)mudlchurn.perl $(FMT)
-MUDL      ?= $(FUBINDIR)mudl.perl $(FMT)
-DENDOVIEW ?= $(FUBINDIR)mudl-dendoview.perl
-
-HMMEM ?= $(FUBINDIR)mudl-hmmem.perl
-
-STAGEPLAN ?= ./stageplan.perl
-TGSELECT  ?= $(FUBINDIR)tgselect.perl
-TGSELECT3 ?= $(FUBINDIR)tgselect3.perl
-TGSELECT3B ?= $(FUBINDIR)tgselect3b.perl
-
-##----------------------------------------------------------------------
-## Tokenization utilties
-#TOKBINDIR = ../xmltok/
-#XML2TT = $(TOKBINDIR)xml2tt.perl
-#TT2XML = $(TOKBINDIOR)tt2xml.perl $(FMT)
-
-
-##------------------------------------------------------
-## Profiling: pruning
-pcorpus ?= $(icorpus)
-pb  ?= r
-pbv ?= 100
-pbr ?= 200
-pbe ?= prune.enum
-pbs ?= prune.set
-pbx ?= .
-
-pbrmm ?= 200+500
-
-pkeep ?= 1
-pbash ?= 0
-pbashto ?= @UNKNOWN
-
-pbv_args= -byValue -min="$(pbv)"
-pbr_args= -byRank  -max="$(pbr)"
-
-pbrmm_min=$(shell echo '$(pbrmm)' | awk -F+ '{print $$1}')
-pbrmm_max=$(shell echo '$(pbrmm)' | awk -F+ '{print $$2}')
-pbrmm_args= -byRank  -min=$(pbrmm_min) -max=$(pbrmm_max)
-
-pbe_args= -byEnum  -enum="$(pbe)"
-pbs_args= -bySet   -set="$(pbs)"
-pbx_args= -byRegex -regex="$(pbx)"
-
-##----------------------------------------------------------------------
-## Filtering
-fb  ?= e
-fbe ?= $(targets)
-
-fbeinfix ?= $(basename $(basename $(fbe)))
-
-##----------------------------------------------------------------------
-## Mapping
-mcorpus ?= $(tcorpus)
-mapin   ?= $(mcorpus)
-mapout  ?= $(mcorpus:.ttt=.mapped.ttt)
-mapfrom ?= text
-mapto   ?= tag
-mapunknown ?=
-mapmap ?= corpus.map.bin
 
 ##------------------------------------------------------
 ## Profiling: L-/R- methods
@@ -240,6 +159,7 @@ lr3ctinfix ?= lr$(lrwhich)-$(lrinfix3).bs-$(lr3bs).$(tcinfix)
 ##------------------------------------------------------
 ## Profiling: L-/R-Ngrams (see above)
 lrngw ?= 2
+
 
 ##------------------------------------------------------
 ## Clustering

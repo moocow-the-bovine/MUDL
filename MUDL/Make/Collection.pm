@@ -28,10 +28,11 @@ our $DEBUG = 0;
 ##  + hash:
 ##     ##
 ##     ##-- Configuration
-##     makefiles => \@filenames,               ##-- default: [qw(Makefile makefile)]
-##     vars      => $mudl_make_vars (shared),
-##     uconfigs   => \%ukey2config,
-##     xconfigs   => \%xkey2config,
+##     makefiles  => \@makefiles,      ##-- default: [glob('[Mm]akefile')]
+##     varfiles   => \@varfiles,       ##-- default: undef (use $obj->{makefiles})
+##     vars       => $mudl_make_vars,  ##-- parsed vars: shared
+##     uconfigs   => \%ukey2config,    ##-- key=>$config map: user vars
+##     xconfigs   => \%xkey2config,    ##-- key=>$config map: expanded vars
 ##     ##
 ##     ##-- Key Generation
 ##     rs => $record_separator,  ##-- separates ($var,$val) pairs in keys
@@ -40,7 +41,8 @@ sub new {
   my $that = shift;
   my $self = bless $that->SUPER::new(
 				     ##-- Configs
-				     makefiles=>[qw(Makefile makefile)],
+				     makefiles=>[glob('[Mm]akefile')],
+				     varfiles =>undef,
 				     vars     =>MUDL::Make::Vars->new(),
 
 				     uconfigs  =>{},
@@ -82,20 +84,28 @@ sub DESTROY { $_[0]->clear(); }
 
 ## $mcol = $mcol->parse(%args)
 ##  + %args:
-##     makefiles=>\@makefiles,   ##-- overrides $cfg->{makefiles}
+##     makefiles=>\@makefiles,   ##-- overrides $cfg->{varfiles}, $cfg->{makefiles}
 sub parse {
   my ($mcol,%args) = @_;
-  my @makefiles = $args{makefiles} ? @{$args{makefiles}} : (grep { -r $_ } @{$mcol->{makefiles}});
+  my @makefiles = ($args{makefiles}
+		   ? @{$args{makefiles}}
+		   : ($mcol->{varfiles}
+		      ? @{$mcol->{varfiles}}
+		      : @{$mcol->{makefiles}}));
   $mcol->{vars}->parse($_) foreach (@makefiles);
   return $mcol;
 }
 
 ## $vars = $mcol->parse_p(%args)
 ##  + %args:
-##     makefiles=>\@makefiles,   ##-- overrides $cfg->{makefiles}
+##     makefiles=>\@makefiles,   ##-- overrides $cfg->{varfiles}, $cfg->{makefiles}
 sub parse_p {
   my ($mcol,%args) = @_;
-  my @makefiles = $args{makefiles} ? @{$args{makefiles}} : (grep { -r $_ } @{$mcol->{makefiles}});
+  my @makefiles = ($args{makefiles}
+		   ? @{$args{makefiles}}
+		   : ($mcol->{varfiles}
+		      ? @{$mcol->{varfiles}}
+		      : @{$mcol->{makefiles}}));
   $mcol->{vars}->parse_p($_) foreach (@makefiles);
   return $mcol;
 }
