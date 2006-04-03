@@ -121,6 +121,39 @@ sub writeUserMakefile {
   return MUDL::Make::Vars->new()->assign($cfg->{uvars})->writeMakefile(file=>shift,target=>'');
 }
 
+##======================================================================
+## Make: Targets
+
+## $bool = $mak->make(%args)
+##  + implicitly calls $mak->acquire(%args) on successful completion
+##  + %args:
+##     targets   => $targets_str, ##-- overrides $mak->{targets}
+##     makefiles => \@makefiles,  ##-- makefiles (rules)
+##     userfile  => $userfile,    ##-- use $userfile to write variables (default=tmp)
+##     makeflags => $str,         ##-- additional flags to $MAKE
+sub make {
+  my ($mak,%args) = @_;
+  my $targets   = $args{targets}   ? $args{targets}      : $mak->{targets};
+  my @makefiles = $args{makefiles} ? @{$args{makefiles}} : glob('[Mm]akefile');
+  my $userfile  = $mak->writeUserMakefile($args{userfile});
+  my $cmd = ($MAKE
+	     .' '.join(' ', map { "-f$_" } ($userfile,@makefiles))
+	     .($args{makeflags} ? " $args{makeflags}" : '')
+	     .' '.$targets
+	    );
+  print STDERR ref($mak), "::make(): $cmd\n";
+  return (system($cmd)==0 && $mak->acquire(%args));
+}
+
+
+##======================================================================
+## Make: Acquire Data
+
+## $bool = $mak->acquire(%args)
+##  + called after successful $mak->make()
+##  + may be implemented in child classes for data acquisition
+sub acquire { return 1; }
+
 
 1;
 
