@@ -11,6 +11,7 @@ use MUDL::Object;
 use MUDL::Make qw(:all);
 use MUDL::Make::Vars;
 use IO::File;
+use Cwd qw(getcwd abs_path);
 use File::Temp qw(tempfile);
 use File::Copy qw(copy);
 use Carp;
@@ -32,12 +33,10 @@ our $DEBUG = 0;
 ##     xvars => \%expanded_vars,
 ##     ##
 ##     ##-- Targets
-##     targets => $targets_str,  ##-- default: 'all'
-##     ##
-##     ##-- Key Generation
-##     #rs => $record_separator,  ##-- separates ($var,$val) pairs in keys
-##     #fs => $field_separator,   ##-- separates $var from $val within ($var,$val) pairs in keys
-##     ... ?
+##     dir     => $make_directory, ##-- directory in which to run make (default: '.')
+##     dirstack => \@stack,        ##-- directory stack
+##     targets => $targets_str,    ##-- default: 'all'
+##     userfile => $userfile,      ##-- user config file (default: none)
 sub new {
   my $that = shift;
   my $self = bless $that->SUPER::new(
@@ -47,6 +46,8 @@ sub new {
 				     xvars=>{},
 
 				     ##-- Targets
+				     dir=>'.',
+				     dirstack=>[],
 				     targets=>'all',
 
 				     ##-- User args
@@ -55,103 +56,155 @@ sub new {
   return $self;
 }
 
-## $mak = $mak->clear;
+## $cfg = $cfg->clear;
 sub clear {
-  my $mak = shift;
+  my $cfg = shift;
 
   ##-- Variables
-  #$mak->{vars}->clear();
-  %{$mak->{xvars}} = qw();
-  %{$mak->{uvars}} = qw();
+  #$cfg->{vars}->clear();
+  %{$cfg->{xvars}} = qw();
+  %{$cfg->{uvars}} = qw();
 
   ##-- Targets
-  $mak->{targets} = 'all';
+  $cfg->{dir} = '.';
+  $cfg->{targets} = 'all';
+  delete($cfg->{userfile});
 
-  return $mak;
+  return $cfg;
 }
 
 ##======================================================================
 ## Identification: key-generation
 
-## $key = $mak->key(\%var2val)
+## $key = $cfg->key(\%var2val)
 sub key {
-  my ($mak,$vars) = @_;
-  return join($mak->{rs}, map { $_ . $mak->{fs} . $vars->{$_} } sort(keys(%$vars)));
+  my ($cfg,$vars) = @_;
+  return join($cfg->{rs}, map { $_ . $cfg->{fs} . $vars->{$_} } sort(keys(%$vars)));
 }
 
-## $ukey = $mak->ukey()
+## $ukey = $cfg->ukey()
 ##  + key for user-vars only
 sub ukey { return $_[0]->key($_[0]->{uvars}); }
 
-## $xkey = $mak->xkey()
+## $xkey = $cfg->xkey()
 ##  + key for expanded variables
-##  + requires: $mak->expand()
+##  + requires: $cfg->expand()
 sub xkey { return $_[0]->key($_[0]->{xvars}); }
 
 
 ##======================================================================
 ## Expansion: all variables
 
-## $mak = $mak->expand($mudl_mak_vars)
-##  + assigns user-variables in $mak->{vars}
-##  + expands all variables to $mak->{xvars}
+## $cfg = $cfg->expand($mudl_mak_vars)
+##  + assigns user-variables in $cfg->{vars}
+##  + expands all variables to $cfg->{xvars}
 ##  + copies $mudl_mak_vars
 sub expand { return $_[0]->_expand($_[1]->clone()); }
 
-## $mak = $mak->_expand($mudl_mak_vars)
-##  + assigns user-variables in $mak->{vars}
-##  + expands all variables to $mak->{xvars}
+## $cfg = $cfg->_expand($mudl_mak_vars)
+##  + assigns user-variables in $cfg->{vars}
+##  + expands all variables to $cfg->{xvars}
 ##  + destructively alters $mudl_mak_vars !
 sub _expand {
-  my ($mak,$vars) = @_;
-  $vars->assign($mak->{uvars});
-  $vars->expand(xvars=>$mak->{xvars});
-  return $mak;
+  my ($cfg,$vars) = @_;
+  $vars->assign($cfg->{uvars});
+  $vars->expand(xvars=>$cfg->{xvars});
+  return $cfg;
 }
 
 
 ##======================================================================
 ## Makefile Generation: for user-vars
 
-## $file = $mak->writeUserMakefile()
-## $file = $mak->writeUserMakefile($filename_or_fh)
+## $file = $cfg->writeUserMakefile()
+## $file = $cfg->writeUserMakefile($filename_or_fh)
 ##  + writes variable assignments to a makefile
 sub writeUserMakefile {
   my $cfg = shift;
-  return MUDL::Make::Vars->new()->assign($cfg->{uvars})->writeMakefile(file=>shift,target=>'');
+  my $ufile = shift;
+  $ufile = $cfg->{userfile} if (!defined($ufile));
+  return MUDL::Make::Vars->new()->assign($cfg->{uvars})->writeMakefile(file=>$ufile,target=>'');
 }
+
+##======================================================================
+## Make: Directory juggling
+
+## $cwd = $cfg->pushd()
+## $cwd = $cfg->pushd($dir)
+##  + chdir()s to $cfg->{dir} or $dir, updates $cfg->{dirstack}
+sub pushd {
+  my ($cfg,$dir) = @_;
+  $dir = $cfg->{dir} if (!defined($dir));
+  $dir = abs_path($dir);
+  my $cwd = getcwd();
+  return $dir if ($dir eq $cwd); ##-- no chdir() required
+
+  push(@{$cfg->{dirstack}}, $cwd);
+  chdir($dir) or confess(ref($cfg),"::pushd(): could not chdir($dir): $!");
+  return $dir;
+}
+
+## $cwd = $cfg->popd()
+##  + pops the most recent directory from the stack (if any)
+sub popd {
+  my $cfg = shift;
+  return getcwd() if (!@{$cfg->{dirstack}}); ##-- no more directories to pop
+
+  my $dir = pop(@{$cfg->{dirstack}});
+  chdir($dir) or confess(ref($cfg),"::popd(): could not chdir($dir): $!");
+  return $dir;
+}
+
 
 ##======================================================================
 ## Make: Targets
 
-## $bool = $mak->make(%args)
-##  + implicitly calls $mak->acquire(%args) on successful completion
+## $bool = $cfg->make(%args)
+##  + implicitly calls $cfg->acquire(%args) on successful completion
 ##  + %args:
-##     targets   => $targets_str, ##-- overrides $mak->{targets}
-##     makefiles => \@makefiles,  ##-- makefiles (rules)
-##     userfile  => $userfile,    ##-- use $userfile to write variables (default=tmp)
+##     dir       => $dir,         ##-- overrides $cfg->{dir}
+##     targets   => $targets_str, ##-- overrides $cfg->{targets}
+##     makefiles => \@makefiles,  ##-- makefiles (rules) [relative to $dir]
+##     userfile  => $userfile,    ##-- use "$dir/$userfile" to write variables (default: temp file)
 ##     makeflags => $str,         ##-- additional flags to $MAKE
+##     dummy     => $bool,        ##-- only print make calls
 sub make {
-  my ($mak,%args) = @_;
-  my $targets   = $args{targets}   ? $args{targets}      : $mak->{targets};
+  my ($cfg,%args) = @_;
+
+  ##-- change to make-directory
+  $cfg->pushd($args{dir});
+
+  ##-- Get targets, makefiles
+  my $targets   = $args{targets}   ? $args{targets}      : $cfg->{targets};
   my @makefiles = $args{makefiles} ? @{$args{makefiles}} : glob('[Mm]akefile');
-  my $userfile  = $mak->writeUserMakefile($args{userfile});
+
+  ##-- Write user-config file
+  my $userfile  = $cfg->writeUserMakefile($args{userfile});
+
+  ##-- Ye Olde Guttes: call $MAKE
   my $cmd = ($MAKE
-	     .' '.join(' ', map { "-f$_" } ($userfile,@makefiles))
-	     .($args{makeflags} ? " $args{makeflags}" : '')
+	     .' '.join(' ', map { "-f '$_'" } ($userfile,@makefiles))
+	     .(defined($args{makeflags}) ? " $args{makeflags}" : '')
 	     .' '.$targets
 	    );
-  print STDERR ref($mak), "::make(): $cmd\n";
-  return (system($cmd)==0 && $mak->acquire(%args));
+  print STDERR ref($cfg), "::make(): $cmd\n";
+
+  my $rc = $args{dummy} ? $args{dummy} : (system($cmd)==0 && $cfg->acquire(%args));
+
+  ##-- restore last current directory from stack
+  $cfg->popd();
+
+  return $rc;
 }
 
 
 ##======================================================================
 ## Make: Acquire Data
 
-## $bool = $mak->acquire(%args)
-##  + called after successful $mak->make()
+## $bool = $cfg->acquire(%args)
+##  + called after successful $cfg->make()
 ##  + may be implemented in child classes for data acquisition
+##  + the process is already chdir()d to the $cfg->{dir} when this method is called!
 sub acquire { return 1; }
 
 

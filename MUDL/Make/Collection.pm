@@ -67,11 +67,11 @@ sub clear {
   my $mcol = shift;
 
   ##-- Variables
-  $mcol->{vars}->clear();
+  $mcol->{vars}->clear() if (defined($mcol->{vars}));
 
   ##-- Configs
-  %{$mcol->{uconfigs}} = qw();
-  %{$mcol->{xconfigs}} = qw();
+  %{$mcol->{uconfigs}} = qw() if ($mcol->{uconfigs});
+  %{$mcol->{xconfigs}} = qw() if ($mcol->{xconfigs});;
 
   return $mcol;
 }
@@ -167,6 +167,7 @@ sub ufind {
 ##  + implicitly parses $ukey if it is passed as a string (may be dangerous!)
 ##  + %args:
 ##     expand=>$bool, ##-- if true, newly created configs will be auto-expanded
+##     class=>$class, ##-- config class (default: MUDL::Make::Config)
 sub uget {
   my ($mcol,$uvars,%args) = @_;
   my ($ukey);
@@ -180,8 +181,8 @@ sub uget {
   return $mcol->{uconfigs}{$ukey} if (defined($mcol->{uconfigs}{$ukey}));
 
   ##-- auto-create new config
-  my $cfg = $mcol->{uconfigs}{$ukey} = MUDL::Make::Config->new(uvars => $uvars,
-							      );
+  my $class = $args{class} ? $args{class} : 'MUDL::Make::Config';
+  my $cfg = $mcol->{uconfigs}{$ukey} = $class->new(uvars => $uvars);
   $mcol->expandConfig($cfg) if ($args{expand});
 
   return $cfg;
@@ -315,6 +316,13 @@ sub ucollect { return $_[0]->collectConfigs($_[0]->usearch($_[1])); }
 
 ## $subcol = $mcol->xcollect($criterion)
 sub xcollect { return $_[0]->collectConfigs($_[0]->xsearch($_[1])); }
+
+
+##======================================================================
+## I/O: Native (perl)
+
+sub saveNativeFh { return $_[0]->savePerlFh(@_[1..$#_]); }
+sub loadNativeFh { return $_[0]->loadPerlFh(@_[1..$#_]); }
 
 
 1;

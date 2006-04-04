@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::MetaProfile::Attach.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -693,9 +693,14 @@ sub recluster {
 sub getSummaryInfo {
   my $mp = shift;
   my $info = {};
+
   $info->{stage} = $mp->{stage};
 
-  @$info{qw(d2p_n d2p_method)} = @{$mp->{cm}}{qw(d2pn d2pmethod)};
+  $info->{d2p_n} = $mp->{cm}{d2pn};
+  $info->{d2p_method} = $mp->{cm}{d2pmethod};
+  $info->{cddist} = $mp->{cm}->cddist;
+  $info->{cdmethod} = $mp->{cm}->cdmethod;
+
   $info->{prfType} = ref($mp->{prof});
   $info->{nTargets} = $mp->{tenum}->size;
   $info->{nBounds} = $mp->{benum}->size;
@@ -708,7 +713,7 @@ sub getSummaryInfo {
   my $ugs = $mp->{ugs_k}->slice("0:".($info->{nTargets_k}-1));
   @$info{qw(ugk_avg ugk_prms ugk_median ugk_min ugk_max ugk_adev ugk_rms)} = map { $_->sclr } $ugs->stats;
 
-  return $info;
+  return bless($info,'MUDL::Object');
 }
 
 

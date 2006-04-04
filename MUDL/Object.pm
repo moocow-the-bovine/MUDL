@@ -789,7 +789,7 @@ sub savePerlFile {
 sub savePerlFh {
   my ($obj,$fh) = splice(@_,0,2);
   my $dumper = Data::Dumper->new([$obj],[qw(obj)]);
-  $dumper->Purity(1)->Terse(1)->Sortkeys(1);
+  $dumper->Indent(1)->Purity(1)->Terse(1)->Sortkeys(1);
   $fh->print($dumper->Dump);
   return 1;
 }
