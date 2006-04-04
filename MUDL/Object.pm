@@ -327,6 +327,7 @@ sub saveXMLFh {
   %args = (compress=>undef, format=>0, %args);
   my $doc = $obj->saveXMLDoc(%args);
   $doc->setCompression($args{compress}) if (defined($args{compress}));
+  binmode($fh,$_) foreach ($args{iolayers} ? @{$args{iolayers}} : qw());
   $doc->toFH($fh, $args{format}) || return undef;
   return $doc;
 }
@@ -551,6 +552,7 @@ sub pdl2string {
   my $fh = IO::File->new("<$tmpfilename")
     or confess(__PACKAGE__, "::pdl2string(): could not open temp file '$tmpfilename': $!");
   binmode($fh);
+
   local $/ = undef;
   my $str = <$fh>;
   $fh->close();
@@ -583,26 +585,27 @@ sub saveBinString {
 ## $bool = $obj->saveBinFile($filename,@args)
 ##   + calls saveBinFh($fh)
 sub saveBinFile {
-  my ($obj,$file) = splice(@_,0,2);
+  my ($obj,$file,%args) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   if (!$fh) {
     confess( __PACKAGE__ , "::saveBinFile(): open failed for '$file': $!");
     return undef;
   }
-  binmode($fh);
-  #my $rc = saveBinFh($obj,$fh,@_); ## ??
-  my $rc  = $obj->saveBinFh($fh,@_);
+  binmode($fh,$_) foreach ($args{iolayers} ? @{$args{iolayers}} : qw());
+  my $rc  = $obj->saveBinFh($fh,%args);
   $fh->close() if (!ref($file));
   return $rc;
 }
 
 ## $bool = $obj->saveBinFh($fh,@args)
 sub saveBinFh {
-  my ($obj,$fh) = splice(@_,0,2);
+  my ($obj,$fh,%args) = @_;
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
 
   my $ref = ref($obj) ? $obj : \$obj;
-  $ref = $obj->saveBinRef(@_) if (UNIVERSAL::can($obj,'saveBinRef'));
+  $ref = $obj->saveBinRef(%args) if (UNIVERSAL::can($obj,'saveBinRef'));
+
+  binmode($fh,$_) foreach ($args{iolayers} ? @{$args{iolayers}} : qw());
 
   if (!Storable::store_fd($ref, $fh)) {
     confess( __PACKAGE__ , "::saveBinFh(): Storable::store_fd() failed.\n");
@@ -646,6 +649,7 @@ sub loadBinFile {
 sub loadBinFh {
   my ($obj,$fh) = splice(@_,0,2);
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
+  binmode($fh,":gzip(autopop)");
   if (!defined($ref=Storable::fd_retrieve($fh))) {
     confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;
@@ -679,13 +683,13 @@ sub saveNativeString {
 ## $bool = $obj->saveNativeFile($file,@args)
 ##  + calls saveNativeFh()
 sub saveNativeFile {
-  my ($obj,$file) = splice(@_,0,2);
+  my ($obj,$file,%args) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   if (!$fh) {
     confess( __PACKAGE__ , "::saveNativeFile(): open failed for '$file': $!");
     return undef;
   }
-  binmode($fh,':utf8');
+  binmode($fh,$_) foreach (':utf8', $args{iolayers} ? @{$args{iolayers}} : qw());
 
   my $rc = $obj->saveNativeFh($fh,@_);
   $fh->close() if (!ref($file));
@@ -729,7 +733,7 @@ sub loadNativeFile {
     confess( __PACKAGE__ , "::loadNativeFile(): open failed for '$file': $!");
     return undef;
   }
-  binmode($fh,':utf8');
+  binmode($fh,$_) foreach (qw(:utf8 :gzip(autopop)));
 
   my $rc = $obj->loadNativeFh($fh,@_);
   $fh->close() if (!ref($file));
@@ -787,9 +791,10 @@ sub savePerlFile {
 ## $bool = $obj->savePerlFh($fh,@args)
 ##  + uses Data::Dumper
 sub savePerlFh {
-  my ($obj,$fh) = splice(@_,0,2);
+  my ($obj,$fh,%args) = @_;
   my $dumper = Data::Dumper->new([$obj],[qw(obj)]);
   $dumper->Indent(1)->Purity(1)->Terse(1)->Sortkeys(1);
+  binmode($fh,$_) foreach ($args{iolayers} ? @{$args{iolayers}} : qw());
   $fh->print($dumper->Dump);
   return 1;
 }
@@ -833,6 +838,7 @@ sub loadPerlFile {
 ##  + calls loadPerlString()
 sub loadPerlFh {
   my ($obj,$fh) = @_;
+  eval { binmode($fh, ':gzip(autopop)'); };
   eval('{ no strict qw(vars); $obj='.join('',<$fh>).' }');
   if ($@) {
     carp(ref($obj)."::loadPerlFh(): error: $@");
@@ -860,9 +866,9 @@ sub ioModes {
 
 }
 
-## \%modeHash = $class_or_obj->ioModeHash($filenameInfix)
+## \%modeHash = $class_or_obj->ioModeHash($fileTypeInfix)
 ##  + populates a mode hash for $filenameInfix:
-##    (load|save)${filenameInfix}(String|File|Fh)
+##    (load|save)${fileTypeInfix}(String|File|Fh)
 sub ioModeHash {
   my $infix = $_[1];
   return
@@ -891,16 +897,25 @@ sub registerIOMode {
 
 
 ## \@fileSuffixModes = $class_or_obj->fileSuffixModes()
-##   + @fileSuffixModes = ( {regex=>$fileRegex, mode=>$ioModeStr}, ... )
+##   + @fileSuffixModes = ( {regex=>$fileRegex, mode=>$ioModeStr, iolayers=>\@ioLayers}, ... )
 ##   + subclasses *may* redefine this method directly, but use of
 ##     'registerFileSuffix()' is highly reccommended
 sub fileSuffixModes {
   return [
-	  {regex=>qr/\.bin$/i,    mode=>'bin'},
-	  {regex=>qr/\.xml$/i,    mode=>'xml'},
-	  {regex=>qr/\.native$/i, mode=>'native'},
-	  {regex=>qr/\.perl$/i,   mode=>'perl'},
-	  {regex=>qr/\.pl$/i,     mode=>'perl'},
+	  {regex=>qr/\.bin$/i,     mode=>'bin', iolayers=>[]},
+	  {regex=>qr/\.bin\.gz$/i, mode=>'bin', iolayers=>[':gzip']},
+
+	  {regex=>qr/\.xml$/i,     mode=>'xml', iolayers=>[]},
+	  {regex=>qr/\.xml\.gz$/i, mode=>'xml', iolayers=>[':gzip']},
+
+	  {regex=>qr/\.native$/i,     mode=>'native', iolayers=>[]},
+	  {regex=>qr/\.native\.gz$/i, mode=>'native', iolayers=>[':gzip']},
+
+	  {regex=>qr/\.perl$/i,     mode=>'perl', iolayers=>[]},
+	  {regex=>qr/\.perl\.gz$/i, mode=>'perl', iolayers=>[':gzip']},
+
+	  {regex=>qr/\.pl$/i,     mode=>'perl', iolayers=>[]},
+	  {regex=>qr/\.pl\.gz$/i, mode=>'perl', iolayers=>[':gzip']},
 	 ];
 }
 
@@ -962,29 +977,32 @@ sub loadGenericString {
 sub loadGenericFile {
   my ($that,$filename,%args) = @_;
   my $mode = $args{mode};
-  delete($args{mode});
+  my $iolayers = $args{iolayers};
+  delete(@args{qw(mode iolayers)});
 
   ##-- guess mode from filename suffix
   if (!defined($mode)) {
     my $suffs = $that->fileSuffixModes();
     foreach $suffSpec (@$suffs) {
       if ($filename =~ $suffSpec->{regex}) {
-	$mode = $suffSpec->{mode};
+	$mode     = $suffSpec->{mode};
+	$iolayers = $suffSpec->{iolayers} if (!$iolayers);
 	last;
       }
     }
   }
-  $mode = 'DEFAULT' if (!defined($mode));
+  $mode     = 'DEFAULT' if (!defined($mode));
+  $iolayers = [] if (!$iolayers);
 
-  ##-- first try file method directly
+  ##-- first try file method directly (and pass on 'iolayers' arg)
   if (defined($sub=$that->ioModes->{$mode}{loadFile})
       &&
       (ref($sub) || defined($sub=UNIVERSAL::can($that,$sub))))
     {
-      return $sub->($that,$filename,%args);
+      return $sub->($that,$filename,iolayers=>$iolayers,%args);
     }
 
-  ##-- get load sub: fallback to fh method
+  ##-- get load sub: fallback to fh method, setting I/O layers ourselves
   if (!defined($sub=$that->ioModes->{$mode}{loadFh})
       ||
       (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
@@ -999,7 +1017,7 @@ sub loadGenericFile {
     confess((ref($that)||$that) , "::loadGenericFile(): open failed for '$filename': $!");
     return undef;
   }
-  binmode($fh,':utf8');
+  binmode($fh, $_) foreach (':utf8', ':gzip(autopop)', @$iolayers);
 
   my $rc = $sub->($that, $fh, %args);
   $fh->close();
@@ -1012,7 +1030,8 @@ sub loadGenericFile {
 sub loadGenericFh {
   my ($that,$fh,%args) = @_;
   my $mode = defined($args{mode}) ? $args{mode} : 'DEFAULT';
-  delete($args{mode});
+  my $iolayers = $args{iolayers} ? $args{iolayers} : [];
+  delete(@args{qw(mode iolayers)});
 
   ##-- get load sub: fh method only
   if (!defined($sub=$that->ioModes->{$mode}{loadFh})
@@ -1022,6 +1041,9 @@ sub loadGenericFh {
       confess((ref($that)||$that), "::loadGenericFh(): could not find load sub for mode '$mode': $!");
       return undef;
     }
+
+  ##-- set I/O layers
+  binmode($fh, $_) foreach (':utf8', ':gzip(autopop)', @$iolayers);
 
   my $rc = $sub->($that, $fh, %args);
   $fh->close();
@@ -1076,26 +1098,29 @@ sub saveGenericString {
 sub saveGenericFile {
   my ($that,$filename,%args) = @_;
   my $mode = $args{mode};
-  delete($args{mode});
+  my $iolayers = $args{iolayers};
+  delete(@args{qw(mode iolayers)});
 
   ##-- guess mode from filename suffix
   if (!defined($mode)) {
     my $suffs = $that->fileSuffixModes();
     foreach $suffSpec (@$suffs) {
       if ($filename =~ $suffSpec->{regex}) {
-	$mode = $suffSpec->{mode};
+	$mode     = $suffSpec->{mode};
+	$iolayers = $suffSpec->{iolayers} if (!$iolayers);
 	last;
       }
     }
   }
   $mode = 'DEFAULT' if (!defined($mode));
+  $iolayers = [] if (!$iolayers);
 
-  ##-- get save sub: first try file method directly
+  ##-- get save sub: first try file method directly, passing on {iolayers}
   if (defined($sub=$that->ioModes->{$mode}{saveFile})
       &&
       (ref($sub) || defined($sub=UNIVERSAL::can($that,$sub))))
     {
-      return $sub->($that,$filename,%args);
+      return $sub->($that,$filename, iolayers=>$iolayers,%args);
     }
 
 
@@ -1114,9 +1139,8 @@ sub saveGenericFile {
     confess((ref($that)||$that) , "::saveGenericFile(): open failed for '$filename': $!");
     return undef;
   }
-  binmode($fh,':utf8');
 
-  my $rc = $sub->($that, $fh, %args);
+  my $rc = $sub->($that, $fh, iolayers=>[':utf8',$iolayers], %args);
   $fh->close();
   return $rc;
 }
@@ -1127,9 +1151,10 @@ sub saveGenericFile {
 sub saveGenericFh {
   my ($that,$fh,%args) = @_;
   my $mode = defined($args{mode}) ? $args{mode} : 'DEFAULT';
-  delete($args{mode});
+  my $iolayers = $args{iolayers} ? $args{iolayers} : [];
+  delete(@args{qw(mode iolayers)});
 
-  ##-- get load sub
+  ##-- get save sub
   if (!defined($sub=$that->ioModes->{$mode}{saveFh})
       ||
       (!ref($sub) && !defined($sub=UNIVERSAL::can($that,$sub))))
@@ -1138,7 +1163,7 @@ sub saveGenericFh {
       return undef;
     }
 
-  my $rc = $sub->($that, $fh, %args);
+  my $rc = $sub->($that, $fh, iolayers=>$iolayers, %args);
   $fh->close();
   return $rc;
 }
