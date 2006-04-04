@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::ITagEval.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -264,6 +264,16 @@ sub finish {
 }
 
 
+##======================================================================
+## Conversion: Summary
+
+## $summary = $eval->summary(%args)
+sub summary {
+  my ($eval,%args) = @_;
+  @$eval{keys %args} = values(%args);
+  return MUDL::Corpus::Profile::ITagEval::Summary->newFromEval($eval);
+}
+
 
 ##======================================================================
 ## I/O: Native (short summary)
@@ -271,74 +281,7 @@ sub finish {
 ## $bool = $obj->saveNativeFh($fh,@args)
 sub saveNativeFh {
   my ($eval,$fh,%args) = @_;
-  @$eval{keys %args} = values(%args);
-
-  my ($tag2);
-  $fh->print
-    ("\$precision=$eval->{precision};\n",
-     "\$recall=$eval->{recall};\n",
-     "\$avg_precision=$eval->{avg_precision};\n",
-     "\$avg_recall=$eval->{avg_recall};\n",
-     "\$total_precision=$eval->{total_precision};\n",
-     "\$total_recall=$eval->{total_recall};\n",
-
-     ($eval->{do_ambig}
-      ? (
-	 "\$ntypes=$eval->{ntypes};\n",
-	 "\$nanals1=$eval->{nanals1};\n",
-	 "\$nanals2=$eval->{nanals2};\n",
-	)
-      : qw()),
-
-     "\$tag2info={\n",
-     (map {
-       $tag2=$_;
-       (sprintf("   %8s=>{", "\'$tag2\'"),
-	join(', ',
-	     sprintf("freq=>%5d", $eval->{t2f}{$tag2}),
-	     sprintf("nclasses=>%3d", $eval->{t2nc}{$tag2}),
-	     sprintf("correct=>%5d", $eval->{t2cor}{$tag2}),
-	     sprintf("incorrect=>%5d", $eval->{t2inc}{$tag2}),
-	     sprintf("pr=>%0.4f", $eval->{t2pr}{$tag2}),
-	     sprintf("rc=>%0.4f", $eval->{t2rc}{$tag2}),
-	    ),
-	"},\n")
-     } sort(keys(%{$eval->{t2f}}))),
-     "  };\n",
-     "##", ("-" x 78), "\n",
-     "## ", ref($eval), " Summary\n",
-     "## Identifiers:\n",
-     "##   Got   : $eval->{label1}\n",
-     "##   Wanted: $eval->{label2}\n",
-     "## Num. Tokens              : ", sprintf("%6d", $eval->{ntoks}), "\n",
-     "## Num. Got->Wanted         : ", sprintf("%6d", $eval->{ntoks}*$eval->{precision}), "\n",
-     "## Num. Wanted->Got         : ", sprintf("%6d", $eval->{ntoks}*$eval->{recall}), "\n",
-     "##\n",
-
-     ($eval->{do_ambig}
-      ? (
-	 "## Num. Types               : ", sprintf("%6d",   $eval->{ntypes}), "\n",
-	 "## Ambiguity / Got          : ", sprintf("%6d  (%6.2f an/typ)", $eval->{nanals1}, $eval->{nanals1}/$eval->{ntypes}), "\n",
-	 "## Ambiguity / Wanted       : ", sprintf("%6d  (%6.2f an/typ)", $eval->{nanals2}, $eval->{nanals2}/$eval->{ntypes}), "\n",
-	 "##\n",
-	)
-      : qw()),
-
-     "## Meta-Precision           : ", sprintf("%6.2f %%", 100*$eval->{precision}), "\n",
-     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*$eval->{recall}), "\n",
-     "## Meta F                   : ", sprintf("%6.2f %%", 200/($eval->{precision}**-1 + $eval->{recall}**-1)), "\n",
-     "##\n",
-     "## Avg tag2-Precision       : ", sprintf("%6.2f %%", 100*$eval->{avg_precision}), "\n",
-     "## Avg tag2-Recall          : ", sprintf("%6.2f %%", 100*$eval->{avg_recall}), "\n",
-     "## Avg F                    : ", sprintf("%6.2f %%", 100*$eval->{avg_F}), "\n",
-     "##\n",
-     "## Total Precision          : ", sprintf("%6.2f %%", 100*$eval->{total_precision}), "\n",
-     "## Total Recall             : ", sprintf("%6.2f %%", 100*$eval->{total_recall}), "\n",
-     "## Total F                  : ", sprintf("%6.2f %%", 100*$eval->{total_F}), "\n",
-     "##", ("-" x 78), "\n",
-     "1;\n",
-    );
-
+  return $eval->summary(%args)->saveNativeFh($fh);
 }
 
 
@@ -359,6 +302,156 @@ sub helpString {
      .qq(  targets=ENUM [default=none (eval wrt all tokens)]\n)
      .qq(  targeta=ATTR [default=text]\n)
     );
+}
+
+########################################################################
+## CLASS: MUDL::Corpus::Profile::ITagEval::Summary
+########################################################################
+
+package MUDL::Corpus::Profile::ITagEval::Summary;
+our @ISA = qw(MUDL::Corpus::Profile::ITagEval);
+
+## $obj = $obj->new()
+sub new {
+  my $that = shift;
+  my $esum = $that->SUPER::new(@_);
+  delete(@$esum{qw(jdist enum do_ambig cr)});
+  return $esum;
+}
+
+## $esummary = $class_or_obj->newFromEval($itageval)
+sub newFromEval {
+  my ($that,$iteval) = @_;
+  return $that->new()->fromEval($iteval);
+}
+
+## $esummary = $esummary->fromEval($itageval)
+sub fromEval {
+  my ($esum,$eval) = @_;
+
+  ##-- duplicate some keys
+  my @dup = (
+	     qw(label1 label2),
+	     qw(precision recall),
+	     qw(avg_precision avg_recall avg_F),
+	     qw(total_precision total_recall total_F),
+	     qw(ntoks ntypes nanals1 nanals2),
+
+	     'tag12m', ##-- $tag1=>$best_tag2_for_tag1,
+	     'tag21m', ##-- $tag2=>$best_tag1_for_tag2,
+
+	     #'g2i',   ##-- $tag2=> [ $tag1 : bestmatch($tag1) == $tag2 ]
+	     #'t2f',   ##-- $tag2=>$freq{$tag2}
+	     #'t2nc',  ##-- $tag2=>$nclasses{$tag2}
+	     #'t2cor', ##-- $tag2=>$ncorrect{$tag2}
+	     #'t2inc', ##-- $tag2=>$nincorrect{$tag2},
+	     #'t2pr',  ##-- $tag2=>$precision{$tag2},
+	     #'t2rc',  ##-- $tag2=>$recall{$tag2},
+	     #'t2F',   ##-- $tag2=>$F{$tag2} == 1/( .5*1/$pr + .5*1/$rc ) == 2/($pr**-1 + $rc**-1)
+	    );
+  @$esum{@dup} = @$eval{@dup};
+
+  ##-- generate new keys: ambiguity info
+  my ($tag2);
+  $esum->{tag2info} = {
+		       map {
+			 $_=>{
+			      (
+			       freq=>$eval->{t2f}{$_},
+			       nclasses=>$eval->{t2nc}{$_},
+			       correct=>$eval->{t2cor}{$_},
+			       incorrect=>$eval->{t2inc}{$_},
+			       pr=>$eval->{t2pr}{$_},
+			       rc=>$eval->{t2rc}{$_},
+			       F=>$eval->{t2F}{$_},
+			      )
+			     }
+		       } keys(%{$eval->{t2f}})
+		      };
+
+  ##-- generate new keys: meta-F
+  $esum->{F} = 2.0/($eval->{precision}**-1 + $eval->{recall}**-1);
+
+  ##-- generate new keys: ambiguity rates
+  $esum->{arate1} = $eval->{nanals1}/$eval->{ntypes} if ($eval->{ntypes});
+  $esum->{arate2} = $eval->{nanals2}/$eval->{ntypes} if ($eval->{ntypes});
+
+  return $esum;
+}
+
+##======================================================================
+## I/O: Native
+
+## $bool = $obj->saveNativeFh($fh,@args)
+sub saveNativeFh {
+  my ($esum,$fh,%args) = @_;
+  @$esum{keys %args} = values(%args);
+
+  my ($tag2);
+  $fh->print
+    ("\$precision=$esum->{precision};\n",
+     "\$recall=$esum->{recall};\n",
+     "\$avg_precision=$esum->{avg_precision};\n",
+     "\$avg_recall=$esum->{avg_recall};\n",
+     "\$total_precision=$esum->{total_precision};\n",
+     "\$total_recall=$esum->{total_recall};\n",
+
+     (defined($esum->{ntypes})  ? "\$ntypes=$esum->{ntypes};\n" : qw()),
+     (defined($esum->{nanals1}) ? "\$nanals1=$esum->{nanals1};\n" : qw()),
+     (defined($esum->{nanals2}) ? "\$nanals2=$esum->{nanals2};\n" : qw()),
+
+     "\$tag2info={\n",
+     (map {
+       (sprintf(" %8s=>{", "\'$_\'"),
+	join(', ',
+	     sprintf("freq=>%5d", $esum->{tag2info}{$_}{freq}),
+	     sprintf("nclasses=>%3d", $esum->{tag2info}{$_}{nclasses}),
+	     sprintf("correct=>%5d", $esum->{tag2info}{$_}{correct}),
+	     sprintf("incorrect=>%5d", $esum->{tag2info}{$_}{incorrect}),
+	     sprintf("pr=>%0.4f", $esum->{tag2info}{$_}{pr}),
+	     sprintf("rc=>%0.4f", $esum->{tag2info}{$_}{rc}),
+	     sprintf("F =>%0.4f", $esum->{tag2info}{$_}{F}),
+	    ),
+	"},\n")
+     } sort(keys(%{$esum->{tag2info}}))),
+     "  };\n",
+     "##", ("-" x 78), "\n",
+     "## ", ref($esum), " Summary\n",
+     "## Identifiers:\n",
+     "##   Got   : $esum->{label1}\n",
+     "##   Wanted: $esum->{label2}\n",
+     "## Num. Tokens              : ", sprintf("%6d", $esum->{ntoks}), "\n",
+     "## Num. Got->Wanted         : ", sprintf("%6d", $esum->{ntoks}*$esum->{precision}), "\n",
+     "## Num. Wanted->Got         : ", sprintf("%6d", $esum->{ntoks}*$esum->{recall}), "\n",
+     "##\n",
+
+     (defined($esum->{ntypes})
+      ? ("## Num. Types               : ", sprintf("%6d\n",   $esum->{ntypes}))
+      : qw()),
+     (defined($esum->{nanals1}) && defined($esum->{arate1})
+      ? ("## Ambiguity / Got          : ", sprintf("%6d  (%6.2f an/typ)\n", $esum->{nanals1}, $esum->{arate1}))
+      : qw()),
+     (defined($esum->{nanals2}) && defined($esum->{arate2})
+      ? ("## Ambiguity / Wanted       : ", sprintf("%6d  (%6.2f an/typ)\n", $esum->{nanals2}, $esum->{arate2}))
+      : qw()),
+
+     "##\n",
+
+     "## Meta-Precision           : ", sprintf("%6.2f %%", 100*$esum->{precision}), "\n",
+     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*$esum->{recall}), "\n",
+     "## Meta F                   : ", sprintf("%6.2f %%", 100*$esum->{F}), "\n",
+     "##\n",
+     "## Avg tag2-Precision       : ", sprintf("%6.2f %%", 100*$esum->{avg_precision}), "\n",
+     "## Avg tag2-Recall          : ", sprintf("%6.2f %%", 100*$esum->{avg_recall}), "\n",
+     "## Avg F                    : ", sprintf("%6.2f %%", 100*$esum->{avg_F}), "\n",
+     "##\n",
+     "## Total Precision          : ", sprintf("%6.2f %%", 100*$esum->{total_precision}), "\n",
+     "## Total Recall             : ", sprintf("%6.2f %%", 100*$esum->{total_recall}), "\n",
+     "## Total F                  : ", sprintf("%6.2f %%", 100*$esum->{total_F}), "\n",
+     "##", ("-" x 78), "\n",
+     "1;\n",
+    );
+
 }
 
 
