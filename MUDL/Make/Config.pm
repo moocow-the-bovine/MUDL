@@ -74,6 +74,19 @@ sub clear {
 }
 
 ##======================================================================
+## Constructor: shadow
+
+## $cfg2 = $cfg->copyBrief(\@user_vars_to_keep)
+sub copyBrief {
+  my ($cfg,$keepvars) = @_;
+  my $cfg2 = ref($cfg)->new(%$cfg);
+  $cfg2->{uvars} = { map { $_=>$cfg2->{uvars}{$_} } @$keepvars };
+  #$cfg2->{xvars} = {};
+  return $cfg2;
+}
+
+
+##======================================================================
 ## Identification: key-generation
 
 ## $key = $cfg->key(\%var2val)

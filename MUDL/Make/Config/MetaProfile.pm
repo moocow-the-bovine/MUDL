@@ -143,7 +143,7 @@ Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
+Copyright (c) 2006, Bryan Jurish.  All rights reserved.
 
 This package is free software.  You may redistribute it
 and/or modify it under the same terms as Perl itself.
