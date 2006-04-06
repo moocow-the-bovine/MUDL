@@ -34,6 +34,7 @@ sub new {
 			   ##-- Collection
 			   col=>undef,
 			   colfile=>undef,
+			   coldigest=>'',
 			   dir=>'..',
 			   varfile=>'../Default.mak',
 			   userfile=>'user.mak',
