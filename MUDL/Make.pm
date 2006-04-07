@@ -15,16 +15,156 @@ our @ISA = qw(MUDL::Object Exporter);
 
 ##======================================================================
 ## Globals
+
+##---------------------------------------------------------------
+## Globals: Field Aliases
+
+## %FIELDS: ( $fieldName => \%fieldData, ..., $aliasName=>$fieldName, )
+##  + %fieldData keys:
+##     path => \@path,    ##-- nested MUDL::Make::Config key-path
+##     n    => $bool,     ##-- true iff numeric
+##     fmt  => $how,      ##-- sprintf template for tabular formatting (default='auto')
+##     title => $title,   ##-- field title (for tab)
+##     alt   => \@titles, ##-- alternative titles
+##     eval  => $eval,    ##-- eval() for value adjustment
+##     ....
+our %FIELDS =
+  (
+   ##-- Pseudo-fields
+   'all'  => undef,   ##-- all user-defined fields in selection
+   'auto' => undef,   ##-- all user-defined fields in selection which actually vary
+
+   ##-- Action-specific field aliases
+   'listDefault' => [ qw(auto) ],
+   'sortDefault' => [ qw(stage emi corpus pr/g rc/g pr/t rc/t auto) ],
+   'summarizeDefault' => [
+			  'stage.emi',
+			  'corpus',
+			  #'lang',
+			  'lrlabel',
+			  #':',
+			  'auto',
+			  '|',
+			  'pr/g',
+			  'ar/g',
+			  '|',
+			  'pr/t',
+			  'ar/t',
+			 ],
+   default=>'summarizeDefault',
+
+
+   ##-- Filler(s)
+   ':'    => { path=>[], eval=>'":"', title=>':', },
+   '::'   => { path=>[], eval=>'"::"', title=>'::', },
+   '='    => { path=>[], eval=>'"="', title=>'=', },
+   '/'    => { path=>[], eval=>'"/"', title=>'/', },
+   '|'    => { path=>[], eval=>'"|"', title=>'|', },
+   '&'    => { path=>[], eval=>'"&"', title=>'&', },
+   '\\'   => '\\\\',
+   '\\\\' => { path=>[], eval=>'"\\\\\\\\"', title=>'\\\\', },
+
+   ##-- MetaProfile: label
+   lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlab',
+		alt=>[qw(xvars->lrwhich xvars->tcd xvars->tcm xvars->tccd xvars->tccm)],
+	      },
+   lrlab   => 'lrlabel',
+
+   ##-- Corpus
+   corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
+	       alt=>[qw(xvars->icorpus xvars->icbase xvars->tcorpus)],
+	     },
+   lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lang',
+	       eval=>'$_ =~ /^[uz]/ ? "de" : "en"',
+	     },
+
+   ##-- MetaProfile: numeric indices
+   'stage' => { path=>[qw(xvars stage)], n=>1, fmt=>'%-2d', title=>'stg',
+		alt=>[qw(xvars->stage)],
+	      },
+   'emi'   => { path=>[qw(xvars emi)],   n=>1, fmt=>'%-2d', title=>'emi',
+		alt=>[qw(xvars->emi)],
+	      },
+   'stage.emi' => {
+		   path=>[qw(xvars)],
+		   n=>0,
+		   fmt=>'%5.2f',
+		   eval=>'sprintf("%2d.%02d", $_->{stage}, $_->{emi})',
+		   title=>'stg.emi',
+		   alt=>[qw(xvars->stage xvars->emi stg emi)],
+		  },
+
+   ##-- Eval: Global
+   'pr/g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' pr/g'},
+   'rc/g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' rc/g'},
+   'F/g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' F/g' },
+   'ar/g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%6.3f', eval=>'0+$_',  title=>' ar/g'},
+
+   ##-- Eval: Global (+units)
+   'pr/g%'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' pr/g'},
+   'rc/g%'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' rc/g'},
+   'F/g%'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' F/g' },
+   'ar/g%' => { path=>[qw(eval_global arate1)],  n=>1, fmt=>'%6.3f a/tok', eval=>'0+$_', title=>' ar/g'},
+
+   ##-- Eval: Targets
+   'pr/t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' pr/t'},
+   'rc/t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' rc/t'},
+   'F/t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' F/t' },
+   'ar/t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%6.3f', eval=>'0+$_', title=>' ar/t'},
+
+   ##-- Eval: Targets (+units)
+   'pr/t%'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' pr/t'},
+   'rc/t%'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' rc/t'},
+   'F/t%'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' F/t' },
+   'ar/t%'  => { path=>[qw(eval_targets arate1)], n=>1, fmt=>'%6.3f a/tok', eval=>'0+$_', title=>' ar/t'},
+  );
+
+
+##---------------------------------------------------------------
+## Globals: Action Table
+##  %ACTIONS = { $actName => \%actHash, ... }
+##   + %actHash keys:
+##       syntax=>$help_syntax,
+##       help=>$one_line_help_string,
+##       code=>\&code,                  ##-- called as $code->($mak,$actName,$actArgStr)
+##       ...
+##   + data: see below
+our %ACTIONS = qw();
+
+##---------------------------------------------------------------
+## Globals: programs
+
 #our $MAKE  = 'env -i make'; ##-- PDL doesn't like empty environment at all (kira)
 our $MAKE  = 'make';
 
+##---------------------------------------------------------------
+## Globals: Verbosity levels
+
+our %VLEVELS =
+  (
+   'silent'=>0,
+   'error'=>1,
+   'warn'=>2,
+   'info'=>3,
+   'debug'=>255,
+
+   'DEFAULT'=>3,
+  );
+
+##---------------------------------------------------------------
+## Globals: Exporter
 our %EXPORT_TAGS =
   (
-   progs=>[qw($MAKE)],
+   'programs'=>[qw($MAKE)],
+   'progs'=>[qw($MAKE)],   ##-- backwards-compatibility
+
+   'vlevels'=>[qw(%VLEVLES)],
+   'fields'=>[qw(%FIELDS)],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK    = @{$EXPORT_TAGS{all}};
 our @EXPORT       = qw();
+
 
 ##======================================================================
 ## Constructor (inherited)
@@ -40,91 +180,99 @@ sub new {
 			   userfile=>'user.mak',
 			   colmd5=>'', ##-- MD5 digest for collection file
 
-			   ##-- Selection & sorting
+			   ##-- Selection (subcollection)
 			   selected=>undef,
-			   sortby=>[
-				    'stage',
-				    'emi',
-				    'pr',
-				    'rc',
-				    'tgpr',
-				    'tgrc',
-				   ],
 
-			   ##-- Summarization
-			   display=>[
-				     'stage.emi',
-				     'lrlabel',
-				     ':',
-				     'auto',
-				     ':',
-				     'pr/g',
-				     'pr/t',
-				     #'ar/g',
-				     #'ar/t',
-				    ],
+			   ##-- Sorting (field-spec)
+			   sortby => 'sortDefault',
 
-			   display_no_auto=>{
-					     map { $_=>undef }
-					     (
-					      'xvars->stage',
-					      'xvars->emi',
-					      'xvars->lrwhich',
-					      'xvars->tcd',
-					      'xvars->tcm',
-					      'xvars->tccd',
-					      'xvars->tccm',
-					      'xvars->lrlabel',
-					      'xvars->icorpus',
-					      'xvars->tbase',
-					      'xvars->tcorpus',
-					     ),
-					    },
+			   ##-- Summarization (field-spec)
+			   summarize => 'summarizeDefault',
+
+			   ##-- don't auto-display these potential fields (titles)
+			   summarize_no_auto=>{
+					       map { $_=>undef }
+					       (
+						'xvars->stage',
+						'xvars->emi',
+						'xvars->lrwhich',
+						'xvars->tcd',
+						'xvars->tcm',
+						'xvars->tccd',
+						'xvars->tccm',
+						'xvars->lrlabel',
+						'xvars->icorpus',
+						'xvars->tbase',
+						'xvars->tcorpus',
+					       ),
+					      },
 
 			   ##-- Status
-			   #dirty=>0,    ##-- true if changes MAY have been made to collection
 			   changed=>0,  ##-- true if changes are KNOWN to have been made to collection
 			   loaded=>0,   ##-- true if collection is loaded
-			   paranoid=>1, ##-- set to true to backup old collection files
+			   paranoid=>0, ##-- set to true to backup old collection files
 
 			   ##-- Dummy?
 			   dummy=>0,
+			   verbose=>$VLEVELS{DEFAULT},
 
 			   ##-- User args
 			   @_,
 			  );
 }
 
-########################################################################
+##======================================================================
+## Verbose messages
+
+# undef = $mak->vmsg($level,@msg)
+#  + print @msg to STDERR if $mak->{verbose} >= $level
+sub vmsg {
+  my ($mak,$level,@msg) = @_;
+  $level = $VLEVELS{$level} if (exists($VLEVELS{$level}));
+  print STDERR @msg if ($mak->{verbose} >= $level);
+}
+
+
+##======================================================================
 ## ACTIONS: General
-########################################################################
-
 ##======================================================================
-## Actions: alias table
-our %ACTIONS = qw();
 
-$ACTIONS{null} = $ACTIONS{dummy} = $ACTIONS{','} =
-  { syntax=>'null', help=>'no action', code=>sub { return 1; }, };
+##---------------------------------------------------------------
+## Actions: General: parse action
+
+## ($act,$argstr) = $mak->parseAction($action)
+##  + basically just an alias for split(/[\,\:\=\s]+/,$action,2)
+sub parseAction {
+  my ($mak,$action) = @_;
+  return split(/[\s\,\:\=]+/,$action,2);
+  #my ($actstr,$argstr) = split(/[\s\,\:\=]+/,$action,2);
+  #my @args = defined($argstr) && $argstr ne '' ? eval qq($argstr) : qw();
+  #return ($actstr,defined($argstr) ? $argstr : '');
+}
 
 
-##======================================================================
-## Actions: perform
+##---------------------------------------------------------------
+## Actions: General: perform action
 
-## $bool = $mak->perform($action,\@ARGV);
+## $bool = $mak->perform($actName,$actArgStrOrUndef);
 sub perform {
-  my ($mak,$act,$argv) = @_;
-  my $acth = $act;
+  my ($mak,$actName,$actArg) = @_;
+  my $acth = $actName;
   $acth = $ACTIONS{$acth} while (defined($ACTIONS{$acth}));
 
   my $code = ref($acth) ? $acth->{code} : $mak->can($acth);
   if (!defined($code)) {
-    carp(ref($mak),"::perform($act): skipping unknown action");
+    carp(ref($mak),"::perform($actName,$actArg): skipping unknown action");
     return 0;
   }
 
   ##-- perform the action
-  return $code->($mak,$argv);
+  $mak->vmsg('info', ref($mak), ": perform($actName", (defined($actArg) ? ", '$actArg'" : ''), ")\n");
+  return $code->($mak,$actArg);
 }
+
+##---------------------------------------------------------------
+## Actions: help
 
 $ACTIONS{which} = $ACTIONS{help} =
   {
@@ -146,11 +294,18 @@ sub actHelp {
 }
 
 
-########################################################################
-## ACTIONS: Specific
-########################################################################
-
 ##======================================================================
+## ACTIONS: Specific
+##======================================================================
+
+##---------------------------------------------------------------
+## Actions: dummy
+
+$ACTIONS{null} = $ACTIONS{dummy} = $ACTIONS{','} =
+  { syntax=>'null', help=>'no action', code=>sub { return 1; }, };
+
+
+##---------------------------------------------------------------
 ## Actions: initialize
 
 ## $mak->initCollection();
@@ -173,12 +328,11 @@ sub actInitialize {
     or confess(ref($mak)."::actInitialize(): could not parse variables file '$mak->{varfile}'");
 
   $mak->{loaded} = 1;
-  #$mak->{dirty}  = 1;
 
   return 1;
 }
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: ensure loaded
 
 $ACTIONS{ensure} =
@@ -189,7 +343,7 @@ $ACTIONS{ensure} =
   };
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: save (explicit)
 
 
@@ -200,11 +354,11 @@ $ACTIONS{save} =
    code  => \&actSave,
   };
 sub actSave {
-  my ($mak,$argv) = @_;
-  return $mak->ensureLoaded && $mak->{col}->saveFile(shift(@$argv));
+  my ($mak,$file) = @_;
+  return $mak->ensureLoaded && $mak->{col}->saveFile($file);
 }
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: select
 
 ## $subcol = $mak->selected()
@@ -221,9 +375,9 @@ $ACTIONS{xselect} =
    code  => \&actSelectExtended,
   };
 sub actSelectExtended {
-  my ($mak,$argv) = @_;
+  my ($mak,$crit) = @_;
   ($mak->ensureLoaded()
-   && ($mak->{selected} = $mak->{col}->xcollect(shift(@$argv))));
+   && ($mak->{selected} = $mak->{col}->xcollect($crit)));
 }
 
 $ACTIONS{select} = $ACTIONS{uselect} = 
@@ -233,12 +387,12 @@ $ACTIONS{select} = $ACTIONS{uselect} =
    code  => \&actSelectUser,
   };
 sub actSelectUser {
-  my ($mak,$argv) = @_;
+  my ($mak,$crit) = @_;
   ($mak->ensureLoaded()
-   && ($mak->{selected} = $mak->{col}->ucollect(shift(@$argv))));
+   && ($mak->{selected} = $mak->{col}->ucollect($crit)));
 }
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: expand
 
 $ACTIONS{expandAll} =
@@ -262,7 +416,7 @@ sub actExpandMissing {
 }
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: refresh
 
 $ACTIONS{refreshVars} =
@@ -284,7 +438,7 @@ sub actRefreshVars {
 }
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: eval CODE
 
 $ACTIONS{eval} =
@@ -293,13 +447,11 @@ $ACTIONS{eval} =
     code  => \&actEval,
   };
 sub actEval {
-  my ($mak,$argv) = @_;
-  my $code = shift(@$argv);
+  my ($mak,$code) = @_;
   return 0 if (!$mak->ensureLoaded);
 
   my $col = $mak->{col};
   my $mcol = $mak->{col};
-  #$mak->{dirty} = 1;
 
   eval "{ no strict; $code; }";
   if ($@) {
@@ -310,7 +462,7 @@ sub actEval {
 }
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: do FILE
 
 $ACTIONS{do} = $ACTIONS{require} = $ACTIONS{read} = 
@@ -320,8 +472,7 @@ $ACTIONS{do} = $ACTIONS{require} = $ACTIONS{read} =
   };
 
 sub actDoFile {
-  my ($mak,$argv) = @_;
-  my $file = shift(@$argv);
+  my ($mak,$file) = @_;
   return 0 if (!$mak->ensureLoaded);
 
   my $fh = IO::File->new("<$file")
@@ -336,61 +487,42 @@ sub actDoFile {
     return 0;
   }
 
-  #$mak->{dirty} = 1;
   return $rc;
 }
 
-##======================================================================
-## Actions: list: sort priority
+##---------------------------------------------------------------
+## Actions: default sort priority
 
 $ACTIONS{sortby} = $ACTIONS{priority} =
   {
-   syntax=>'priority FIELD_1(FLAGS_1), ..., FIELD_N(FLAGS_N)',
+   syntax=>'sortby [FIELD,...] ',
    help=>'set sort-priority.  Flags: "n"=numeric, ...?',
    code=>\&actSortBy,
   };
-
 sub actSortBy {
-  my ($mak,$argv) = @_;
-  unshift(@{$mak->{sortby}}, $mak->fields(shift(@$argv)));
+  my ($mak,@ufields) = @_;
+  $mak->{sortby} = [
+		    $mak->fields([grep { defined($_) && $_ ne '' } @ufields],
+				 #configs=>[values(%{$mak->selected->{uconfigs}})],
+				)
+		   ];
   return 1;
 }
 
 
-##======================================================================
-## Actions: list: long
 
-$ACTIONS{listVerbose} = $ACTIONS{listLong} = $ACTIONS{ll} =
-  {
-   syntax=>'listLong',
-   help=>'list selected configurations (long)',
-   code=>\&actListLong,
-  };
-
-sub actListLong {
-  my $mak = shift;
-  return 0 if (!$mak->ensureLoaded);
-  my @configs = $mak->sortSelection();
-  if (@configs) {
-    print map { ("  ", $mak->{col}->ukey($_), "\n") } @configs;
-  } else {
-    print "  (no configurations selected)\n";
-  }
-  return 1;
-}
-
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: list: brief
 
-$ACTIONS{listBrief} = $ACTIONS{list} = $ACTIONS{ls} =
+$ACTIONS{list} = $ACTIONS{ls} =
   {
-   syntax=>'list',
+   syntax=>'list [FIELD,...]',
    help=>'list selected configurations (brief)',
-   code=>\&actListBrief,
+   code=>\&actList,
   };
 
-sub actListBrief {
-  my $mak = shift;
+sub actList {
+  my ($mak,$fields) = @_;
   return 0 if (!$mak->ensureLoaded);
 
   my @configs = values(%{$mak->selected->{uconfigs}});
@@ -398,111 +530,110 @@ sub actListBrief {
     print "  (no configurations selected)\n";
     return 1;
   }
-  my @avars = $mak->activeVariables(\@configs);
-
-  ##-- get brief pseudo-configs
-  my @bconfigs = map { $_->copyBrief(\@avars) } @configs;
+  $fields = 'listDefault' if (!$fields);
+  my @fields = $mak->fields($fields,
+			    configs=>\@configs,
+			    #noauto=>$mak->{summarize_no_auto},
+			   );
 
   print
     (
-     map { ("  ", $mak->{col}->ukey($_), "\n") }
-    $mak->sortConfigs(@bconfigs)
+     map { ("  ", $mak->listKey($_, (map { $_->{title} } @fields)), "\n") }
+     map { $mak->configFields($_,@fields) }
+     $mak->sortConfigs(\@configs,
+		       sortby=>$mak->{sortby}
+		       #sortby=>\@fields,
+		      )
     );
 
   return 1;
 }
 
-##======================================================================
+## $listKey = $mak->listKey($field2val)
+## $listKey = $mak->listKey($field2val, @titles)
+sub listKey {
+  my ($mak,$field2val,@titles) = @_;
+  @titles = sort(keys(%$field2val)) if (!@titles);
+  return join(' ', map { ($_
+			  .'='
+			  .(defined($field2val->{$_}) ? $field2val->{$_} :'-undef-')
+			 )
+		       } @titles);
+}
+
+##---------------------------------------------------------------
 ## Actions: Summarize (ASCII table format)
 
 $ACTIONS{summarize} = $ACTIONS{summary} = $ACTIONS{table} = $ACTIONS{tab} =
   {
-   syntax=>'summary',
+   syntax=>'summarize [FIELD,...]',
    help=>'summarize selected configurations (table-format)',
    code=>\&actSummary,
   };
 
 sub actSummary {
-  my $mak = shift;
+  my ($mak,$fields) = shift;
   return 0 if (!$mak->ensureLoaded);
 
   my @configs = values(%{$mak->selected->{uconfigs}});
   if (!@configs) {
-    print STDERR ref($mak),"::actSummary(): no configurations selected\n";
+    $mak->vmsg('warn', ref($mak),"::actSummary(): no configurations selected\n");
     return 1;
   }
 
-  ##-- get active variables
-  my @avars   = $mak->activeVariables(\@configs);
+  $fields = 'summarizeDefault' if (!$fields);
+  my @fields = $mak->fields($fields,
+			    configs=>\@configs,
+			    noauto=>$mak->{summarize_no_auto},
+			   );
 
-  ##-- get display fields
-  my @dfields_literal = $mak->fields( grep {$_ ne 'auto'} @{$mak->{display}} );
-  my %lit2field        = map { $mak->fieldTitle($_)=>$_ } @dfields_literal;
-
-  my @dfields_auto = $mak->fields(map {"xvars->$_"} sort(@avars));
-  my %auto2field   = map { $mak->fieldTitle($_)=>$_ } @dfields_auto;
-
-  ##-- avoid auto-display of some fields
-  delete(@auto2field{ keys(%{$mak->{display_no_auto}}), keys(%lit2field) });
-  @dfields_auto = @auto2field{sort(keys(%auto2field))};
-
-  ##-- get list of fields to display
-  my @fields = @dfields_literal;
-  foreach (0..$#{$mak->{display}}) {
-    if ($mak->{display}[$_] eq 'auto') {
-      splice(@fields,$_,0, @dfields_auto);
-      last;
-    }
-  }
-
-  ##-- get brief config list
-  my @bconfigs = map { $_->copyBrief(\@avars) } @configs;
+  ##-- get list of field-value configs
+  my %cfg2cf  = map { ($_=>$mak->configFieldStrings($_,@fields)) } @configs;
 
   ##-- Summarize: step 1: get field lengths
-  my %title2len = map { $_->{flags}{title}=>length($_->{flags}{title}) } @fields;
-  my ($cfg,$cfields,$field,$fval,$ftitle);
-  foreach $cfg (@bconfigs) {
-    $cfields = $cfg->{cfields} = {};
+  my %title2len = map { $_->{title}=>length($_->{title}) } @fields;
+  my ($cf,$field,$ftitle);
+  foreach $cf (values(%cfg2cf)) {
     foreach $field (@fields) {
-      $ftitle = $field->{flags}{title};
-      $fval   = $cfields->{$ftitle} = $mak->fieldValueString($cfg,$field);
-      $title2len{$ftitle} = length($fval) if (length($fval) > $title2len{$ftitle});
+      $ftitle = $field->{title};
+      $title2len{$ftitle} = length($cf->{$ftitle}) if (length($cf->{$ftitle}) > $title2len{$ftitle});
     }
   }
 
   ##-- Summarize: step 2: get sprintf() format
-  my $fmt    = ' '.join(' ', map { '%'.$title2len{$_->{flags}{title}}.'s' } @fields)."\n";
+  my $indent = ' ';
+  my $fmt    = $indent.join(' ', map { '%'.$title2len{$_->{title}}.'s' } @fields)."\n";
   my $linewd = 1;
   $linewd += $_+1 foreach (values(%title2len));
+  my $hrule  = $indent . ('-' x $linewd);
 
   ##-- Summarize: step 2: print headers
   print
     (
      ##-- hrule
-     ' ', ('-' x $linewd), "\n",
+     $hrule, "\n",
 
      ##-- header
-     sprintf($fmt, map { $_->{flags}{title} } @fields),
+     sprintf($fmt, map { $_->{title} } @fields),
 
      ##-- hrule
-     ' ', ('-' x $linewd), "\n",
+     $hrule, "\n",
     );
 
   ##-- Summarize: step 3: print configs
-  foreach $cfg ($mak->sortConfigs(@bconfigs)) {
-    print sprintf($fmt, map { $cfg->{cfields}{$_->{flags}{title}} } @fields);
+  my ($cfg);
+  foreach $cfg ($mak->sortConfigs(\@configs)) {
+    $cf = $cfg2cf{$cfg};
+    print sprintf($fmt, map { $cf->{$_->{title}} } @fields);
   }
 
-
-  print
-    ##-- hrule
-     ' ', ('-' x $linewd), "\n";
+  print $hrule, "\n";
 
   return 1;
 }
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Actions: make
 
 $ACTIONS{make} = $ACTIONS{acquire} =
@@ -518,21 +649,19 @@ sub actMake {
   foreach (values(%{$mak->selected()->{uconfigs}})) {
     $rc &&= $_->make( dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
     if (!$mak->{dummy}) {
-      #$mak->{dirty} = 1;
       $mak->syncCollection() if ($mak->{paranoid});
     }
   }
-  #$mak->{dirty} = 1 if (!$mak->{dummy});
   return $rc;
 }
 
 
 
-########################################################################
-## UTILITIES
-########################################################################
-
 ##======================================================================
+## UTILITIES
+##======================================================================
+
+##---------------------------------------------------------------
 ## Utilities: search
 
 ## $cfg = $mcol->ufind(\%vars)
@@ -557,7 +686,6 @@ sub uget {
   my $cfg = $mak->{col}->ufind($uvars);
   if (!defined($cfg)) {
     $cfg = $mak->{col}->uget($uvars,expand=>1,%args);
-    #$mak->{dirty} = 1;
   }
   return $cfg;
 }
@@ -571,82 +699,132 @@ sub xfind {
   return $mak->{col}->xfind(@_);
 }
 
-##======================================================================
+##---------------------------------------------------------------
 ## Utilities: fields (sort, display)
 
-## %FIELD_ALIAS: $pseudoKey=>{ key=>\@nestedKeys, flags=>$sortByFlags, ... }
-our %FIELD_ALIAS =
-  (
-   ##-- Filler(s)
-   ':'     => { key=>[], flags=>{eval=>'":"', title=>':'}, },
 
-   ##-- MetaProfile: label
-   lrlabel => { key=>[qw(xvars lrlabel)], flags=>{n=>0, fmt=>'auto', title=>'lrlab'} },
-   lrlab   => { key=>[qw(xvars lrlabel)], flags=>{n=>0, fmt=>'auto', title=>'lrlab'} },
-
-   ##-- MetaProfile: numeric indices
-   'stage' => { key=>[qw(xvars stage)], flags=>{n=>1, fmt=>'%-2d', title=>'stg'} },
-   'emi'   => { key=>[qw(xvars emi)],   flags=>{n=>1, fmt=>'%-2d', title=>'emi'} },
-   'stage.emi' => {
-		   key=>[qw(xvars)],
-		   flags=>{
-			   n=>0,
-			   fmt=>'%5.2f',
-			   eval=>'sprintf("%2d.%02d", $_->{stage}, $_->{emi})',
-			   title=>'stg.emi',
-			  },
-		  },
-
-   ##-- Eval: Global
-   'pr/g'  => { key=>[qw(eval_global precision)], flags=>{n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>'pr/g'} },
-   'rc/g'  => { key=>[qw(eval_global recall)],    flags=>{n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>'rc/g'} },
-   'F/g'   => { key=>[qw(eval_global F)],         flags=>{n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>'F/g' } },
-   'ar/g'  => { key=>[qw(eval_global arate1)],    flags=>{n=>1, fmt=>'%7.4f', eval=>'0+$_',   title=>'ar/g'} },
-
-   ##-- Eval: Targets
-   'pr/t'  => { key=>[qw(eval_targets precision)], flags=>{n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>'pr/t'} },
-   'rc/t'  => { key=>[qw(eval_targets recall)],    flags=>{n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>'rc/t'} },
-   'F/t'   => { key=>[qw(eval_targets F)],         flags=>{n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>'F/t' } },
-   'ar/t'  => { key=>[qw(eval_targets arate1)],    flags=>{n=>1, fmt=>'%7.4f', eval=>'0+$_',   title=>'ar/t'} },
-  );
-
-## @fieldsExpanded = $mak->fields(@field_hashes_or_aliases_or_strings)
+## @fieldsExpanded = $mak->fields(\@field_hashes_or_strings, %args)
+##  + %args:
+##     configs=>\@mudl_make_configs,   ##-- default: selected configs
+##     alias  =>\%field_alias_hash,    ##-- pre-emptive field aliases
+##     noauto =>\%fieldTitles,         ##-- ignore some auto fields
 sub fields {
-  my ($mak,@ufields) = @_;
+  my ($mak,$ufields,%args) = @_;
 
-  my ($keystr,$flagstr, $flag,$flagkey,$flagval, @fieldkeys,%fieldflags);
-  my ($ufield,$field);
+  return qw() if (!$mak->ensureLoaded());
+
+  ##-- get configs
+  my $configs = $args{configs} ? $args{configs} : [values(%{$mak->selected()->{uconfigs}})];
+  my $alias   = $args{alias} ? {%FIELDS, %{$args{alias}}} : \%FIELDS;
+
+  ##-- Expand fields
+  my ($field,$ufield,@parsed,$pathstr,$optstr,$opt,$optkey,$optval);
+
   my @fields = qw();
-
-  foreach $ufield (@ufields) {
+  my %pseudo = qw(); ##-- $fields_index => $name_of_pseudo_field
+  my @ufields = ref($ufields) && ref($ufields) eq 'ARRAY' ? @$ufields : ($ufields);
+  while (defined($ufield=shift(@ufields))) {
     ##-- expand aliases
-    $ufield = $FIELD_ALIAS{$ufield} while (defined($FIELD_ALIAS{$ufield}));
+    $ufield = $alias->{$ufield} while (defined($alias->{$ufield}));
 
-    if (ref($ufield)) {
-      $field = $ufield;
-    } else {
-      ##-- parse it
-      while ($ufield =~ /^[\s\,]*
-                          ([^\(\,\s]+)
-                          (?: \( ([^\)]*) \) )?
-                        /xg)
-      {
-	($keystr,$flagstr) = ($1,$2);
-	%fieldflags = qw();
-	if (defined($flagstr)) {
-	  foreach $flag (split(/[\s\,]+/, $flagstr)) {
-	    ($flagkey,$flagval) = split(/\s*\=\s*/, $flag, 2);
-	    $fieldflags{$flagkey} = defined($flagval) ? $flagval : 1;
-	  }
-	}
-	@fieldkeys = split(/\s*\-\>\s*/, $keystr);
-	$field = { key=>[@fieldkeys], flags=>{%fieldflags} };
+    if ($ufield eq 'auto' || $ufield eq 'all') {
+      ##-- check for pseudo-fields: expand later
+      push(@fields, $ufield);
+      $pseudo{$#fields} = $ufield;
+      next;
+    }
+    elsif (ref($ufield) && ref($ufield) eq 'ARRAY') {
+      ##-- aliased to a list of fields: expand & continue parsing
+      unshift(@ufields, @$ufield);
+      next;
+    }
+    elsif (!ref($ufield)) {
+      ##-- parse user-fields: attempt to auto-detect perl code: "(...)" or "{...}"
+      if ($ufield =~ /^[\(\{].*[\)\}]$/) {
+	##-- perl-coded field spec
+	@parsed = eval "{ no strict 'vars'; $ufield }";
+	$mak->vmsg('error', "Error parsing field specification '$ufield': $@") if ($@);
+	unshift(@ufields,@parsed);
       }
+      else {
+	@parsed = qw();
+	##-- probably a simple field spec-list KEY(FLAGS)
+        while ($ufield =~ /\G[\s\,]*
+                             ([^\(\,\s]+)
+                             (?: \( ([^\)]*) \) )?
+                          /xg)
+	  {
+	    ($pathstr,$optstr) = ($1,$2);
+	    $pathstr = $alias->{$pathstr} while (defined($alias->{$pathstr}));
+	    if ($pathstr eq 'all' || $pathstr eq 'auto') {
+	      push(@parsed, $pathstr);
+	    }
+	    elsif (ref($pathstr)) {
+	      push(@parsed, { %$pathstr, opts=>$optstr } );
+	    }
+	    else {
+	      push(@parsed, {path=>$1,opts=>$2});
+	    }
+	  }
+	unshift(@ufields, @parsed);
+      }
+
+      next;      ##-- continue parsing
     }
 
-    ##-- now, expand the field
-    #@{$field->{key}} = map { exists($FIELD_ALIAS{$_}) ? @{$FIELD_ALIAS{$_}{key}} : $_ } @{$field->{key}};
-    push(@fields, $field);
+    ##-- set field
+    $field=$ufield;
+
+    ##-- parse field key-path
+    if (!ref($pathstr = $field->{path})) {
+      $field->{path} = [split(/\s*\-\>\s*/, $pathstr)];
+    }
+
+    ##-- parse field string-options
+    if (defined($optstr = $field->{opts})) {
+      foreach $opt (split(/[\s\,]+/, $optstr)) {
+	($optkey,$optval) = split(/\s*\=\s*/, $opt, 2);
+	$field->{$optkey} = defined($optval) ? $optval : 1;
+      }
+    }
+    delete($field->{opts});
+
+    push(@fields,$field);
+  }
+
+  ##-- expand pseudo-fields
+  if (%pseudo) {
+    ##-- pseudo: get literal fields, indexing by title
+    my @fields_literal = grep { ref($_) } @fields;
+    my %lit2field      = map { $mak->fieldTitle($_)=>$_ } @fields_literal;
+
+    ##-- auto: get active variables
+    my @autovars = $mak->activeVariables($configs);
+    my @allvars  = $mak->userVariables($configs);
+
+    ##-- index fields by title
+    my @fields_auto    = $mak->fields([map {"xvars->$_"} @autovars], %args);
+    my %auto2field     = map { $mak->fieldTitle($_)=>$_ } @fields_auto;
+
+    my @fields_all     = $mak->fields([map {"xvars->$_"}   @allvars], %args);
+    my %all2field      = map { $mak->fieldTitle($_)=>$_ } @fields_all;
+
+    ##-- auto: avoid auto-display of some fields
+    delete(@auto2field{ keys(%{$args{noauto}}) }) if ($args{noauto});
+    delete(@auto2field{ keys(%lit2field) });
+    delete(@auto2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @fields_literal });
+    @fields_auto = @auto2field{sort(keys(%auto2field))};
+
+    delete(@all2field{ keys(%lit2field) });
+    delete(@all2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @fields_literal });
+    @fields_all = @all2field{sort(keys(%all2field))};
+
+    ##-- expand pseudo-fields
+    my ($i);
+    foreach $i (sort { $b <=> $a } keys(%pseudo)) {
+      $ufield = $pseudo{$i};
+      splice(@fields,$i,1, $ufield eq 'auto' ? @fields_auto : @fields_all);
+    }
   }
 
   return @fields;
@@ -656,83 +834,121 @@ sub fields {
 sub fieldValue {
   my ($mak,$cfg,$field) = @_;
   my $val = $cfg;
-  foreach (@{$field->{key}}) {
-    return undef if (!defined($val=$val->{$_}));
+  my ($key);
+  foreach $key (@{$field->{path}}) {
+    return undef if (!defined($val=$val->{$key}));
   }
 
   if (!defined($val)) {
     ##-- defaults for undefined values
-    if ($field->{flags} && $field->{flags}{n}) { $val = 0; }
+    if ($field->{n}) { $val = 0; }
     else { $val = ''; }
   }
 
-  if ($field->{flags} && $field->{flags}{eval}) {
+  if ($field->{eval}) {
     ##-- maybe eval some code
-    $_=$val;
-    eval qq(no warnings 'void'; \$val=$field->{flags}{eval};);
-    carp(ref($mak)."::fieldValue(): error in eval($field->{flags}{eval}): $@") if ($@);
+    my $tmp=$_;
+    $_=$val; ##-- HACK
+    eval qq(no warnings 'void'; \$val=$field->{eval};);
+    $_=$tmp; ##-- HACK
+    carp(ref($mak)."::fieldValue(): error in eval($field->{eval}): $@") if ($@);
   }
   return $val;
 }
 
-## $cfgFieldString = $mak->fieldValueString($cfg,$field)
+## $fieldValueString = $mak->fieldValueString($field,$value)
 sub fieldValueString {
-  my ($mak,$cfg,$field) = @_;
-  my $val = $mak->fieldValue($cfg,$field);
-  return ($field->{flags} && defined($field->{flags}{fmt}) && $field->{flags}{fmt} ne 'auto'
-	  ? sprintf($field->{flags}{fmt}, $val)
+  my ($mak,$field,$val) = @_;
+  return (defined($field->{fmt}) && $field->{fmt} ne 'auto'
+	  ? sprintf($field->{fmt}, $val)
 	  : $val);
 }
 
 ## $fieldTitle = $mak->fieldTitle($field)
 sub fieldTitle {
   my ($mak,$field) = @_;
-  return $field->{flags}{title} if ($field->{flags} && defined($field->{flags}{title}));
+  return $field->{title} if (defined($field->{title}));
   return
-    $field->{flags}{title} =
+    $field->{title} =
     (
-     #$field->{key}[$#{$field->{key}}]                                    ##-- use final key element
-     join('->', @{$field->{key}})                                         ##-- use whole key
+     #$field->{key}[$#{$field->{path}}]                    ##-- use final path key element
+     join('->', @{$field->{path}})                         ##-- use whole path key
     );
 }
 
+##---------------------------------------------------------------
+## Utilities: configuration fields
+
+## \%fieldTitle2Value = $mak->configFields($cfg, @fieldSpecs)
+sub configFields {
+  my ($mak,$cfg,@fields) = @_;
+  my $cfields = {};
+  my ($field);
+  foreach $field (@fields) {
+    $cfields->{$mak->fieldTitle($field)} = $mak->fieldValue($cfg,$field);
+  }
+  return $cfields;
+}
+
+## \%fieldTitle2FormattedValue = $mak->configFieldStrings($cfg, @fieldSpecs)
+sub configFieldStrings {
+  my ($mak,$cfg,@fields) = @_;
+  my $cfields = {};
+  my ($field);
+  foreach $field (@fields) {
+    $cfields->{$mak->fieldTitle($field)} = $mak->fieldValueString($field,$mak->fieldValue($cfg,$field));
+  }
+  return $cfields;
+}
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Utilities: sort: high-level
 
-## @configs = $mak->sortSelection()
+## @sorted_selected_configs = $mak->sortSelection(%args)
+##  + %args:
+##     sortby=>$fieldSpec,
+##  + sorts currently selected configs by the field-spec in $sortby (default=$mak->{sortby})
 sub sortSelection {
   my $mak = shift;
   return qw() if (!$mak->ensureLoaded());
-  return $mak->sortConfigs(values(%{$mak->selected->{uconfigs}}));
+  return $mak->sortConfigs([values(%{$mak->selected->{uconfigs}})], @_);
 }
 
-## @configs_sorted = $mak->sortConfigs(@configs)
+## @sorted_configs = $mak->sortConfigs(\@configs, %args)
+##  + %args:
+##     sortby=>$fieldSpec,
+##  + sorts @configs by the field-spec in $sortby (default=$mak->{sortby})
 sub sortConfigs {
-  my ($mak,@configs) = @_;
+  my ($mak,$configs,%args) = @_;
+  my $sortby = defined($args{sortby}) && $args{sortby} ne '' ? $args{sortby} : $mak->{sortby};
 
   my ($field,$aval,$bval,$cmp);
+  my @sbfields = $mak->fields($sortby, configs=>$configs);
   return
     sort {
-      foreach $field ($mak->fields(@{$mak->{sortby}})) {
+      foreach $field (@sbfields) {
 	$cmp = (defined($aval=$mak->fieldValue($a,$field))
 		? (defined($bval=$mak->fieldValue($b,$field))
-		   ? ($field->{flags} && $field->{flags}{n}
+		   ? ($field->{n}
 		      ? $aval <=> $bval
-		      : $aval cmp $bval)
+		      : (   $aval =~ /^[\+\-](?:\d*\.?)\d+(?:[Ee][\+\-]\d+)?$/
+			 && $bval =~ /^[\+\-](?:\d*\.?)\d+(?:[Ee][\+\-]\d+)?$/
+			    ? $aval <=> $bval
+			    : $aval cmp $bval))
 		   : -1)
 		: 0);
+	$cmp = -$cmp if ($field->{r}); ##-- reverse sort
 	return $cmp if ($cmp);
       }
       return 0; ##-- incomparable (effectively equal)
-    } @configs;
+    } @$configs;
 }
 
 
 
 
-##======================================================================
+##---------------------------------------------------------------
 ## Utilities: variant conditions
 
 ## @avars = $mak->activeVariables()
@@ -775,12 +991,38 @@ sub activeVariables {
 }
 
 
+##---------------------------------------------------------------
+## Utilities: all user variables
+
+## @uvars = $mak->userVariables()
+## @uvars = $mak->userVariables(\@configs)
+*userVars = \&userVariables;
+sub userVariables {
+  my ($mak,$configs) = @_;
+
+  ##-- get selection
+  if (!$configs) {
+    return qw() if (!$mak->ensureLoaded());
+    $configs = [values(%{$mak->selected->{uconfigs}})];
+  }
+
+  ##-- get all user vars
+  my %uvars = qw();
+  my ($cfg,$var);
+  foreach $cfg (@$configs) {
+    @uvars{keys(%{$cfg->{uvars}})} = undef;
+  }
+
+  return keys(%uvars);
+}
 
 
 
-########################################################################
+
+
+##======================================================================
 ## I/O
-########################################################################
+##======================================================================
 
 ## $bool = $mak->ensureLoaded()
 sub ensureLoaded {
@@ -797,12 +1039,10 @@ sub loadCollection {
   if (!$mak->{col}) {
     confess(ref($mak)."::loadCollectio($mak->{colfile}): load failed!\n");
     $mak->{loaded} = 0;
-    #$mak->{dirty}  = 0;
     $mak->{coldigest} = '';
     return undef;
   }
   $mak->{loaded} = 1;
-  #$mak->{dirty}  = 0;
   $mak->{coldigest} = $mak->collectionDigest();
 
   return $mak->{col};
@@ -842,7 +1082,7 @@ sub changed {
 
 $ACTIONS{sync} =
   {
-   syntax=>'sync',
+   syntax=>'sync [FILE]',
    help  =>'synchonize collection to the default file',
    code  => \&syncCollection,
   };
@@ -872,7 +1112,7 @@ sub syncCollection {
 
 1;
 
-##======================================================================
+##---------------------------------------------------------------
 ## Docs
 =pod
 
