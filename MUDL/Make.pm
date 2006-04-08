@@ -25,8 +25,12 @@ our @ISA = qw(MUDL::Object Exporter);
 ##     n    => $bool,     ##-- true iff numeric
 ##     fmt  => $how,      ##-- sprintf template for tabular formatting (default='auto')
 ##     title => $title,   ##-- field title (for tab)
+##     evaltitle=>$str,   ##-- field title, eval'd (with variable $field set to full field)
 ##     alt   => \@titles, ##-- alternative titles
 ##     eval  => $eval,    ##-- eval() for value adjustment
+##     hr    => $how,     ##-- summarize(): separator type for changed values qw(major minor micro)
+##     condense=>$bool,   ##-- summarize(): condense consecutive duplicate values?
+##     code=>\&code,      ##-- call code($mak,$field,configs=>\@configs,...) to expand this field
 ##     ....
 our %FIELDS =
   (
@@ -36,7 +40,7 @@ our %FIELDS =
 
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
-   'sortDefault' => [ qw(stage emi corpus pr/g rc/g pr/t rc/t auto) ],
+   'sortDefault' => [ qw(stage emi corpus pr:g rc:g pr:t rc:t auto) ],
    'summarizeDefault' => [
 			  'stage.emi',
 			  'corpus',
@@ -45,11 +49,17 @@ our %FIELDS =
 			  #':',
 			  'auto',
 			  '|',
-			  'pr/g',
-			  'ar/g',
+			  'pr:g',
+			  #'rc:g',
+			  #'F:g',
+			  #qw(apr:g arc:g aF:g),
+			  'ar:g',
 			  '|',
-			  'pr/t',
-			  'ar/t',
+			  'pr:t',
+			  #'rc:t',
+			  #'F:t',
+			  #qw(apr:t arc:t aF:t),
+			  'ar:t',
 			 ],
    default=>'summarizeDefault',
 
@@ -66,24 +76,34 @@ our %FIELDS =
 
    ##-- MetaProfile: label
    lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlab',
-		alt=>[qw(xvars->lrwhich xvars->tcd xvars->tcm xvars->tccd xvars->tccm)],
+		alt=>[qw(xvars->lrwhich xvars->tcd xvars->tcm xvars->tccd xvars->tccm),
+		      qw(lrwhich tcd tcm tccd tccm),
+		     ],
+		hr=>undef, condense=>0,
 	      },
    lrlab   => 'lrlabel',
 
    ##-- Corpus
    corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
-	       alt=>[qw(xvars->icorpus xvars->icbase xvars->tcorpus)],
+	       alt=>[
+		     qw(xvars->icorpus xvars->icbase xvars->tcorpus),
+		     qw(icorpus icbase tcorpus)
+		    ],
+	       hr=>'micro', condense=>1,
 	     },
    lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lang',
 	       eval=>'$_ =~ /^[uz]/ ? "de" : "en"',
+	       hr=>'micro', condense=>1,
 	     },
 
    ##-- MetaProfile: numeric indices
    'stage' => { path=>[qw(xvars stage)], n=>1, fmt=>'%-2d', title=>'stg',
-		alt=>[qw(xvars->stage)],
+		alt=>[qw(stage xvars->stage)],
+		hr=>'major', condense=>1,
 	      },
    'emi'   => { path=>[qw(xvars emi)],   n=>1, fmt=>'%-2d', title=>'emi',
-		alt=>[qw(xvars->emi)],
+		alt=>[qw(emi xvars->emi)],
+		hr=>'minor', condense=>1,
 	      },
    'stage.emi' => {
 		   path=>[qw(xvars)],
@@ -91,34 +111,117 @@ our %FIELDS =
 		   fmt=>'%5.2f',
 		   eval=>'sprintf("%2d.%02d", $_->{stage}, $_->{emi})',
 		   title=>'stg.emi',
-		   alt=>[qw(xvars->stage xvars->emi stg emi)],
+		   alt=>[qw(xvars->stage xvars->emi stg emi),
+			 qw(stage emi),
+			],
+		   hr=>'minor', condense=>1,
 		  },
 
-   ##-- Eval: Global
-   'pr/g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' pr/g'},
-   'rc/g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' rc/g'},
-   'F/g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' F/g' },
-   'ar/g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%6.3f', eval=>'0+$_',  title=>' ar/g'},
+   ##-------------------------------------------------
+   ## Eval: Meta-(precision,recall,F,ambig-rate)
 
-   ##-- Eval: Global (+units)
-   'pr/g%'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' pr/g'},
-   'rc/g%'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' rc/g'},
-   'F/g%'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' F/g' },
-   'ar/g%' => { path=>[qw(eval_global arate1)],  n=>1, fmt=>'%6.3f a/tok', eval=>'0+$_', title=>' ar/g'},
+   ##-------------------------------------
+   ## Eval: Meta-*: Global
+   'pr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' pr:g'},
+   'rc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' rc:g'},
+   'F:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' F:g' },
+   'ar:g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%6.3f', eval=>'0+$_',  title=>' ar:g',
+		condense=>1,
+	      },
 
-   ##-- Eval: Targets
-   'pr/t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' pr/t'},
-   'rc/t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' rc/t'},
-   'F/t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' F/t' },
-   'ar/t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%6.3f', eval=>'0+$_', title=>' ar/t'},
+   ##-------------------------------------
+   ## Eval: Meta-*: Targets
+   'pr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' pr:t'},
+   'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' rc:t'},
+   'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' F:t' },
+   'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%6.3f', eval=>'0+$_', title=>' ar:t',
+		condense=>1,
+	      },
 
-   ##-- Eval: Targets (+units)
-   'pr/t%'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' pr/t'},
-   'rc/t%'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' rc/t'},
-   'F/t%'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%6.2f%%', eval=>'100*$_', title=>' F/t' },
-   'ar/t%'  => { path=>[qw(eval_targets arate1)], n=>1, fmt=>'%6.3f a/tok', eval=>'0+$_', title=>' ar/t'},
+   ##-------------------------------------------------
+   ## Eval: Tagwise-average (precision,recall,F,ambig-rate)
+
+   ##-------------------------------------
+   ## Eval: Tagwise-average-*: Global
+   'apr:g'  => { path=>[qw(eval_global avg_precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' apr:g'},
+   'arc:g'  => { path=>[qw(eval_global avg_recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' arc:g'},
+   'aF:g'   => { path=>[qw(eval_global avg_F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' aF:g' },
+
+   ##-------------------------------------
+   ## Eval: Tagwise-average-*: Targets
+   'apr:t'  => { path=>[qw(eval_targets avg_precision)], n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' apr:t'},
+   'arc:t'  => { path=>[qw(eval_targets avg_recall)],    n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' arc:t'},
+   'aF:t'   => { path=>[qw(eval_targets avg_F)],         n=>1, fmt=>'%6.2f', eval=>'100*$_', title=>' aF:t' },
+
+   ##-------------------------------------------------
+   ## Eval: Single-tag (precision,recall,F,ambig-rate)
+
+   ##-------------------------------------
+   ## Eval: Single-tag-*: Global
+   'tagpr:g' => { path=>[qw(eval_global tag2info)], n=>1, fmt=>'%6.2f',
+		  evaltitle=>'"$field->{tag}:pr:g"',
+		  eval=>'100*$_->{$field->{tag}}{pr}',
+		},
+   'tagrc:g' => { path=>[qw(eval_global tag2info)], n=>1, fmt=>'%6.2f',
+		  evaltitle=>'"$field->{tag}:rc:g"',
+		  eval=>'100*$_->{$field->{tag}}{rc}',
+		},
+   'tagF:g'  => { path=>[qw(eval_global tag2info)], n=>1, fmt=>'%6.2f',
+		  evaltitle=>'"$field->{tag}:rc:g"',
+		  eval=>'100*$_->{$field->{tag}}{F}',
+		},
+
+   ##-------------------------------------
+   ## Eval: Single-tag-*: Targets
+   'tagpr:t' => { path=>[qw(eval_targets tag2info)], n=>1, fmt=>'%6.2f',
+		  evaltitle=>'"$field->{tag}:pr:t"',
+		  eval=>'100*$_->{$field->{tag}}{pr}',
+		},
+   'tagrc:t' => { path=>[qw(eval_targets tag2info)], n=>1, fmt=>'%6.2f',
+		  evaltitle=>'"$field->{tag}:rc:t"',
+		  eval=>'100*$_->{$field->{tag}}{rc}',
+		},
+   'tagF:t'  => { path=>[qw(eval_targets tag2info)], n=>1, fmt=>'%6.2f',
+		  evaltitle=>'"$field->{tag}:F:t"',
+		  eval=>'100*$_->{$field->{tag}}{F}',
+		},
+
+   ##-------------------------------------------------
+   ## Eval: All single-tags (precision,recall,F,ambig-rate)
+
+   ##-------------------------------------
+   ## Eval: All single-tag-*: Global
+   'tags:pr:g' => { code=>\&_alltags_expand, _tag_field=>'tagpr:g', _tag_var=>'tag', },
+   'tags:rc:g' => { code=>\&_alltags_expand, _tag_field=>'tagrc:g', _tag_var=>'tag', },
+   'tags:F:g'  => { code=>\&_alltags_expand, _tag_field=>'tagF:g', _tag_var=>'tag', },
+
+   ##-------------------------------------
+   ## Eval: All single-tag-*: Targets
+   'tags:pr:t' => { code=>\&_alltags_expand, _tag_field=>'tagpr:t', _tag_var=>'tag', },
+   'tags:rc:t' => { code=>\&_alltags_expand, _tag_field=>'tagrc:t', _tag_var=>'tag', },
+   'tags:F:t'  => { code=>\&_alltags_expand, _tag_field=>'tagF:t', _tag_var=>'tag', },
   );
 
+##-- Fields: Utilitiy: _alltags_expand
+## @fields = _alltags_expand($make,$pseudofield,%args)
+sub _alltags_expand {
+  my ($mak,$pfield,%args) = @_;
+  my $configs = $args{configs};
+  my $tagfield = $pfield->{_tag_field};
+  my $tagvar   = $pfield->{_tag_var};
+  my $srcfield = $args{alias}{$tagfield};
+
+  my ($cfg,$info);
+  my %tags2 = qw();
+  ##-- gather known tag2 values
+  foreach $cfg (@$configs) {
+    $info = $mak->pathValue($cfg,$srcfield->{path});
+    @tags2{keys(%$info)} = undef;
+  }
+
+  ##-- map tag2-keys to expanded fields
+  return map { {%$srcfield, $tagvar=>$_} } sort(keys(%tags2));
+}
 
 ##---------------------------------------------------------------
 ## Globals: Action Table
@@ -193,17 +296,17 @@ sub new {
 			   summarize_no_auto=>{
 					       map { $_=>undef }
 					       (
-						'xvars->stage',
-						'xvars->emi',
-						'xvars->lrwhich',
-						'xvars->tcd',
-						'xvars->tcm',
-						'xvars->tccd',
-						'xvars->tccm',
-						'xvars->lrlabel',
-						'xvars->icorpus',
-						'xvars->tbase',
-						'xvars->tcorpus',
+						#'xvars->stage',
+						#'xvars->emi',
+						#'xvars->lrwhich',
+						#'xvars->tcd',
+						#'xvars->tcm',
+						#'xvars->tccd',
+						#'xvars->tccm',
+						#'xvars->lrlabel',
+						#'xvars->icorpus',
+						#'xvars->tbase',
+						#'xvars->tcorpus',
 					       ),
 					      },
 
@@ -572,7 +675,7 @@ $ACTIONS{summarize} = $ACTIONS{summary} = $ACTIONS{table} = $ACTIONS{tab} =
   };
 
 sub actSummary {
-  my ($mak,$fields) = shift;
+  my ($mak,$fields) = @_;
   return 0 if (!$mak->ensureLoaded);
 
   my @configs = values(%{$mak->selected->{uconfigs}});
@@ -591,7 +694,7 @@ sub actSummary {
   my %cfg2cf  = map { ($_=>$mak->configFieldStrings($_,@fields)) } @configs;
 
   ##-- Summarize: step 1: get field lengths
-  my %title2len = map { $_->{title}=>length($_->{title}) } @fields;
+  my %title2len   = map { $_->{title}=>length($_->{title}) } @fields;
   my ($cf,$field,$ftitle);
   foreach $cf (values(%cfg2cf)) {
     foreach $field (@fields) {
@@ -603,31 +706,80 @@ sub actSummary {
   ##-- Summarize: step 2: get sprintf() format
   my $indent = ' ';
   my $fmt    = $indent.join(' ', map { '%'.$title2len{$_->{title}}.'s' } @fields)."\n";
-  my $linewd = 1;
-  $linewd += $_+1 foreach (values(%title2len));
-  my $hrule  = $indent . ('-' x $linewd);
+  my $linewd = 0;
+  $linewd += $title2len{$_->{title}}+1 foreach (@fields);
+  my %hr = (
+	    begin=>($indent.('-' x $linewd)."\n"),
+	    end  =>($indent.('-' x $linewd)."\n"),
+	    head =>($indent.('=' x $linewd)."\n"),
 
-  ##-- Summarize: step 2: print headers
+	    major=>($indent.('=' x $linewd)."\n"),
+	    minor=>($indent.('-' x $linewd)."\n"),
+	    micro=>($indent.('·' x $linewd)."\n"),
+	    none=>'',
+	   );
+  my %hr2n = ( major=>30, minor=>20, micro=>10, none=>0 );
+
+  ##-- Summarize: step 3: sort field-configs into @ctable
+  my @ctable = @cfg2cf{$mak->sortConfigs(\@configs)};
+
+  my %i2hr = qw(); ##-- $index=>$separator_type_before_index
+  my ($cfprev,$hrhow,$i);
+
+  ##-- add hrules
+  foreach $i (1..$#ctable) {
+    ($cf,$cfprev) = @ctable[$i-1,$i];
+    ##-- separate?
+    foreach $field (grep {defined($_->{hr})} @fields) {
+      $ftitle = $field->{title};
+      if ($cf->{$ftitle} ne $cfprev->{$ftitle}) {
+	##-- separate?
+	$i2hr{$i} = $field->{hr} if (!defined($i2hr{$i}) || $hr2n{$i2hr{$i}} < $hr2n{$field->{hr}});
+      }
+    }
+  }
+
+  ##-- condense field-values
+  foreach $i (grep
+	      {
+		!defined($i2hr{$_})
+		  #|| $i2hr{$_} eq 'none'
+	      } (1..$#ctable))
+    {
+      ($cf,$cfprev) = @ctable[$i-1,$i];
+      foreach $field (grep {$_->{condense}} @fields) {
+	$ftitle = $field->{title};
+	if ($cf->{$ftitle} eq $cfprev->{$ftitle}) {
+	  $cfprev->{$ftitle} = '';
+	}
+      }
+    }
+
+  ##-- Summarize: step 4: print headers
   print
     (
      ##-- hrule
-     $hrule, "\n",
+     $hr{begin},
 
      ##-- header
      sprintf($fmt, map { $_->{title} } @fields),
 
      ##-- hrule
-     $hrule, "\n",
+     $hr{head},
     );
 
-  ##-- Summarize: step 3: print configs
-  my ($cfg);
-  foreach $cfg ($mak->sortConfigs(\@configs)) {
-    $cf = $cfg2cf{$cfg};
-    print sprintf($fmt, map { $cf->{$_->{title}} } @fields);
+  ##-- Summarize: step 5: print table
+  foreach $i (0..$#ctable) {
+    $cf = $ctable[$i];
+    print
+      (##-- separator?
+       (defined($i2hr{$i}) ? $hr{$i2hr{$i}} : ''),
+       ##-- data row
+       sprintf($fmt, map { $cf->{$_->{title}} } @fields),
+      );
   }
 
-  print $hrule, "\n";
+  print $hr{end};
 
   return 1;
 }
@@ -646,8 +798,9 @@ sub actMake {
   my $mak = shift;
   return 0 if (!$mak->ensureLoaded);
   my $rc = 1;
-  foreach (values(%{$mak->selected()->{uconfigs}})) {
-    $rc &&= $_->make( dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
+  my ($cfg);
+  foreach $cfg ($mak->sortSelection()) {
+    $rc &&= $cfg->make( dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
     if (!$mak->{dummy}) {
       $mak->syncCollection() if ($mak->{paranoid});
     }
@@ -738,6 +891,11 @@ sub fields {
       unshift(@ufields, @$ufield);
       next;
     }
+    elsif (ref($ufield) && defined($ufield->{code})) {
+      ##-- expand fields
+      unshift(@ufields, $ufield->{code}->($mak,$ufield,%args,configs=>$configs,alias=>$alias));
+      next;
+    }
     elsif (!ref($ufield)) {
       ##-- parse user-fields: attempt to auto-detect perl code: "(...)" or "{...}"
       if ($ufield =~ /^[\(\{].*[\)\}]$/) {
@@ -759,7 +917,7 @@ sub fields {
 	    if ($pathstr eq 'all' || $pathstr eq 'auto') {
 	      push(@parsed, $pathstr);
 	    }
-	    elsif (ref($pathstr)) {
+	    elsif (ref($pathstr) && ref($pathstr) eq 'HASH') {
 	      push(@parsed, { %$pathstr, opts=>$optstr } );
 	    }
 	    else {
@@ -830,14 +988,22 @@ sub fields {
   return @fields;
 }
 
+## $pathValue = $mak->pathValue($cfg, \@path)
+##  + just follows path; no defaults, eval etc.
+sub pathValue {
+  my ($mak,$cfg,$path) = @_;
+  my $val = $cfg;
+  my ($key);
+  foreach $key (@$path) {
+    return undef if (!defined($val=$val->{$key}));
+  }
+  return $val;
+}
+
 ## $cfgFieldValue = $mak->fieldValue($cfg, $field)
 sub fieldValue {
   my ($mak,$cfg,$field) = @_;
-  my $val = $cfg;
-  my ($key);
-  foreach $key (@{$field->{path}}) {
-    return undef if (!defined($val=$val->{$key}));
-  }
+  my $val = $mak->pathValue($cfg,$field->{path});
 
   if (!defined($val)) {
     ##-- defaults for undefined values
@@ -868,12 +1034,19 @@ sub fieldValueString {
 sub fieldTitle {
   my ($mak,$field) = @_;
   return $field->{title} if (defined($field->{title}));
+  if (defined($field->{evaltitle})) {
+    $field->{title} = eval qq({ no warnings 'void'; $field->{evaltitle} });
+    carp(ref($mak),"::fieldTitle(): error evaluating field title '$field->{evalTitle}': $@")
+      if ($@);
+    return $field->{title} if (defined($field->{title}));
+  }
   return
     $field->{title} =
     (
-     #$field->{key}[$#{$field->{path}}]                    ##-- use final path key element
-     join('->', @{$field->{path}})                         ##-- use whole path key
-    );
+     ($#{$field->{path}}==1 && $field->{path}[0] =~ /^[ux]vars/
+      ? $field->{path}[$#{$field->{path}}]                 ##-- use final path key element
+      : join('->', @{$field->{path}})                      ##-- use whole path key
+     ));
 }
 
 ##---------------------------------------------------------------
@@ -1089,14 +1262,15 @@ $ACTIONS{sync} =
 
 sub syncCollection {
   my ($mak,$file) = @_;
+  $file = $mak->{colfile} if (!$file);
   return 0 if (!$mak->ensureLoaded());
 
   my ($changed,$digest) = $mak->changed();
   if ($changed) {
+
     ##-- be paranoid ?
     if ($mak->{paranoid}) {
       my $ctr = 0;
-      $file = $mak->{colfile} if (!$file);
       $ctr++ while (-e sprintf("$file.bak.%03d",$ctr));
       rename($file, sprintf("$file.bak.%03d",$ctr));
     }

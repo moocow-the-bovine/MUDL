@@ -196,6 +196,7 @@ sub finish {
   my $t2f   = $eval->{t2f}   = {}; ##-- $tag2 => f($tag2)
   my $t2cor = $eval->{t2cor} = {}; ##-- $tag2 => \sum_{$tag1 : bestmatch($tag1)==$tag2} f($tag1, $tag2)
   my $t2inc = $eval->{t2inc} = {}; ##-- $tag2 => \sum_{$tag1 : bestmatch($tag1)==$tag2} f($tag1,!$tag2)
+  my @tags2 = keys(%$tag21b);
 
   my ($besttag2);
   while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
@@ -209,11 +210,22 @@ sub finish {
     $t2inc->{$tag2} = 0 if (!defined($t2inc->{$tag2}));
 
     $besttag2 = $tag12m->{$tag1};
-    $besttag2 = '' if (!defined($besttag2));
+
+    if ($tag1 eq '@UNKNOWN') {
+      ##-- unknown tag1: distribute 'incorrect' among all tags
+      $t2inc->{$_} += $f12/@tags2 foreach (@tags2);
+      next;
+    }
+    elsif (!defined($besttag2)) {
+      ##-- no best gold-tag for induced-tag $tag1: complain
+      carp(ref($eval),"::finish(): no best gold-tag for induced-tag '$tag1' -- using empty string");
+      $besttag2 = ''; ##--> inconsistent (tag1==UNKNOWN)
+    }
+
     if ($besttag2 eq $tag2) {
       $t2cor->{$tag2} += $f12;
     } else {
-      $t2inc->{$besttag2} += $f12;
+      $t2inc->{$besttag2} += $f12; ##--> inconsistent results when ($besttag2 eq '')
     }
   }
 
