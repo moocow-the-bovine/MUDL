@@ -26,8 +26,10 @@ our @ISA = qw(MUDL::Object Exporter);
 ##     fmt  => $how,         ##-- sprintf template for tabular formatting (default='auto')
 ##     title => $title,      ##-- field title (for tab)
 ##     evaltitle=>$str,      ##-- field title, eval'd (with variable $field set to full field)
-##     alt   => \@titles,    ##-- alternative titles
-##     eval  => $eval,       ##-- eval() for value adjustment (vars $cfg, $field, $val are set)
+##     name  => $name,       ##-- field name (primary key for field; default: field title)
+##     evalname=> $str,      ##-- field name, eval'd (with variable $field set to full field)
+##     alt   => \@names,     ##-- alternative names
+##     eval  => $eval,       ##-- eval() for value adjustment (vars $mf, $cfg, $field, $val are set)
 ##     hr    => $how,        ##-- summarize(): separator type for changed values qw(major minor micro)
 ##     condense=>$bool,      ##-- summarize(): condense consecutive duplicate values?
 ##     expand_code =>\&code, ##-- dynamic alias: calls (\@expanded=$code->($mf,$pfield,\@xfields)) to expand
@@ -48,6 +50,7 @@ our %FIELDS =
 	      ##-- all user-defined fields in selection which actually vary
 	      expand_code=>\&_expand_auto, expand_priority=>1000,
 	     },
+   'none' => [], ##-- dummy field
 
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
@@ -58,12 +61,19 @@ our %FIELDS =
    'collectDefault' => [
 			  qw(corpus stage),
 			  #qw(emi),
-			 ],
+		       ],
 
-   'tabDefault'       => 'summarizeDefault',
-   'tabId'            => 'summarizeId',
-   'tabResults'       => 'summarizeResults',
-   'summarizeDefault' => 'summarizeId,|,summarizeResults',
+   'default'          => 'tabDefault',
+   'id'               => 'tabId',
+   'results'          => 'tabResults',
+
+   (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
+
+   (map { ("latex$_" => "summarize$_") } qw(Default Id Results)),
+   (map { ("ltab$_"  => "summarize$_") } qw(Default Id Results)),
+
+
+   'summarizeDefault' => ['summarizeId', '|', 'summarizeResults'],
    'summarizeId' => [
 		     'stage.emi',
 		     'corpus',
@@ -73,31 +83,26 @@ our %FIELDS =
 		     'auto',
 		    ],
    'summarizeResults'=>[
+		     qw(*:pr:g pr:g),
+		     #qw(*:rc:g rc:g),
+		     #qw(*:F:g  'F:g),
+		     #qw(*apr:g apr:g   *arc:g arc:g  *aF:g aF:g),
+		     qw(ar:g),
 		     '|',
-		     'pr:g',
-		     #'rc:g',
-		     #'F:g',
-		     #qw(apr:g arc:g aF:g),
-		     'ar:g',
-		     '|',
-		     'pr:t',
-		     #'rc:t',
-		     #'F:t',
-		     #qw(apr:t arc:t aF:t),
-		     'ar:t',
+		     qw(*:pr:t pr:t),
+		     qw(ar:t),
 		    ],
-   default=>'summarizeDefault',
 
 
    ##-- Filler(s)
-   ':'    => { path=>[], eval=>'":"', title=>':', },
-   '::'   => { path=>[], eval=>'"::"', title=>'::', },
-   '='    => { path=>[], eval=>'"="', title=>'=', },
-   '/'    => { path=>[], eval=>'"/"', title=>'/', },
-   '|'    => { path=>[], eval=>'"|"', title=>'|', },
-   '&'    => { path=>[], eval=>'"&"', title=>'&', },
+   ':'    => { eval=>'":"',  title=>':', },
+   '::'   => { eval=>'"::"', title=>'::', },
+   '='    => { eval=>'"="',  title=>'=', },
+   '/'    => { eval=>'"/"',  title=>'/', },
+   '|'    => { eval=>'"|"',  title=>'|', },
+   '&'    => { eval=>'"&"',  title=>'&', },
    '\\'   => '\\\\',
-   '\\\\' => { path=>[], eval=>'"\\\\\\\\"', title=>'\\\\', },
+   '\\\\' => { eval=>'"\\\\\\\\"', title=>'\\\\', },
 
    ##-- MetaProfile: label
    lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlab',
@@ -108,6 +113,13 @@ our %FIELDS =
 	      },
    lrlab   => 'lrlabel',
 
+   ##-- MetaProfile: lrwhich
+   lrwhich => { path=>[qw(xvars lrwhich)], title=>'lrw', },
+   tcd    => { path=>[qw(xvars tcd)], title=>'tcd', },
+   tcm    => { path=>[qw(xvars tcm)], title=>'tcm', },
+   tccd   => { path=>[qw(xvars tccd)], title=>'tccd', },
+   tccm   => { path=>[qw(xvars tccm)], title=>'tccm', },
+
    ##-- Corpus
    corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
 	       alt=>[
@@ -116,12 +128,14 @@ our %FIELDS =
 		    ],
 	       hr=>'micro', condense=>1,
 	     },
-   lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lang',
+   lg=>'lang',
+   lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lg',
 	       eval=>'$_ =~ /^[uz]/ ? "de" : "en"',
 	       hr=>'micro', condense=>1,
 	     },
 
    ##-- MetaProfile: numeric indices
+   'stg' => 'stage',
    'stage' => { path=>[qw(xvars stage)], n=>1, fmt=>'%3d', title=>'stg',
 		alt=>[qw(stage xvars->stage)],
 		hr=>'major',
@@ -133,6 +147,7 @@ our %FIELDS =
 		hr=>'minor',
 		condense=>1,
 	      },
+   'stg.emi' => 'stage.emi',
    'stage.emi' => {
 		   path=>[qw(xvars)],
 		   n=>0,
@@ -154,18 +169,14 @@ our %FIELDS =
    'pr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:g'},
    'rc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:g'},
    'F:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:g' },
-   'ar:g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>' ar:g',
-		condense=>0,
-	      },
+   'ar:g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>' ar:g' },
 
    ##-------------------------------------
    ## Eval: Meta-*: Targets
    'pr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:t'},
    'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:t'},
    'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:t' },
-   'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t',
-		condense=>0,
-	      },
+   'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t' },
 
    ##-------------------------------------------------
    ## Eval: Tagwise-average (precision,recall,F,ambig-rate)
@@ -231,17 +242,99 @@ our %FIELDS =
    'tags:F:t'  => { expand_code=>\&_expand_tags, _tag_field=>'tagF:t', _tag_var=>'tag', },
 
    ##-------------------------------------------------
-   ## Eval: max-value search (TODO)
-   '*'=>'max',
-   'best'=>'max',
+   ## Eval: max-value search
    'max' => { expand_code =>\&_expand_max,
 	      of          =>'pr:g',        ##-- target field: to be set by user or alias
 	      for         =>'stage,emi',   ##-- field list, max for every value-tuple of these fields
-	      evaltitle   =>'"max(of=$field->{of},for=($field->{for}))"',
+	      evalname    =>'"max(of=$field->{of},for=($field->{for}))"',
 	      hidden      =>0,
 	    },
+
+   ##-------------------------------------------------
+   ## Eval: max-value mark
+   'ifmax' => (our $_field_ifmax =
+	       { expand_code =>\&_expand_ifmax,
+		of          =>'pr:g',        ##-- target field: to be set by user or alias
+		for         =>'stage,emi',   ##-- field list, max for every value-tuple of these fields
+		evalname    =>
+		 '"ifmax(of=$field->{of},for=($field->{for}),then=($field->{then}),else=($field->{else}))"',
+		then        =>'*',           ##-- value if $field->{of} == max(of,for)
+	        else        =>'',            ##-- value if $field->{of} != max(of,for)
+		title       =>'',
+		hidden      =>0,
+		padright    =>'',
+	       }),
+
+
+   ##-- max: search markers
+   '*:corpus'      => (our $_ifmax_corpus = { %$_field_ifmax, for=>'corpus' }),
+   '*:stage'       => (our $_ifmax_stage  = { %$_field_ifmax, for=>'corpus,stage' }),
+   '*:stg'         => '*:stage',
+   '*:emi'         => (our $_ifmax_emi    = { %$_field_ifmax, for=>'corpus,stage,emi' }),
+
+   ##-------------------------------------
+   ## Max: Eval: Meta-*: Global
+   #'*:pr:g:corpus' => { %$_ifmax_corpus, of=>'pr:g' },
+   #'*:pr:g:stage'  => { %$_ifmax_stage,  of=>'pr:g' },
+   #'*:pr:g:stg'    => '*:pr:g:stage',
+   #'*:pr:g:emi'    => { %$_ifmax_emi,    of=>'pr:g' },
+   #'**:pr:g'       => [ '*:pr:g:corpus', '*:pr:g:stage' ]
+   #'***:pr:g'      => [ '*:pr:g:corpus', '*:pr:g:stage', '*:pr:g:emi' ]
+   #'*:pr:g'        => '***:pr:g',
+   (map { _markbest_fields($_) } qw(pr:g rc:g F:g ar:g)),
+   (map { _markbest_fields($_) } qw(pr:t rc:t F:t ar:t)),
+   (map { _markbest_fields($_) } qw(apr:g arc:g aF:g)),
+   (map { _markbest_fields($_) } qw(apr:t arc:t aF:t)),
+
   );
 ##-- EOFIELDS
+
+##---------------------------------------------------------------
+## Fields: alias expander: _markbest_fields()
+
+## %field_aliases = _markbest_fields($of_field)
+sub _markbest_fields {
+  my ($of_field,%args) = @_;
+
+  our ($_ifmax_corpus, $_ifmax_stage, $_ifmax_emi);
+  return (
+	  "*:${of_field}:corpus" => { %$_ifmax_corpus, of=>$of_field, %args },
+	  "*:${of_field}:stage"  => { %$_ifmax_stage,  of=>$of_field, %args },
+	  "*:${of_field}:stg"    => "*:${of_field}:stage",
+	  "*:${of_field}:emi"    => { %$_ifmax_emi,    of=>$of_field, %args },
+	  ##--
+	  "**:${of_field}"       => [ "*:${of_field}:corpus", "*:${of_field}:stage" ],
+	  "***:${of_field}"      => [ "*:${of_field}:corpus", "*:${of_field}:stage", "*:${of_field}:emi" ],
+	  "*:${of_field}"        => "***:${of_field}",
+	 );
+}
+
+
+
+##---------------------------------------------------------------
+## Fields: expanders: 'ifmax'
+
+## \@expanded = _expand_ifmax($mf,$ifmax_field,\@xfields)
+sub _expand_ifmax {
+  my ($mf,$ifmax_field,$xfields) = @_;
+
+  ##-- get nested 'max' field
+  my $max_field
+    = $ifmax_field->{_max}
+      = $mf->_expand_max({%$ifmax_field, title=>undef,hidden=>0},$xfields)->[0];
+  my $of_field
+    = $ifmax_field->{_of}
+      = $mf->expand($ifmax_field->{of})->[0];
+
+  $ifmax_field->{eval} =
+    ('$mf->fieldValue($cfg,$field->{_max}) == $mf->fieldValue($cfg,$field->{_of})'
+     .' ? "$field->{then}"'
+     .' : "$field->{else}"'
+    );
+
+  return [$ifmax_field];
+}
+
 
 ##---------------------------------------------------------------
 ## Fields: expanders: 'max'
@@ -263,7 +356,8 @@ sub _expand_max {
   }
   $max_field->{eval} = '$field->{for2max}{$field->{cfg2forkey}{$cfg}}';
 
-  my @safe_src_keys = grep { $_ ne 'title' && !exists($max_field->{$_}) } keys(%$of_field);
+  my %bad_src_keys  = map { $_=>undef } qw(title name);
+  my @safe_src_keys = grep { !exists($bad_src_keys{$_}) && !exists($max_field->{$_}) } keys(%$of_field);
   @$max_field{@safe_src_keys} = @$of_field{@safe_src_keys};
 
   return [$max_field];
@@ -276,64 +370,50 @@ sub vkey {
 }
 
 ##---------------------------------------------------------------
+## Fields: expanders: 'auto', 'all'
+
+## \@expanded = _expand_auto_all($mf,$auto_or_all_field,\@xfields,\@auto_or_all_vars)
+sub _expand_auto_all {
+  my ($mf,$aa_field,$xfields,$aa_vars) = @_;
+
+  ##-- get literal fields, indexing by title
+  my @fields_literal = grep { ref($_) } @$xfields;
+  my %lit2field      = map { $mf->fieldName($_)=>$_ } @fields_literal;
+
+  ##-- get all user variables, indexing by title
+  my $fields_aa = $mf->expand([map {"xvars->$_"}  @$aa_vars]);
+  my %aa2field  = map { $_->{name}=>$_ } @$fields_aa;
+
+  ##-- avoid inclusion of literal fields
+  delete(@aa2field{ keys(%lit2field) });
+  delete(@aa2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @fields_literal });
+
+  ##-- avoid inclusion of user-specified 'except' fields
+  if ($aa_field->{except}) {
+    my $except = $mf->expand($aa_field->{except});
+    delete(@aa2field{ map { $_->{name} } @$except });
+    delete(@aa2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @$except });
+  }
+
+  return [ @aa2field{sort keys %aa2field} ];
+}
+
+##---------------------------------------------------------------
 ## Fields: expanders: 'all'
 
 ## \@expanded = _expand_all($mf,$all_field,\@xfields)
 sub _expand_all {
   my ($mf,$all_field,$xfields) = @_;
-
-  ##-- get literal fields, indexing by title
-  my @fields_literal = grep { ref($_) } @$xfields;
-  my %lit2field      = map { $mf->fieldTitle($_)=>$_ } @fields_literal;
-
-  ##-- get all user variables, indexing by title
-  my @allvars     = userVariables($mf->{configs});
-  my $fields_all  = $mf->expand([map {"xvars->$_"}  @allvars]);
-  #my %all2field   = map { $mf->fieldTitle($_)=>$_ } @$fields_all;
-  my %all2field   = map { $_->{title}=>$_ } @$fields_all;
-
-  ##-- avoid inclusion of literal fields
-  delete(@all2field{ keys(%lit2field) });
-  delete(@all2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @fields_literal });
-
-  ##-- avoid inclusion of user-specified 'except' fields
-  if ($all_field->{except}) {
-    my $except = $mf->expand($all_field->{except});
-    delete(@all2field{ map { $_->{title} } @$except });
-    delete(@all2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @$except });
-  }
-
-  #splice(@$xfields,$fi,1, @all2field{sort{keys(%all2field)}});
-  return [ @all2field{sort keys %all2field} ];
+  return $mf->_expand_auto_all($all_field,$xfields,[userVariables($mf->{configs})]);
 }
+
+##---------------------------------------------------------------
+## Fields: expanders: 'auto'
 
 ## \@expanded = _expand_auto($mf,\@xfields,$findex)
 sub _expand_auto {
   my ($mf,$auto_field,$xfields) = @_;
-
-  ##-- get literal fields, indexing by title
-  my @fields_literal = grep { ref($_) } @$xfields;
-  my %lit2field      = map { $mf->fieldTitle($_)=>$_ } @fields_literal;
-
-  ##-- get active user variables, indexing by title
-  my @autovars    = activeVariables($mf->{configs});
-  my $fields_auto = $mf->expand([map {"xvars->$_"}  @autovars]);
-  #my %auto2field  = map { $mf->fieldTitle($_)=>$_ } @$fields_auto;
-  my %auto2field  = map { $_->{title}=>$_ } @$fields_auto;
-
-  ##-- avoid inclusion of literal fields
-  delete(@auto2field{ keys(%lit2field) });
-  delete(@auto2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @fields_literal });
-
-  ##-- avoid inclusion of user-specified 'except' fields
-  if ($auto_field->{except}) {
-    my $except = $mf->expand($auto_field->{except});
-    delete(@auto2field{ map { $_->{title} } @$except });
-    delete(@auto2field{ map { $_->{alt} ? @{$_->{alt}} : qw() } @$except });
-  }
-
-  #splice(@$xfields, $i, 1, @auto2field{sort{keys(%auto2field)}});
-  return [ @auto2field{sort keys %auto2field} ];
+  return $mf->_expand_auto_all($auto_field,$xfields,[activeVariables($mf->{configs})]);
 }
 
 
@@ -483,12 +563,27 @@ sub fieldValueString {
 	  : $val);
 }
 
+## $fieldName = $mf->fieldName($field)
+##  + destructively alters $field (adds 'name' key if not present)
+##  + uses $mf->fieldTitle($field) if no 'name' or 'evalname' is present
+sub fieldName {
+  return $_[1]{name} if (defined($_[1]{name}));
+
+  my ($mf,$field) = @_;
+  if (defined($field->{evalname})) {
+    $field->{name} = eval qq({ no warnings 'void'; $field->{evalname} });
+    carp(ref($mf),"::fieldName(): error evaluating field title '$field->{evalname}': $@")
+      if ($@);
+    return $field->{name} if (defined($field->{name}));
+  }
+  return $field->{name} = $mf->fieldTitle($field);
+}
+
+
 ## $fieldTitle = $mf->fieldTitle($field)
-##  + destructive alters $field (adds 'title' key if not present)
+##  + destructively alters $field (adds 'title' key if not present)
+##  + uses $field->{name} if defined and field has empty path
 sub fieldTitle {
-  #my ($mf,$field) = @_;
-  #return $field->{title} if (defined($field->{title}));
-  ##--
   return $_[1]{title} if (defined($_[1]{title}));
   my ($mf,$field) = @_;
   ##--
@@ -497,6 +592,9 @@ sub fieldTitle {
     carp(ref($mf),"::fieldTitle(): error evaluating field title '$field->{evalTitle}': $@")
       if ($@);
     return $field->{title} if (defined($field->{title}));
+  }
+  elsif (defined($field->{name}) && (!$field->{path} || !@{$field->{path}})) {
+    return $field->{title} = $field->{name};
   }
   return
     $field->{title} =
@@ -717,8 +815,11 @@ sub expand {
     @$xfields = map { $_ eq $field ? @$expanded : $_ } @$xfields;
   }
 
-  ##-- expand field titles
-  $mf->fieldTitle($_) foreach (@$xfields);
+  ##-- expand field names and titles
+  foreach (@$xfields) {
+    $mf->fieldTitle($_);
+    $mf->fieldName($_);
+  }
 
   return $xfields;
 }

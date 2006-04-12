@@ -43,8 +43,8 @@ sub populate {
   my ($data,$cfg,$mf) = @_;
   my ($field);
   foreach $field (@{$mf->xfields}) {
-    $data->{$field->{title}}        = $mf->fieldValue($cfg,$field);
-    $data->{$field->{title}.':str'} = $mf->fieldValueString($field,$data->{$field->{title}});
+    $data->{$field->{name}}        = $mf->fieldValue($cfg,$field);
+    $data->{$field->{name}.':str'} = $mf->fieldValueString($field,$data->{$field->{name}});
   }
   $data->{_} = $cfg;
   return $data;

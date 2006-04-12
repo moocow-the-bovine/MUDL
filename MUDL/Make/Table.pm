@@ -26,7 +26,7 @@ our @ISA = qw(MUDL::Object);
 ##      rows    => \@fdata,             ##-- rows of the table (MUDL::Make::FieldData objects)
 ##  + Extended data:
 ##      formatted      => $bool,        ##-- true if table has been extended
-##      title2len      => \%fieldTitle2maxLen,
+##      name2len       => \%fieldName2maxLen,
 ##      linewd         => $row_line_width,
 ##      format         => $row_sprintf_format,
 ##      crows          => \@condensed_table_with_separators, ##-- includes seps: { __hr__=>$how }
@@ -106,33 +106,50 @@ sub formatRows {
 
   ##-- Format: step 2: get field lengths (all fields)
   my $rows = $tab->{rows};
-  my $title2len = $tab->{title2len} = { map { $_->{title}=>length($_->{title}) } @$xfields };
-  my ($cf,$field,$ftitle);
+  my $name2len = $tab->{name2len} = { map { $_->{name}=>length($_->{title}) } @$xfields };
+  my ($cf,$field,$fname);
   foreach $cf (@$rows) {
     foreach $field (@$xfields) {
-      $ftitle  = $field->{title};
-      $title2len->{$ftitle} = length($cf->{$ftitle.":str"})
-	if (length($cf->{$ftitle.":str"}) > $title2len->{$ftitle});
+      $fname  = $field->{name};
+      $name2len->{$fname} = length($cf->{$fname.":str"})
+	if (length($cf->{$fname.":str"}) > $name2len->{$fname});
     }
   }
 
   ##-- Format: step 3: get sprintf() format (visible only)
-  $tab->{format} = join(' ', map { '%'.$title2len->{$_->{title}}.'s' } @$visible_fields)."\n";
-  $tab->{linewd} = -1;
-  $tab->{linewd} += $title2len->{$_->{title}}+1 foreach (@$visible_fields);
+  my $fmt    = '';
+  my $linewd = 0;
+  my ($i,$fwidth);
+  foreach $i (0..$#$visible_fields) {
+    $field   = $visible_fields->[$i];
+    $fwidth  = $name2len->{$field->{name}};
+    $fmt    .= "%${fwidth}s";
+    $linewd += $fwidth;
+    if ($i < $#$visible_fields) {
+      if (defined($field->{padright})) {
+	$fmt    .= $field->{padright};
+	$linewd += length($field->{padright});
+      } else {
+	$fmt    .= ' ';
+	$linewd++;
+      }
+    }
+  }
+  $fmt .= "\n";
+  @$tab{qw(format linewd)} = ($fmt,$linewd);
 
   ##-- Format: step 4: insert 'hr' separators
   my %hr2prec = ( major=>30, minor=>20, micro=>10, none=>0 );
   my $crows = $tab->{crows} = [ { %{$rows->[0]} }, ];
 
-  my ($i,$cfprev,$hrhow);
+  my ($cfprev,$hrhow);
   foreach $i (1..$#$rows) {
     ($cf,$cfprev) = @$rows[$i,$i-1];
     $hrhow        = undef;
     ##-- separate?
     foreach $field (grep {defined($_->{hr})} @$xfields) {
-      $ftitle = $field->{title}.":str";
-      if ($cf->{$ftitle} ne $cfprev->{$ftitle}) {
+      $fname = $field->{name}.":str";
+      if ($cf->{$fname} ne $cfprev->{$fname}) {
 	##-- check hr precedence
 	$hrhow = $field->{hr} if (!defined($hrhow) || $hr2prec{$hrhow} < $hr2prec{$field->{hr}});
       }
@@ -144,9 +161,9 @@ sub formatRows {
   foreach $i (grep { !defined($crows->[$_]{__hr__}) && !defined($crows->[$_-1]{__hr__}) } (1..$#$crows)) {
     ($cf,$cfprev) = @$crows[$i,$i-1];
     foreach $field (grep {$_->{condense}} @$xfields) {
-      $ftitle = $field->{title}.":str";
-      if ($cf->{$ftitle} eq $cfprev->{$ftitle}) {
-	$cf->{$ftitle} = '';
+      $fname = $field->{name}.":str";
+      if ($cf->{$fname} eq $cfprev->{$fname}) {
+	$cf->{$fname} = '';
       }
     }
   }
