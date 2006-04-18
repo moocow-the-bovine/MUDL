@@ -585,11 +585,10 @@ sub actLatexSummary {
   $ufields   = 'latexDefault' if (!$ufields);
   my $mf = $mak->fields($ufields,configs=>$configs);
   my $tab = MUDL::Make::Table->newFull(mfields=>$mf, sortby=>$mak->{sortby});
+  $tab->latexRows();
 
   ##-- Summarize: indent
   my $indent = ' ';
-  my $format = $indent.$tab->{format};
-  my $linewd = $tab->{linewd};
   my %hr = (
 	    begin=>($indent."\\hline\%\n"),
 	    end  =>($indent."\\hline\%\n"),
@@ -600,33 +599,35 @@ sub actLatexSummary {
 	    micro=>($indent."%%-- (hr:micro)\n"),
 	    none=>'',
 	   );
-  $format =~ s/\n$/\\\\%%\n/s;
 
   ##-- Summarize: print table format
   my @visible_fields = @{$tab->{visible_fields}};
 
-  my $tabenv = 'tabular'; ##-- TODO: make this available to user!
+  my $tabenv = $tab->{latexEnv}; ##-- TODO: make this available to user!
   my $palign = '';
   my $align  = undef;
   print
     ("\\begin{$tabenv}{|",
-     (map {
-       ##-- TODO: make this work (field-local alignment flags OR auto-alignment if unspecified)
-       ##   + weirdness with field sequences such as:
-       ##       *:pr:g:stg{then    =>"\\bfseries{" },
-       ##         pr:g    {padright=>""            },
-       ##       *:pr:g:stg{then    =>"}"           }
-       ##   + solvable with field-local alignment flag ('align=()' for the \bfseries keys:
-       ##       *:pr:g:stg{then    =>"\\bfseries{", align=>''  },
-       ##         pr:g    {padright=>""           , align=>'r' ),
-       ##       *:pr:g:stg{then    =>"}"          , align=>''  }
-       ##   + probably best to move this stuff into MUDL::Make::Table RIGHT AWAY!
-       if    ($_->{name} eq '&')    { $align = $palign; }
-       elsif ($_->{name} eq '|')    { $align = $palign."|"; }
-       elsif (defined($_->{align})) { $align = $_->{align}; }
-       else  { $align = 'c'; }
-       $align
-     } @{$tab->{visible_fields}}),
+#     (map {
+#       ##-- TODO: make this work (field-local alignment flags OR auto-alignment if unspecified)
+#       ##   + weirdness with field sequences such as:
+#       ##       *:pr:g:stg{then    =>"\\bfseries{" },
+#       ##         pr:g    {padright=>""            },
+#       ##       *:pr:g:stg{then    =>"}"           }
+#       ##   + solvable with field-local alignment flag ('align=()' for the \bfseries keys:
+#       ##       *:pr:g:stg{then    =>"\\bfseries{", align=>''  },
+#       ##         pr:g    {padright=>""           , align=>'r' ),
+#       ##       *:pr:g:stg{then    =>"}"          , align=>''  }
+#       ##   + probably best to move this stuff into MUDL::Make::Table RIGHT AWAY!
+#       #if    ($_->{name} eq '&')    { $align = $palign; }
+#       #elsif ($_->{name} eq '|')    { $align = $palign."|"; }
+#       #elsif (defined($_->{align})) { $align = $_->{align}; }
+#       #else  { $align = 'c'; }
+#       #$align
+#       ##--
+#       $_->{latexAlign}
+#     } @{$tab->{latex_fields}}),
+     $tab->{latexAlign},
      "|}\n");
 
   ##-- Summarize: print headers
@@ -636,13 +637,7 @@ sub actLatexSummary {
      $hr{begin},
 
      ##-- header
-     sprintf($format,
-	     map {
-	       ($_->{name} eq '&' || $_->{name} eq '|'
-		? '&'
-		: "\\bfseries{$_->{title}}")
-	     } @{$tab->{visible_fields}}
-	    ),
+     join(' ', map { $_->{latexTitle} } @{$tab->{visible_fields}}),
 
      ##-- hrule
      $hr{head},
@@ -657,16 +652,16 @@ sub actLatexSummary {
       (
        (defined($cf->{__hr__})
 	? $hr{$cf->{__hr__}}    ##-- separator?
-	: sprintf($format,      ##-- data row
-		  @$cf{
-		       map {
-			 ($_->{name} eq '&' || $_->{name} eq '|'
-			  ? '&'
-			  : $_->{name}.":str")
-		       } @{$tab->{visible_fields}}
-		      }
-		 )
-       )
+	: @$cf{
+	       ##-- data row
+	       map {
+		 ($_->{name} eq '&' || $_->{name} eq '|'
+		  ? '&'                                  ##-- separator
+		  : $_->{name}.":str")                   ##-- text column
+	       } @{$tab->{visible_fields}}
+	      }
+       ),
+       "\\\\ \n",
       );
   }
 
