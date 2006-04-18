@@ -189,51 +189,87 @@ sub latexRows {
   ##-- Latex: Step 0: string-format
   $tab->formatRows() || return undef;
 
-  ##-- Latex: step 1: get visible fields
+  ##-- Latex: step 1: get latex-visible fields
   my $mf             = $tab->{mfields};
   my $xfields        = $mf->xfields();
   my $visible_fields = $tab->{visible_fields};
 
-  ##-- Latex: step 2: get latex environment & column alignment
-  my $lalign = '';
-  my $calign = '';
-  foreach (@$visible_fields) {
-    if ($_->{name} eq '|') {
-      ##-- column separator: add column-align for *previous* field(s)
-      $lalign .= $calign . '|';
-      $calign  = '';
-    }
-    elsif ($_->{name} eq '&') {
-      ##-- column separator: add column-align for *previous' field(s)
-      $lalign .= $calign;
-      $calign  = '';
-    }
-    elsif (!$calign) {
-      ##-- new field(s): get column-align value
-      if (defined($_->{latexAlign})) {
-	$calign = $_->{latexAlign};
-      }
-      elsif ($_->{n}) {
-	$calign = 'r';
-      }
-      else {
-	$calign = 'c';
-      }
-    }
-  }
-  $tab->{latexEnv}   = $args{env} ? $args{env} : 'tabular';
-  $tab->{latexAlign} = $lalign . $calign;
+  my $latex_fields   = $tab->{latex_fields} = [];
 
-  ##-- Latex: step 3: get latex field titles
-  foreach (@$visible_fields) {
-    if ($_->{name} eq '|' || $_->{name} eq '&') {
-      $_->{latexTitle} = '&';
+  my ($i,$j,$field,$jfield,$add);
+  foreach $i (0..$#$visible_fields) {
+    $field = $visible_fields->[$i];
+    next if ($field->{latexAttach});
+    $field->{latex_fields} = [ undef ]; ##-- flags current field, avoid self-referential structs
+
+    ##-- scan for right-attaching left neighbors
+    for ($j = $i-1; $j >= 0; $j--) {
+      $jfield = $visible_fields->[$j];
+      last if (!$jfield->{latexAttach} || $jfield->{latexAttach} ne 'r');
+      unshift(@{$field->{latex_fields}}, $jfield);
+    }
+
+    ##-- scan for left-attaching right neighbors
+    for ($j = $i+1; $j <= $#$visible_fields; $j++) {
+      $jfield = $visible_fields->[$j];
+      last if (!$jfield->{latexAttach} || $jfield->{latexAttach} ne 'l');
+      push(@{$field->{latex_fields}}, $jfield);
+    }
+
+    ##-- store this latex field
+    push(@$latex_fields, $field);
+  }
+
+
+  ##-- Latex: step 2: get latex column alignment
+  $tab->{latexEnv} = $args{env} ? $args{env} : 'tabular';
+  my $lalign = $tab->{latexAlign} = [];
+  foreach (@$latex_fields) {
+    if ($_->{latexSep}) {
+      ##-- explicit latex separator ('&', '|', '||', ...)
+      push(@$lalign, $_->{latexAlignHead}) if (defined($_->{latexAlignHead}));
     }
     else {
-      $_->{latexTitle} = "\bfseries{$_->{title}}";
+      ##-- text field(s): get column-align value
+      push(@$lalign,
+	   (defined($_->{latexAlign})
+	    ? $_->{latexAlign}
+	    : ($_->{n}
+	       ? 'r'
+	       : 'c')));
     }
   }
 
+
+  ##-- Latex: step 3: prune separators & get latex field titles
+  @{$tab->{latex_fields}} = grep { !$_->{latexSep} } @{$tab->{latex_fields}};
+  foreach (@$latex_fields) {
+    $_->{latexTitle} = $_->{title} ? "\\bfseries{$_->{title}}" : '';
+  }
+
+  ##-- Latex: step 4: get latex rows (array of hashes):
+  ##   $latex_rows = [ \@row1, ..., \@rowN ],
+  ##   $row_i      = { row=>$fieldData, latex=>\@latex_column_strings, }
+  my $lrows = $tab->{latex_rows} = [];
+  my ($row,$lrow);
+  foreach $row (@{$tab->{crows}}) {
+    if ($row->{__hr__}) {
+      push(@$lrows, {row=>$row});
+      next;
+    }
+
+    $lrow = [];
+    for ($i=0; $i <= $#$latex_fields; $i++) {
+      $field = $latex_fields->[$i];
+      $lrow->[$i] = '';
+      for ($j=0; $j <= $#{$field->{latex_fields}}; $j++) {
+	$jfield = $field->{latex_fields}[$j];
+	$jfield = $field if (!defined($jfield));
+	$lrow->[$i] .= $row->{$jfield->{name}.":str"};
+      }
+    }
+    push(@$lrows, {row=>$row, latex=>$lrow});
+  }
 
   ##-- Set 'latexed' flag
   $tab->{latexed} = 1;

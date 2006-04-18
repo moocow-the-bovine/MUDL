@@ -68,11 +68,10 @@ our %FIELDS =
    'results'          => 'tabResults',
 
    (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
-
-   (map { ("latex$_" => "summarize$_") } qw(Default Id Results)),
-   (map { ("ltab$_"  => "summarize$_") } qw(Default Id Results)),
+   (map { ("ltab$_"  => "latex$_") } qw(Default Id Results)),
 
 
+   ##-- Summarize (ASCII)
    'summarizeDefault' => ['summarizeId', '|', 'summarizeResults'],
    'summarizeId' => [
 		     'stage.emi',
@@ -93,19 +92,32 @@ our %FIELDS =
 		     qw(ar:t),
 		    ],
 
+   ##-- Summarize (LaTeX)
+   'latexDefault' => ['|', 'latexId', '||', 'latexResults', '|'],
+   'latexId' => [
+		 'stage.emi',
+		 'corpus',
+		 'lrlabel',
+		 'auto',
+		],
+   'latexResults'=>[
+		    qw(*l:pr:g ar:g),
+		    '|',
+		    qw(*l:pr:t ar:t),
+		   ],
+
 
    ##-- Filler(s)
    ':'    => { eval=>'":"',  title=>':', },
    '::'   => { eval=>'"::"', title=>'::', },
    '='    => { eval=>'"="',  title=>'=', },
    '/'    => { eval=>'"/"',  title=>'/', },
-   '|'    => { eval=>'"|"',  title=>'|', },
-   '&'    => { eval=>'"&"',  title=>'&', },
-   '\\'   => '\\\\',
-   '\\\\' => { eval=>'"\\\\\\\\"', title=>'\\\\', latexAlign=>'', }, ##-- no LaTeX alignment
+   '&'    => { eval=>'"&"',  title=>'&',  latexSep=>1, latexAlignHead=>'' },
+   '|'    => { eval=>'"|"',  title=>'|',  latexSep=>1, latexAlignHead=>'|' },
+   '||'   => { eval=>'"||"', title=>'||', latexSep=>1, latexAlignHead=>'||' },
 
    ##-- MetaProfile: label
-   lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlab',
+   lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlabel',
 		alt=>[qw(xvars->lrwhich xvars->tcd xvars->tcm xvars->tccd xvars->tccm),
 		      qw(lrwhich tcd tcm tccd tccm),
 		     ],
@@ -317,25 +329,41 @@ sub _markbest_fields {
 sub _markbest_fields_latex {
   my ($of_field, %args) = @_;
 
-  $args{latexAlign} ='';
+  my %argsL = ( latexAttach=>'r' );
+  my %argsR = ( latexAttach=>'l' );
   our ($_ifmax_corpus, $_ifmax_stage, $_ifmax_emi);
   return
     (
-     "*l:${of_field}:corpus" => { %$_ifmax_corpus, of=>$of_field, %args, then=>'$\star$', },
-     "*l:${of_field}:stage"  => [
-				 { %$_ifmax_stage, of=>$of_field, %args, then=>'\bfseries{'},
-				 $of_field,
-				 { %$_ifmax_stage, of=>$of_field, %args, then=>'}' },
-				],
-     "*l:${of_field}:stg"    => "*l:${of_field}:stage",
-     "*l:${of_field}:emi"    => [
-				 { %$_ifmax_emi,    of=>$of_field, %args, then=>'\slshape{', },
-				 $of_field,
-				 { %$_ifmax_stage, of=>$of_field, %args, then=>'}' },
-				],
+     "*l:${of_field}:corpus:<" => { %$_ifmax_corpus, of=>$of_field, %args, %argsL, then=>'$\star$' },
+     "*l:${of_field}:corpus:>" => { %$_ifmax_corpus, of=>$of_field, %args, %argsR, then=>'' },
+
+     "*l:${of_field}:stage:<" => { %$_ifmax_stage, of=>$of_field, %args, %argsL, then=>'\bfseries{', },
+     "*l:${of_field}:stage:>" => { %$_ifmax_stage, of=>$of_field, %args, %argsR, then=>'}', },
+
+     "*l:${of_field}:stg:<"  => "*l:${of_field}:stage:<",
+     "*l:${of_field}:stg:>"  => "*l:${of_field}:stage:>",
+
+     "*l:${of_field}:emi:<"  => { %$_ifmax_emi,    of=>$of_field, %args, %argsL, then=>'\slshape{', },
+     "*l:${of_field}:emi:>"  => { %$_ifmax_emi,    of=>$of_field, %args, %argsR, then=>'}', },
+
      ##--
-     "**l:${of_field}"       => [ "*l:${of_field}:corpus", "*l:${of_field}:stage" ],
-     "***l:${of_field}"      => [ "*l:${of_field}:corpus", "*l:${of_field}:stage", "*l:${of_field}:emi" ],
+     "**l:${of_field}"       => [
+				 "*l:${of_field}:corpus:<",
+				 "*l:${of_field}:stage:<",
+				 $of_field,
+				 "*l:${of_field}:stage:>",
+				 "*l:${of_field}:corpus:>",
+				],
+     "***l:${of_field}"      => [
+				 "*l:${of_field}:corpus:<",
+				 "*l:${of_field}:stage:<",
+				 "*l:${of_field}:emi:<",
+				 $of_field,
+				 "*l:${of_field}:emi:>",
+				 "*l:${of_field}:stage:>",
+				 "*l:${of_field}:corpus:>",
+				],
+
      "*l:${of_field}"        => "***l:${of_field}",
     );
 }
