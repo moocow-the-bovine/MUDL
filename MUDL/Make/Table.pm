@@ -171,6 +171,76 @@ sub formatRows {
   return $tab;
 }
 
+##----------------------------------------------------------------------
+## Methods: format: LaTeX
+
+## $tab = $tab->latexRows(%args)
+##  + %args:
+##     force=>$bool,      ##-- force re-format
+##     env  =>$latexEnv,  ##-- tabular environment (default='tabular')
+##  + just returns if $tab->{latexed} is true
+##  + otherwise creates LaTeX-formatting keys
+sub latexRows {
+  my ($tab,%args) = @_;
+
+  ##-- Check if we're already formatted (or forcing a re-format)
+  return $tab if (!$args{force} && $tab->{latexed});
+
+  ##-- Latex: Step 0: string-format
+  $tab->formatRows() || return undef;
+
+  ##-- Latex: step 1: get visible fields
+  my $mf             = $tab->{mfields};
+  my $xfields        = $mf->xfields();
+  my $visible_fields = $tab->{visible_fields};
+
+  ##-- Latex: step 2: get latex environment & column alignment
+  my $lalign = '';
+  my $calign = '';
+  foreach (@$visible_fields) {
+    if ($_->{name} eq '|') {
+      ##-- column separator: add column-align for *previous* field(s)
+      $lalign .= $calign . '|';
+      $calign  = '';
+    }
+    elsif ($_->{name} eq '&') {
+      ##-- column separator: add column-align for *previous' field(s)
+      $lalign .= $calign;
+      $calign  = '';
+    }
+    elsif (!$calign) {
+      ##-- new field(s): get column-align value
+      if (defined($_->{latexAlign})) {
+	$calign = $_->{latexAlign};
+      }
+      elsif ($_->{n}) {
+	$calign = 'r';
+      }
+      else {
+	$calign = 'c';
+      }
+    }
+  }
+  $tab->{latexEnv}   = $args{env} ? $args{env} : 'tabular';
+  $tab->{latexAlign} = $lalign . $calign;
+
+  ##-- Latex: step 3: get latex field titles
+  foreach (@$visible_fields) {
+    if ($_->{name} eq '|' || $_->{name} eq '&') {
+      $_->{latexTitle} = '&';
+    }
+    else {
+      $_->{latexTitle} = "\bfseries{$_->{title}}";
+    }
+  }
+
+
+  ##-- Set 'latexed' flag
+  $tab->{latexed} = 1;
+
+  return $tab;
+}
+
 
 1;
 

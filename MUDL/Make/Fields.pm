@@ -102,7 +102,7 @@ our %FIELDS =
    '|'    => { eval=>'"|"',  title=>'|', },
    '&'    => { eval=>'"&"',  title=>'&', },
    '\\'   => '\\\\',
-   '\\\\' => { eval=>'"\\\\\\\\"', title=>'\\\\', },
+   '\\\\' => { eval=>'"\\\\\\\\"', title=>'\\\\', latexAlign=>'', }, ##-- no LaTeX alignment
 
    ##-- MetaProfile: label
    lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlab',
@@ -265,7 +265,6 @@ our %FIELDS =
 		padright    =>'',
 	       }),
 
-
    ##-- max: search markers
    '*:corpus'      => (our $_ifmax_corpus = { %$_field_ifmax, for=>'corpus' }),
    '*:stage'       => (our $_ifmax_stage  = { %$_field_ifmax, for=>'corpus,stage' }),
@@ -286,6 +285,10 @@ our %FIELDS =
    (map { _markbest_fields($_) } qw(apr:g arc:g aF:g)),
    (map { _markbest_fields($_) } qw(apr:t arc:t aF:t)),
 
+   (map { _markbest_fields_latex($_) } qw(pr:g rc:g F:g ar:g)),
+   (map { _markbest_fields_latex($_) } qw(pr:t rc:t F:t ar:t)),
+   (map { _markbest_fields_latex($_) } qw(apr:g arc:g aF:g)),
+   (map { _markbest_fields_latex($_) } qw(apr:t arc:t aF:t)),
   );
 ##-- EOFIELDS
 
@@ -309,6 +312,33 @@ sub _markbest_fields {
 	 );
 }
 
+
+## %field_aliases = _markbest_fields_latex($of_field)
+sub _markbest_fields_latex {
+  my ($of_field, %args) = @_;
+
+  $args{latexAlign} ='';
+  our ($_ifmax_corpus, $_ifmax_stage, $_ifmax_emi);
+  return
+    (
+     "*l:${of_field}:corpus" => { %$_ifmax_corpus, of=>$of_field, %args, then=>'$\star$', },
+     "*l:${of_field}:stage"  => [
+				 { %$_ifmax_stage, of=>$of_field, %args, then=>'\bfseries{'},
+				 $of_field,
+				 { %$_ifmax_stage, of=>$of_field, %args, then=>'}' },
+				],
+     "*l:${of_field}:stg"    => "*l:${of_field}:stage",
+     "*l:${of_field}:emi"    => [
+				 { %$_ifmax_emi,    of=>$of_field, %args, then=>'\slshape{', },
+				 $of_field,
+				 { %$_ifmax_stage, of=>$of_field, %args, then=>'}' },
+				],
+     ##--
+     "**l:${of_field}"       => [ "*l:${of_field}:corpus", "*l:${of_field}:stage" ],
+     "***l:${of_field}"      => [ "*l:${of_field}:corpus", "*l:${of_field}:stage", "*l:${of_field}:emi" ],
+     "*l:${of_field}"        => "***l:${of_field}",
+    );
+}
 
 
 ##---------------------------------------------------------------
