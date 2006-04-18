@@ -11,6 +11,7 @@ use Cwd qw(abs_path);
 use Digest::MD5 qw(md5);
 use MUDL::Make::Fields qw(:all);
 use MUDL::Make::Table;
+use MUDL::Make::Plot;
 use strict;
 use Carp;
 our @ISA = qw(MUDL::Object Exporter);
@@ -443,42 +444,6 @@ sub actList {
 }
 
 
-##------- hmm...
-sub actList__WITH_PARTITIONS {
-  my ($mak,$fields) = @_;
-  return 0 if (!$mak->ensureLoaded);
-
-  my $part    = $mak->partition();
-  my @configs = map { @$_ } values(%$part);
-  if (!@configs) {
-    print "  (no configurations selected)\n";
-    return 1;
-  }
-
-  $fields = 'listDefault' if (!$fields);
-  my @fields = $mak->fields($fields,configs=>\@configs);
-
-  my ($pkey);
-  foreach $pkey (sort keys(%$part)) {
-    print
-      (
-       "\n",
-       "Subcollection ($pkey):\n",
-       (
-	map { ("  ", $mak->listKey($_, (map { $_->{title} } @fields)), "\n") }
-	map { $mak->configFieldStringHash($_,\@fields) }
-	$mak->sortConfigs($part->{$pkey},
-			  sortby=>$mak->{sortby}
-			  #sortby=>\@fields,
-			 )
-       ),
-      );
-  }
-
-  return 1;
-}
-
-
 ## $listKey = $mak->listKey($fieldData)
 ## $listKey = $mak->listKey($fieldData, @fieldTitles)
 sub listKey {
@@ -651,7 +616,7 @@ sub actLatexSummary {
 }
 
 
-##-- Utilities: latexify
+##-- Utilities: latexify (UNUSED!)
 
 ## $lstr = latexify($str)
 sub latexify {
@@ -680,6 +645,29 @@ sub actMake {
       $mak->syncCollection() if ($mak->{paranoid});
     }
   }
+  return $rc;
+}
+
+##---------------------------------------------------------------
+## Actions: plot
+
+$ACTIONS{plot} =
+  {
+   syntax=>'plot %args=(x=>"FIELD",y=>"FIELD",...)',
+   help=>'create and print a 2d GNUplot script for selected data',
+   code=>\&actPlot,
+  };
+sub actPlot {
+  my ($mak,$args) = @_;
+  return 0 if (!$mak->ensureLoaded);
+  my $rc = 1;
+  my %args = defined($args) ? eval "($args)" : qw();
+  warn(ref($mak)."::actPlot($args): error evaluating argument string: $@") if ($@);
+
+  my $configs = $mak->selectedConfigs();
+  my $plot    = MUDL::Make::Plot->newFull(configs=>$configs,%args);
+  print scalar($plot->script());
+
   return $rc;
 }
 

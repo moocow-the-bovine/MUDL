@@ -62,6 +62,7 @@ our %FIELDS =
 			  qw(corpus stage),
 			  #qw(emi),
 		       ],
+   'plotKeyDefault' => [qw(corpus lrlab auto)],
 
    'default'          => 'tabDefault',
    'id'               => 'tabId',
@@ -172,6 +173,16 @@ our %FIELDS =
 		   hr=>'minor',
 		   condense=>1,
 		  },
+
+   ##-------------------------------------------------
+   ## MetaProfile Summary data
+   'nT'   => { path=>[qw(mpsummary nTargets)],   n=>1,  title=>'nT',   condense=>1, },
+   'nT_k' => { path=>[qw(mpsummary nTargets_k)], n=>1,  title=>'nT_k', condense=>1, },
+   'nB'   => { path=>[qw(mpsummary nBounds)],    n=>1,  title=>'nB',   condense=>1, },
+   'nC'   => { path=>[qw(mpsummary nClusters)],  n=>1,  title=>'nC',   condense=>1, },
+   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg f(T_k)', condense=>1, },
+   'mbest'=> { path=>[qw(mpsummary d2p_n)],     n=>1,  title=>'m',    condense=>0, },
+
 
    ##-------------------------------------------------
    ## Eval: Meta-(precision,recall,F,ambig-rate)
@@ -695,7 +706,7 @@ sub sortFieldData {
 ## \&cmpcode = $mf->configSortSub(%args)
 ##  + %args:
 ##     #configs=>\@configs,          ##-- default: $mf->{configs}: for field-expansion
-##     sortby =>$sortby_fieldspec,  ##-- default: $mf->xfields()
+##     sortby =>$sortby_fieldspec,   ##-- default: $mf->xfields()
 sub configSortSub {
   my ($mf,%args) = @_;
   my $sbfields = $args{sortby}  ? $mf->expand($args{sortby}) : $mf->xfields;
