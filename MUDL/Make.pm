@@ -214,6 +214,29 @@ sub actInitialize {
 }
 
 ##---------------------------------------------------------------
+## Actions: reparse variables
+
+$ACTIONS{reparse} = $ACTIONS{reparseVariables} =
+  {
+   syntax=>'reparse',
+   help =>'reparse configuration collection variables (does NOT re-expand!)',
+   code =>\&actReparse,
+  };
+
+sub actReparse {
+  my ($mak,$argv) = @_;
+  return 0 if (!$mak->ensureLoaded());
+
+  my $col = $mak->{col};
+  $mak->{col}{vars}->parse($mak->{varfile})
+    or confess(ref($mak)."::actReparse(): could not parse variables file '$mak->{varfile}'");
+
+  return 1;
+}
+
+
+
+##---------------------------------------------------------------
 ## Actions: ensure loaded
 
 $ACTIONS{ensure} =
@@ -269,9 +292,9 @@ sub actSelectUser {
 ##---------------------------------------------------------------
 ## Actions: expand
 
-$ACTIONS{expandAll} =
+$ACTIONS{expandAll} = $ACTIONS{expandSelected} =
   {
-   syntax=>'expandAll',
+   syntax=>'expandSelected',
    help  =>'(re-)expand selected configurations',
    code  => \&actExpandAll,
   };
@@ -666,7 +689,9 @@ sub actPlot {
 
   my $configs = $mak->selectedConfigs();
   my $plot    = MUDL::Make::Plot->newFull(configs=>$configs,%args);
-  print scalar($plot->script());
+  my $gpfile  = $plot->saveScript();
+
+  $mak->vmsg('info', ref($mak), "::actPlot(): saved GNUplot script to '$gpfile'.\n");
 
   return $rc;
 }
@@ -859,7 +884,7 @@ sub ensureLoaded {
 ##  + loads the default collection
 sub loadCollection {
   my $mak = shift;
-  $mak->vmsg('info', ref($mak),": loadCollection($mak->{colfile})... ");
+  $mak->vmsg('info', ref($mak),": loadCollection($mak->{colfile})...\n");
   $mak->{col} = MUDL::Make::Collection->loadFile($mak->{colfile});
   if (!$mak->{col}) {
     confess(ref($mak), "::loadCollection($mak->{colfile}): load failed!\n");
@@ -870,7 +895,7 @@ sub loadCollection {
   $mak->{loaded} = 1;
   $mak->{coldigest} = $mak->collectionDigest();
 
-  $mak->vmsg('info', "loaded.\n");
+  $mak->vmsg('info', ref($mak),": loadCollection($mak->{colfile}): loaded.\n");
   return $mak->{col};
 }
 

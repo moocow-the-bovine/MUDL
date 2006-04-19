@@ -244,7 +244,8 @@ sub latexRows {
   ##-- Latex: step 3: prune separators & get latex field titles
   @{$tab->{latex_fields}} = grep { !$_->{latexSep} } @{$tab->{latex_fields}};
   foreach (@$latex_fields) {
-    $_->{latexTitle} = $_->{title} ? "\\bfseries{$_->{title}}" : '';
+    $_->{latexTitle} = $_->{title} ? "\\bfseries{$_->{title}}" : ''
+      if (!defined($_->{latexTitle}));
   }
 
   ##-- Latex: step 4: get latex rows (array of hashes):

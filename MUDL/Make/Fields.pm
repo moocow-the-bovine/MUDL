@@ -58,10 +58,7 @@ our %FIELDS =
 		     qw(stage emi corpus lrlab auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
-   'collectDefault' => [
-			  qw(corpus stage),
-			  #qw(emi),
-		       ],
+   'collectDefault' => [ qw(corpus stage), ],
    'plotKeyDefault' => [qw(corpus lrlab auto)],
 
    'default'          => 'tabDefault',
@@ -75,7 +72,8 @@ our %FIELDS =
    ##-- Summarize (ASCII)
    'summarizeDefault' => ['summarizeId', '|', 'summarizeResults'],
    'summarizeId' => [
-		     'stage.emi',
+		     #'stage.emi',
+		     'stage', 'emi',
 		     'corpus',
 		     #'lang',
 		     'lrlabel',
@@ -164,24 +162,49 @@ our %FIELDS =
    'stage.emi' => {
 		   path=>[qw(xvars)],
 		   n=>0,
-		   fmt=>'%5.2f',
+		   #fmt=>'%5s',
+		   fmt=>'%5s ',
 		   eval=>'sprintf("%2d.%02d", $_->{stage}, $_->{emi})',
 		   title=>'stg.emi',
-		   alt=>[qw(xvars->stage xvars->emi stg emi),
-			 qw(stage emi),
-			],
+		   alt=>[ qw(xvars->stage xvars->emi stg emi stage emi), ],
 		   hr=>'minor',
 		   condense=>1,
 		  },
 
    ##-------------------------------------------------
    ## MetaProfile Summary data
-   'nT'   => { path=>[qw(mpsummary nTargets)],   n=>1,  title=>'nT',   condense=>1, },
-   'nT_k' => { path=>[qw(mpsummary nTargets_k)], n=>1,  title=>'nT_k', condense=>1, },
-   'nB'   => { path=>[qw(mpsummary nBounds)],    n=>1,  title=>'nB',   condense=>1, },
-   'nC'   => { path=>[qw(mpsummary nClusters)],  n=>1,  title=>'nC',   condense=>1, },
-   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg f(T_k)', condense=>1, },
-   'mbest'=> { path=>[qw(mpsummary d2p_n)],     n=>1,  title=>'m',    condense=>0, },
+   'nT'   => { path=>[qw(mpsummary nTargets)],   n=>1,  title=>'nT',   condense=>1, alt=>[qw(stage)],
+	       latexTitle=>'$\mathbf{|T_{\le k}|}$',
+	     },
+   'ntgs' => 'nT',
+
+   'nT_k' => { path=>[qw(mpsummary nTargets_k)], n=>1,  title=>'nT_k', condense=>1, alt=>[qw(stage)],
+	       latexTitle=>'$\mathbf{|T_k|}$',
+	     },
+   'ntgsk' => 'nT_k',
+
+   'nB'   => { path=>[qw(mpsummary nBounds)],    n=>1,  title=>'nB',   condense=>1, alt=>[qw(stage)],
+	       latexTitle=>'$\mathbf{|B_k|}$',
+	     },
+   'nbds' => 'nB',
+
+   'nC'   => { path=>[qw(mpsummary nClusters)],  n=>1,  title=>'nC',   condense=>1,
+	       latexTitle=>'$\mathbf{|C|}$',
+	     },
+   'nclusters' => 'nC',
+
+   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg f(T_k)', condense=>1, alt=>[qw(stage nT)],
+	       eval=>'sprintf("%.2f",$_)',
+	       latexTitle=>'$\mathbf{E(f(T_k))}$',
+	     },
+   'tgf'  => 'fT_k',
+
+   'mbest'=> { path=>[qw(mpsummary d2p_n)],     n=>1,  title=>'m',    condense=>0,
+	       latexTitle=>'$\mathbf{m}$',
+	     },
+   'd2pn' => 'mbest',
+
+
 
 
    ##-------------------------------------------------
@@ -940,19 +963,27 @@ push(@{$EXPORT_TAGS{utils}}, 'activeVariables');
 sub activeVariables {
   my $configs = shift;
 
+  ##-- Get all user variables
+  my @uvars = userVariables($configs);
+
   ##-- count number of (var,value) pairs
   my %var2val2n = qw();
-  my ($cfg,$var);
+  my ($cfg,$var,$val);
   foreach $cfg (@$configs) {
-    foreach $var (keys(%{$cfg->{uvars}})) {
-      ++$var2val2n{$var}{$cfg->{uvars}{$var}} if (defined($cfg->{uvars}{$var}));
+    foreach $var (@uvars) {
+      if (defined($val=$cfg->{uvars}{$var})) {
+	++$var2val2n{$var}{$val};
+      }
+      elsif (defined($val=$cfg->{xvars}{$var})) {
+	++$var2val2n{$var}{$val};
+      }
     }
   }
 
   ##-- get all actually varied ${var}s as those for which:
   ##   + only one defined value exists
   ##      AND
-  ##   + every selected user-config declares that value
+  ##   + every selected user-config declares that value in its {uvars} or, if undefined, in its {xvars}
   my ($val2n);
   my @avars = qw();
   foreach $var (keys(%var2val2n)) {

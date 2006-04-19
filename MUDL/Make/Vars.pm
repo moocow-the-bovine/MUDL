@@ -231,7 +231,7 @@ sub parse {
     next if ($buf =~ s/\s*\\$/ /); ##-- honor newline escapes
 
     ##-- parse buffer
-    if ($buf =~ /^\s*([^\=]*?\S)\s*([\?\:]?=)\s*(.*)/) {
+    if ($buf =~ /^\s*([^\=]*?\S)\s*([\?\:]?=)\s*(.*)/) { ##-- it's a variable assignment
       ($var,$op,$val) = ($1,$2,$3);
       $vars->{$var}   = $op.' '.$val;
     }

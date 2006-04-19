@@ -70,9 +70,16 @@ sub clear {
   $mcol->{vars}->clear() if (defined($mcol->{vars}));
 
   ##-- Configs
+  $mcol->clearConfigs();
+
+  return $mcol;
+}
+
+## $mcol = $mcol->clearConfigs()
+sub clearConfigs {
+  my $mcol = shift;
   %{$mcol->{uconfigs}} = qw() if ($mcol->{uconfigs});
   %{$mcol->{xconfigs}} = qw() if ($mcol->{xconfigs});;
-
   return $mcol;
 }
 
@@ -167,7 +174,7 @@ sub ufind {
 ##  + implicitly parses $ukey if it is passed as a string (may be dangerous!)
 ##  + %args:
 ##     expand=>$bool, ##-- if true, newly created configs will be auto-expanded
-##     class=>$class, ##-- config class (default: MUDL::Make::Config)
+##     class=>$class, ##-- config class (default: MUDL::Make::Config) [also sets $cfg->{class}]
 sub uget {
   my ($mcol,$uvars,%args) = @_;
   my ($ukey);
@@ -184,6 +191,11 @@ sub uget {
   my $class = $args{class} ? $args{class} : 'MUDL::Make::Config';
   my $cfg = $mcol->{uconfigs}{$ukey} = $class->new(uvars => $uvars);
   $mcol->expandConfig($cfg) if ($args{expand});
+
+  ##-- set config 'class' key
+  my $cclass = $class;
+  $cclass =~ s/^MUDL::Make::Config(?:\:*)//;
+  $cfg->{class} = $cclass;
 
   return $cfg;
 }
@@ -209,6 +221,7 @@ sub xfind {
 ##  + adds expanded key to $mcol->{xconfigs}
 sub expandConfig {
   my ($mcol,$cfg) = @_;
+  print STDERR ref($mcol), "::expandConfig(", $mcol->ukey($cfg), ")...\n";
   $cfg->expand($mcol->{vars});
   return $mcol->{xconfigs}{$mcol->xkey($cfg)} = $cfg;
 }
@@ -236,6 +249,22 @@ sub expandMissing {
   return $mcol;
 }
 
+
+##======================================================================
+## Re-index
+
+## $mcol = $mcol->reindex();
+##  + just re-indexes, no re-expansion is performed
+sub reindex {
+  my ($mcol,%args) = @_;
+  my @configs = values(%{$mcol->{uconfigs}});
+  $mcol->clearConfigs();
+  my ($cfg);
+  foreach $cfg (@configs) {
+    $mcol->{uconfigs}{$mcol->ukey($cfg)} = $mcol->{xconfigs}{$mcol->xkey($cfg)} = $cfg;
+  }
+  return $mcol;
+}
 
 ##======================================================================
 ## Search
@@ -269,12 +298,15 @@ sub vsearch {
 
   my @configs = qw();
   my ($cfg);
+  my $tmp = $_;
   foreach $cfg (values(%{$mcol->{uconfigs}})) {
-    $_ = $cfg->{$vkey};
-    %_ = %$_;
+    #$_ = $cfg->{$vkey};
+    $_ = $cfg;
+    %_ = %{$cfg->{$vkey}};
     push(@configs,$cfg) if (eval $crit);
     carp(ref($mcol)."::vsearch(): error evaluating search criteria '$crit': $@") if ($@);
   }
+  $_ = $tmp;
   return @configs;
 }
 

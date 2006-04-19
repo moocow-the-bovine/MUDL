@@ -30,9 +30,10 @@ sub new {
 				 'points'=>[],    ##-- data points (MUDL::Make::FieldData objects)
 				                  ##    + contain array-ref '__point__'=>[$x,$y,...]
 
-				 ##-- Filing options
+				 ##-- I/O options
 				 'datafile'=>undef, ##-- datafile name (default: auto-generate)
 				 'datadir'=>'.',    ##-- datafile directory
+				 'datasuffix'=>'.dat',
 
 				 ##-- Display Options
 				 'with'  =>'lp',
@@ -63,7 +64,7 @@ sub datafile {
   $file =~ s/\,/\./g;
   $file =~ s/[\s\<\>\(\)\[\]\:\/\\]+/_/g;
   $file =~ s/\.\_/\./g;
-  return $pdata->{datafile} = $pdata->{datadir}.'/'.$file.".dat";
+  return $pdata->{datafile} = $pdata->{datadir}.'/'.$file.$pdata->{datasuffix};
 }
 
 

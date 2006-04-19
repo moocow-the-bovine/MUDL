@@ -627,16 +627,15 @@ sub loadBinString {
   return UNIVERSAL::can($_[0],'loadBinRef') ? $_[0]->loadBinRef($ref) : $ref;
 }
 
-## $obj_or_undef = $class_or_obj->loadBinFile($filename,@args)
+## $obj_or_undef = $class_or_obj->loadBinFile($filename,%args)
 ##   + calls loadBinFh($fh)
 sub loadBinFile {
   my ($obj,$file) = splice(@_,0,2);
   my $fh = ref($file) ? $file : IO::File->new("<$file");
-  if (!$fh) {
+   if (!$fh) {
     confess( __PACKAGE__ , "::loadBinFile(): open failed for '$file': $!");
     return undef;
   }
-  binmode($fh);
 
   #my $rc = loadBinFh($obj,$fh,@_);
   my $rc = $obj->loadBinFh($fh,@_);
@@ -647,10 +646,23 @@ sub loadBinFile {
 
 ## $obj_or_undef = $class_or_obj->loadBinFh($fh,@args)
 sub loadBinFh {
-  my ($obj,$fh) = splice(@_,0,2);
+  my ($obj,$fh,%args) = @_;
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
-  binmode($fh,":gzip(autopop)");
-  if (!defined($ref=Storable::fd_retrieve($fh))) {
+
+  ##-- I/O layers
+  my @iolayers = $args{iolayers} ? @{$args{iolayers}} : qw();
+  binmode($fh);
+  binmode($fh,$_) foreach (@iolayers);
+
+  if (grep { $_ =~ /^:gzip/ } @iolayers) {
+    ##-- hack: thaw gzipped binary files
+    my $frozen = join('',<$fh>);
+    if (!defined($ref=Storable::thaw($frozen))) {
+      confess( __PACKAGE__ , "::loadBinFh(): Storable::thaw() failed.\n");
+      return undef;
+    }
+  }
+  elsif (!defined($ref=Storable::fd_retrieve($fh))) {
     confess( __PACKAGE__ , "::loadBinFh(): Storable::fd_retrieve() failed.\n");
     return undef;
   }

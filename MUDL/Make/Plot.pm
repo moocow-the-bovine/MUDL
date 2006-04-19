@@ -26,10 +26,24 @@ our @ISA = qw(MUDL::Object);
 ##     configs=>\@configs,     ##-- array-ref of MUDL::Make::Config objects
 ##
 ##  + Display Options:
+##     term  =>$string,        ##-- terminal type (default=undef [not set])
+##
 ##     xlabel=>$string,        ##-- default: $x_field->{title}
 ##     ylabel=>$string,        ##-- default: $y_field->{title}
+##
+##     xrange=>$string,        ##-- default: undef (not set)
+##     yrange=>$string,        ##-- default: undef (not set)
+##
+##     view=>$string,          ##-- GNUplot 'set view ...' (default=undef [not set])
+##
 ##     with=>$how,             ##-- default: 'lp'
-##     ???
+##
+##     ...?
+##
+##  + I/O Options:
+##     outfile=>$file,         ##-- script output file (default=stdout)
+##     datadir=>$dir,          ##-- default='.',
+##     datasuffix=>$suffix,    ##-- default='.dat'
 ##
 ##  + Agglomeration Options:
 ##     ptitle=>$code_string,   ##-- eval'd wrt each data point (config); should return its title (key)
@@ -53,6 +67,19 @@ sub new {
 
 				#'ptitle'=>'"$auto"', ##-- use auto-generated key
 				ptitle=>undef,        ##-- use auto-generated key (more efficient)
+
+				##-- I/O options
+				outfile=>'-',
+				datadir=>'.',
+				datasuffix=>'.dat',
+
+				##-- Display options
+				term=>undef,   ##-- not set
+				xlabel=>undef, ##-- use field title
+				ylabel=>undef, ##-- use field title
+				xrange=>undef, ##-- not set
+				yrange=>undef, ##-- not set
+				with=>'lp',
 
 				##-- Low-level data
 				mfields=>MUDL::Make::Fields->new(),
@@ -140,7 +167,14 @@ sub compile {
       $_->{__point__} = [@$_{@dimnames}];
 
       ##-- sort this field-hash into the dataset for its title
-      $plots->{$ptitle} = MUDL::Make::PlotData->new(ndims=>2, title=>$ptitle) if (!$plots->{$ptitle});
+      $plots->{$ptitle} = MUDL::Make::PlotData->new(ndims=>2,
+						    title=>$ptitle,
+						    with=>$plot->{with},
+						    datadir=>$plot->{datadir},
+						    datasuffix=>$plot->{datasuffix},
+						   )
+	if (!$plots->{$ptitle});
+
       push(@{$plots->{$ptitle}{points}}, $_);
     }
   };
@@ -148,6 +182,18 @@ sub compile {
   ##-- sort datasets
   $_->sortPoints() foreach (values(%$plots));
 
+
+  ##-- get plot options
+  if (!defined($plot->{xlabel})) {
+    $plot->{xlabel} = $xfields->[0]{title};
+    $plot->{xlabel} =~ s/^\s+//;
+    $plot->{xlabel} =~ s/\s+$//;
+  }
+  if (!defined($plot->{ylabel})) {
+    $plot->{ylabel} = $xfields->[1]{title};
+    $plot->{ylabel} =~ s/^\s+//;
+    $plot->{ylabel} =~ s/\s+$//;
+  }
 
   ##-- set 'compiled' flag
   $plot->{compiled} = 1;
@@ -175,7 +221,7 @@ sub plotCommand {
   my @cmds      = map { $_->plotCommand().', ' } @$plots{sort keys %$plots};
   $cmds[$#cmds] =~ s/\,\s*$//;
   unshift(@cmds, 'plot ');
-  return wantarray ? @cmds : (join("\\\n  ", @cmds)."\n");
+  return wantarray ? @cmds : (join("\\\n  ", @cmds).";\n");
 }
 
 
@@ -186,7 +232,39 @@ sub plotCommand {
 ## $script = $plot->script(); ##-- newlines (escaped)
 sub script {
   my $plot = shift;
-  return $plot->plotCommand();
+  my @cmds = (
+	      ##-- Terminal
+	      (defined($plot->{term})   ? "set term $plot->{term};" : qw()),
+
+	      ##-- Labels
+	      (defined($plot->{xlabel}) ? "set xlabel \"$plot->{xlabel}\";" : qw()),
+	      (defined($plot->{ylabel}) ? "set ylabel \"$plot->{ylabel}\";" : qw()),
+
+	      ##-- Ranges
+	      (defined($plot->{xrange}) ? "set xrange \"$plot->{xrange}\";" : qw()),
+	      (defined($plot->{yrange}) ? "set yrange \"$plot->{yrange}\";" : qw()),
+
+	      ##-- View
+	      (defined($plot->{view})   ? "set view $plot->{view};" : qw()),
+
+	      ##-- Plot command
+	      scalar($plot->plotCommand()),
+	     );
+  return wantarray ? @cmds : join("\n", @cmds);
+}
+
+##----------------------------------------------------------------------
+## Methods: GNUplot script: save
+
+## $outfile = $plot->saveScript();
+sub saveScript {
+  my $plot = shift;
+  my $fh = IO::File->new(">$plot->{outfile}")
+    or confess(ref($plot),"::saveScript(): open failed for output file '$plot->{outfile}': $!");
+  my $script = scalar($plot->script());
+  $fh->print($script);
+  $fh->close();
+  return $plot->{outfile};
 }
 
 
