@@ -605,9 +605,21 @@ sub saveBinFh {
   my $ref = ref($obj) ? $obj : \$obj;
   $ref = $obj->saveBinRef(%args) if (UNIVERSAL::can($obj,'saveBinRef'));
 
-  binmode($fh,$_) foreach ($args{iolayers} ? @{$args{iolayers}} : qw());
+  ##-- I/O layers
+  my @iolayers = $args{iolayers} ? @{$args{iolayers}} : qw();
+  binmode($fh);
+  binmode($fh,$_) foreach (@iolayers);
 
-  if (!Storable::store_fd($ref, $fh)) {
+  ##-- Hack: freeze & gzip (maybe)
+  if (grep { $_ =~ /^:gzip/ } @iolayers) {
+    my ($frozen);
+    if (!defined($frozen=Storable::freeze($ref))) {
+      confess( __PACKAGE__ , "::saveBinFh(): Storable::freeze() failed.\n");
+      return undef;
+    }
+    $fh->print($frozen);
+  }
+  elsif (!Storable::store_fd($ref, $fh)) {
     confess( __PACKAGE__ , "::saveBinFh(): Storable::store_fd() failed.\n");
     return undef;
   }
