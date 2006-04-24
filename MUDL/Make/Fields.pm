@@ -81,15 +81,17 @@ our %FIELDS =
 		     'auto',
 		    ],
    'summarizeResults'=>[
-		     qw(*:pr:g pr:g),
-		     #qw(*:rc:g rc:g),
-		     #qw(*:F:g  'F:g),
-		     #qw(*apr:g apr:g   *arc:g arc:g  *aF:g aF:g),
-		     qw(ar:g),
-		     '|',
-		     qw(*:pr:t pr:t),
-		     qw(ar:t),
-		    ],
+			qw(*:pr:g pr:g),
+			qw(*:rc:g rc:g),
+			qw(*:F:g  F:g),
+			#qw(*:apr:g apr:g   *:arc:g arc:g  *:aF:g aF:g),
+			#qw(ar:g),
+			'|',
+			qw(*:pr:t pr:t),
+			qw(*:rc:t rc:t),
+			qw(*:F:t  F:t),
+			#qw(ar:t),
+		       ],
 
    ##-- Summarize (LaTeX)
    'latexDefault' => ['|', 'latexId', '||', 'latexResults', '|'],
@@ -120,7 +122,8 @@ our %FIELDS =
 		alt=>[qw(xvars->lrwhich xvars->tcd xvars->tcm xvars->tccd xvars->tccm),
 		      qw(lrwhich tcd tcm tccd tccm),
 		     ],
-		hr=>undef, condense=>0,
+		hr=>undef,
+		condense=>0,
 	      },
    lrlab   => 'lrlabel',
 
@@ -137,12 +140,14 @@ our %FIELDS =
 		     qw(xvars->icorpus xvars->icbase xvars->tcorpus),
 		     qw(icorpus icbase tcorpus)
 		    ],
-	       hr=>'micro', condense=>1,
+	       hr=>'micro',
+	       condense=>1,
 	     },
    lg=>'lang',
    lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lg',
 	       eval=>'$_ =~ /^[uz]/ ? "de" : "en"',
-	       hr=>'micro', condense=>1,
+	       hr=>'micro',
+	       condense=>1,
 	     },
 
    ##-- MetaProfile: numeric indices
@@ -170,6 +175,18 @@ our %FIELDS =
 		   hr=>'minor',
 		   condense=>1,
 		  },
+
+   ##-------------------------------------------------
+   ## Constant fields
+   'constant' => 'const',
+   'const'    => {
+		  value=>0,
+		  eval=>'"$field->{value}"',
+		  evaltitle=>'"const($field->{value})"',
+		 },
+   '-5' => [ 'const(value=-5,title=-5)' ],
+   '+5' => [ 'const(value=+5,title=+5)' ],
+
 
    ##-------------------------------------------------
    ## MetaProfile Summary data
@@ -288,97 +305,373 @@ our %FIELDS =
    'tags:F:t'  => { expand_code=>\&_expand_tags, _tag_field=>'tagF:t', _tag_var=>'tag', },
 
    ##-------------------------------------------------
-   ## Eval: max-value search
-   'max' => { expand_code =>\&_expand_max,
-	      of          =>'pr:g',        ##-- target field: to be set by user or alias
-	      for         =>'stage,emi',   ##-- field list, max for every value-tuple of these fields
-	      evalname    =>'"max(of=$field->{of},for=($field->{for}))"',
-	      hidden      =>0,
-	    },
+   ## Eval: max-value
+   ##  + max { of=>$of_field, for=>$for_fields, ... }
+   'max' => (our $_max_field =
+	     { expand_code =>\&_expand_max,
+	       of          =>'pr:g',               ##-- target field: to be set by user or alias
+	       for         =>'corpus,stage,emi',   ##-- field list: max for every value-tuple of these fields
+	       evalname    =>'"max(of=$field->{of},for=($field->{for}))"',
+	       hidden      =>0,
+	     }),
 
    ##-------------------------------------------------
-   ## Eval: max-value mark
-   'ifmax' => (our $_field_ifmax =
-	       { expand_code =>\&_expand_ifmax,
-		of          =>'pr:g',        ##-- target field: to be set by user or alias
-		for         =>'stage,emi',   ##-- field list, max for every value-tuple of these fields
-		evalname    =>
-		 '"ifmax(of=$field->{of},for=($field->{for}),then=($field->{then}),else=($field->{else}))"',
-		then        =>'*',           ##-- value if $field->{of} == max(of,for)
-	        else        =>'',            ##-- value if $field->{of} != max(of,for)
-		title       =>'',
-		hidden      =>0,
-		padright    =>'',
-	       }),
+   ## Eval: max-value: aliases
+   ##  + max:${of_field}:${innermost_for_field}
+   (map { _max_fields($_) } qw(pr:g rc:g F:g ar:g)),
+   (map { _max_fields($_) } qw(pr:t rc:t F:t ar:t)),
+   (map { _max_fields($_) } qw(apr:g arc:g aF:g)),
+   (map { _max_fields($_) } qw(apr:t arc:t aF:t)),
 
-   ##-- max: search markers
-   '*:corpus'      => (our $_ifmax_corpus = { %$_field_ifmax, for=>'corpus' }),
-   '*:stage'       => (our $_ifmax_stage  = { %$_field_ifmax, for=>'corpus,stage' }),
+   ##-------------------------------------------------
+   ## Eval: ifequal (numeric or string: uses 'n' field-flag)
+   ##  ifeq { a=>$fieldA, b=>$fieldB, then=>$then_string, else=>$else_string, ... }
+   'ifequal' => {
+		 expand_code =>\&_expand_ifequal,
+		 a           =>'pr:g',
+		 b           =>'max:pr:g',
+		 evalname    =>
+		 '"ifequal($field->{a},$field->{b}) then=($field->{then}) else=($field->{else}))"',
+		 then        =>'*',           ##-- value if ${ $field->{a} } == ${ $field->{b} }
+		 else        =>'',            ##-- value if ${ $field->{b} } != ${ $field->{b} }
+		 title       =>'',
+		 hidden      =>0,
+		 padright    =>'',
+		},
+   'ifeq' => 'ifequal',
+
+
+   ##-------------------------------------------------
+   ## Eval: conditional: max-value
+   ##  + ifmax { of=>$of_field, for=>$for_fields, then=>$then_string, else=>$else_string, ... }
+   ##  + uses max(), ifequal()
+   'ifmax'  => (our $_ifmax_field =
+		{
+		 expand_code=>\&_expand_ifmax,
+		 evalname    =>
+		 '"ifmax(of=$field->{a},for=($field->{for}),then=($field->{then}),else=($field->{else}))"',
+		 title       => '',
+		 then        => '*',
+		 else        => '',
+		 padright    => '',
+		}),
+
+   ##-- max: search markers: useful aliases
+   '*:corpus'      => (our $_ifmax_corpus = { %$_ifmax_field, for=>'corpus' }),
+   '*:stage'       => (our $_ifmax_stage  = { %$_ifmax_field, for=>'corpus,stage' }),
    '*:stg'         => '*:stage',
-   '*:emi'         => (our $_ifmax_emi    = { %$_field_ifmax, for=>'corpus,stage,emi' }),
+   '*:emi'         => (our $_ifmax_emi    = { %$_ifmax_field, for=>'corpus,stage,emi' }),
 
    ##-------------------------------------
-   ## Max: Eval: Meta-*: Global
-   #'*:pr:g:corpus' => { %$_ifmax_corpus, of=>'pr:g' },
-   #'*:pr:g:stage'  => { %$_ifmax_stage,  of=>'pr:g' },
-   #'*:pr:g:stg'    => '*:pr:g:stage',
-   #'*:pr:g:emi'    => { %$_ifmax_emi,    of=>'pr:g' },
-   #'**:pr:g'       => [ '*:pr:g:corpus', '*:pr:g:stage' ]
-   #'***:pr:g'      => [ '*:pr:g:corpus', '*:pr:g:stage', '*:pr:g:emi' ]
-   #'*:pr:g'        => '***:pr:g',
-   (map { _markbest_fields($_) } qw(pr:g rc:g F:g ar:g)),
-   (map { _markbest_fields($_) } qw(pr:t rc:t F:t ar:t)),
-   (map { _markbest_fields($_) } qw(apr:g arc:g aF:g)),
-   (map { _markbest_fields($_) } qw(apr:t arc:t aF:t)),
+   ## Max: Eval: Mark: "${marker}:${of_field}:${innermost_for_field}"
+   ##'*:pr:g:corpus' => { %$_ifmax_corpus, of=>'pr:g' },
+   ##'*:pr:g:stage'  => { %$_ifmax_stage,  of=>'pr:g' },
+   ##'*:pr:g:stg'    => '*:pr:g:stage',
+   ##'*:pr:g:emi'    => { %$_ifmax_emi,    of=>'pr:g' },
+   ##'**:pr:g'       => [ '*:pr:g:corpus', '*:pr:g:stage' ]
+   ##'***:pr:g'      => [ '*:pr:g:corpus', '*:pr:g:stage', '*:pr:g:emi' ]
+   ##'*:pr:g'        => '***:pr:g',
+   (map { _markmax_fields($_) } qw(pr:g rc:g F:g ar:g)),
+   (map { _markmax_fields($_) } qw(pr:t rc:t F:t ar:t)),
+   (map { _markmax_fields($_) } qw(apr:g arc:g aF:g)),
+   (map { _markmax_fields($_) } qw(apr:t arc:t aF:t)),
 
-   (map { _markbest_fields_latex($_) } qw(pr:g rc:g F:g ar:g)),
-   (map { _markbest_fields_latex($_) } qw(pr:t rc:t F:t ar:t)),
-   (map { _markbest_fields_latex($_) } qw(apr:g arc:g aF:g)),
-   (map { _markbest_fields_latex($_) } qw(apr:t arc:t aF:t)),
+   (map { _markmax_fields_latex($_) } qw(pr:g rc:g F:g ar:g)),
+   (map { _markmax_fields_latex($_) } qw(pr:t rc:t F:t ar:t)),
+   (map { _markmax_fields_latex($_) } qw(apr:g arc:g aF:g)),
+   (map { _markmax_fields_latex($_) } qw(apr:t arc:t aF:t)),
+
+   ##-------------------------------------
+   ## Error difference (vs. best): errdiff
+   ##  errdiff { of=>$of_field, for=>$for_fields, vs=>$base_field, ... }
+   'errdiff' => (our $_errdiff_field =
+		{ expand_code =>\&_expand_errdiff,
+		  of          =>'pr:g',        ##-- target field: to be set by user or alias
+		  vs          =>'max:pr:g',
+		  evalname    =>
+		  '"errdiff(of=$field->{of},vs=$field->{vs})"',
+		  evaltitle   =>'"e-($field->{of}|$field->{vs})"',
+ 		  errmax      => 100.0,        ##-- for error-rate acquisition
+		  fmt         => '%.2f',
+		  n           => 1,
+		}),
+
+   ##-------------------------------------
+   ## errdiff(): aliases:
+   ## + "e-max:${of}:${for}" --> errdiff(of="$of", vs="max:${of}:${for}")
+   ## + "e-:${of}:${for}"    --> "e-max:${of}:${for}"
+   (map { _errdiff_fields($_) } qw(pr:g rc:g F:g)),
+   (map { _errdiff_fields($_) } qw(pr:t rc:t F:t)),
+   (map { _errdiff_fields($_) } qw(apr:g arc:g aF:g)),
+   (map { _errdiff_fields($_) } qw(apr:t arc:t aF:t)),
+
+
+
+   ##-------------------------------------
+   ## Related configurations: previous stage
+   'pstage'  => { expand_code=>\&_expand_prev, 'index'=>'stage' },
+   'pstg'    => 'pstage',
+   'stage-1' => 'pstage',
+   'stg-1'   => 'pstage',
+
+   ##-------------------------------------
+   ## Related configurations: previous EM-iteration
+   'pemi'  => { expand_code=>\&_expand_prev, 'index'=>'emi' },
+   'emi-1' => 'pemi',
+
+   ##-------------------------------------
+   ## Related configurations: field
+   'relative:field' => (our $_relative_field =
+			{
+			 expand_code=>\&_expand_relative,
+			 relative=>'pstage',                   ##-- expands to related-config field
+			 field=>'pr:g',                        ##-- field to read off of related-config
+			 eval=>'$mf->fieldValue($field->{_relative}{_map}{$cfg}, $field->{_field})',
+			 evalname=>'"$field->{relative}:$field->{field}"',
+			}),
+
+   ##-------------------------------------
+   ## Relative configurations: aliases: previous stage
+   ## + "pstage:${field}"
+   (map { _relative_fields('pstage',$_) } qw(pr:g rc:g F:g)),
+   (map { _relative_fields('pstage',$_) } qw(pr:t rc:t F:t)),
+   (map { _relative_fields('pstage',$_) } qw(apr:g arc:g aF:g)),
+   (map { _relative_fields('pstage',$_) } qw(apr:t arc:t aF:t)),
+
+   ##-------------------------------------
+   ## Relative configurations: aliases: previous EMI
+   ## + "pemi:${field}"
+   (map { _relative_fields('pemi',$_) } qw(pr:g rc:g F:g)),
+   (map { _relative_fields('pemi',$_) } qw(pr:t rc:t F:t)),
+   (map { _relative_fields('pemi',$_) } qw(apr:g arc:g aF:g)),
+   (map { _relative_fields('pemi',$_) } qw(apr:t arc:t aF:t)),
+
   );
 ##-- EOFIELDS
 
 ##---------------------------------------------------------------
-## Fields: alias expander: _markbest_fields()
+## Fields: alias expander: relative fields
 
-## %field_aliases = _markbest_fields($of_field)
-sub _markbest_fields {
-  my ($of_field,%args) = @_;
+## %field_aliases = _relative_fields($relative_field,$base_field)
+sub _relative_fields {
+  my ($rfield,$ffield) = @_;
+  our ($_relative_field);
+  return ( "${rfield}:${ffield}" => { %$_relative_field, relative=>$rfield, field=>$ffield } );
+}
 
-  our ($_ifmax_corpus, $_ifmax_stage, $_ifmax_emi);
-  return (
-	  "*:${of_field}:corpus" => { %$_ifmax_corpus, of=>$of_field, %args },
-	  "*:${of_field}:stage"  => { %$_ifmax_stage,  of=>$of_field, %args },
-	  "*:${of_field}:stg"    => "*:${of_field}:stage",
-	  "*:${of_field}:emi"    => { %$_ifmax_emi,    of=>$of_field, %args },
-	  ##--
-	  "**:${of_field}"       => [ "*:${of_field}:corpus", "*:${of_field}:stage" ],
-	  "***:${of_field}"      => [ "*:${of_field}:corpus", "*:${of_field}:stage", "*:${of_field}:emi" ],
-	  "*:${of_field}"        => "***:${of_field}",
-	 );
+##---------------------------------------------------------------
+## Fields: expander: relative fields: field-value
+
+## \@expanded = _expand_relative($mf,$pstage_ref_field,\@xfields)
+sub _expand_relative {
+  my ($mf,$field,$xfields) = @_;
+  my $relative = $field->{relative};
+  $field->{_relative} = $mf->expand($field->{relative})->[0];
+  $field->{_field}    = $mf->expand($field->{field})->[0];
+
+  ##-- inherit some source keys
+  my %bad_src_keys  = map { $_=>undef } qw(title evaltitle name evalname);
+  my @safe_src_keys = grep { !exists($bad_src_keys{$_}) && !exists($field->{$_}) } keys(%{$field->{_field}});
+  @$field{@safe_src_keys} = @{$field->{_field}}{@safe_src_keys};
+
+  delete($field->{expand_code});
+  return [$field];
 }
 
 
-## %field_aliases = _markbest_fields_latex($of_field)
-sub _markbest_fields_latex {
-  my ($of_field, %args) = @_;
+##---------------------------------------------------------------
+## Fields: expanders: relative fields: config: previous ${ $mf->{'index'} }
 
-  my %argsL = ( latexAttach=>'r' );
-  my %argsR = ( latexAttach=>'l' );
+## \@expanded = _expand_prev($mf,$relative_field,\@xfields)
+sub _expand_prev {
+  my ($mf,$field,$xfields) = @_;
+
+  ##-- Step 1: map key=>$config
+  my $index_field = $mf->expand($field->{'index'})->[0];
+  my $key2cfg     = {}; ##-- $key   => $cfg, ...
+  my $cfg2val     = {}; ##-- $cfg   => $indexVal, ...
+  my ($cfg,$ckey,$cval);
+  foreach $cfg (@{$mf->{configs}}) {
+    $cval   = $mf->fieldValue($cfg,$index_field);
+    $ckey   = vkey( {%{$cfg->{uvars}}, $field->{'index'}=>$cval} );
+    $key2cfg->{$ckey} = $cfg;
+    $cfg2val->{$cfg}  = $cval;
+  }
+
+  ##-- Step 2: map config=>$prev_config_or_undef
+  my $map = $field->{_map} = {};
+  my (%pvars,$pkey);
+  foreach $cfg (@{$mf->{configs}}) {
+    %pvars = ( %{$cfg->{uvars}}, $field->{'index'}=>($cfg2val->{$cfg}-1) );
+    $map->{$cfg} = $key2cfg->{vkey(\%pvars)};
+  }
+
+  ##-- Step 3: set eval()
+  $field->{eval} =
+    sub {
+      return $map->{$_[1]};
+    };
+
+  delete($field->{expand_code});
+  return [$field];
+}
+
+##---------------------------------------------------------------
+## Fields: expanders: relative fields: config: previous stage
+
+## \@expanded = _expand_pstage($mf,$pstage_cfg_field,\@xfields)
+sub _expand_pstage_0 {
+  my ($mf,$field,$xfields) = @_;
+
+  ##-- Step 1: map key=>$config
+  my $stage_field = $mf->expand('stage')->[0];
+  my $key2cfg     = {}; ##-- $key   => $cfg, ...
+  my $cfg2stg     = {}; ##-- $cfg   => $stage, ...
+  my ($cfg,$ckey,$cstage);
+  foreach $cfg (@{$mf->{configs}}) {
+    $cstage = $mf->fieldValue($cfg,$stage_field);
+    $ckey   = vkey( {%{$cfg->{uvars}}, stage=>$cstage} );
+    $key2cfg->{$ckey} = $cfg;
+    $cfg2stg->{$cfg}  = $cstage;
+  }
+
+  ##-- Step 2: map config=>$pstage_config_or_undef
+  my $map = $field->{_map} = {};
+  my (%pvars,$pkey);
+  foreach $cfg (@{$mf->{configs}}) {
+    %pvars = ( %{$cfg->{uvars}}, stage=>($cfg2stg->{$cfg}-1) );
+    $map->{$cfg} = $key2cfg->{vkey(\%pvars)};
+  }
+
+  ##-- Step 3: set eval()
+  $field->{eval} =
+    sub {
+      return $map->{$_[1]};
+    };
+
+  delete($field->{expand_code});
+  return [$field];
+}
+
+
+##---------------------------------------------------------------
+## Fields: alias expander: _errdiff_fields
+
+## %field_aliases = _errdiff_max_fields($of_field)
+sub _errdiff_fields {
+  my ($of_field) = @_;
+
+  our ($_errdiff_field);
+  return (
+	  "e-max:${of_field}:corpus" => {
+					 %$_errdiff_field,
+					 of=>$of_field,
+					 vs=>"max:${of_field}:corpus",
+					 title=>"e-max:S:${of_field}",
+					},
+	  "e-max:${of_field}:stage"  => {
+					 %$_errdiff_field,
+					 of=>$of_field,
+					 vs=>"max:${of_field}:stage",
+					 title=>"e-max:stg:${of_field}",
+					},
+	  "e-max:${of_field}:stg"    => "e-max:${of_field}:stage",
+	  "e-max:${of_field}:emi"    => {
+					 %$_errdiff_field,
+					 of=>$of_field,
+					 vs=>"max:${of_field}:emi",
+					 title=>"e-max:emi:${of_field}",
+					},
+	  ##--
+	  "e-:${of_field}:corpus"    => "e-max:${of_field}:corpus",
+	  "e-:${of_field}:stage"     => "e-max:${of_field}:stage",
+	  "e-:${of_field}:stg"       => "e-max:${of_field}:stage",
+	  "e-:${of_field}:emi"       => "e-max:${of_field}:emi",
+	  ##--
+	  "e-:${of_field}"           => "e-max:${of_field}:corpus",
+	 );
+}
+
+##---------------------------------------------------------------
+## Fields: expanders: _expand_errdiff()
+
+## \@expanded = _expand_errdiff($mf,$errdiff_field,\@xfields)
+sub _expand_errdiff {
+  my ($mf,$ediff_field,$xfields) = @_;
+
+  ##-- get nested 'of' field
+  my $of_field
+    = $ediff_field->{_of}
+      = $mf->expand($ediff_field->{of})->[0];
+  my $vs_field
+    = $ediff_field->{_vs}
+      = $mf->expand($ediff_field->{vs})->[0];
+
+  $ediff_field->{eval} = \&_error_difference;
+
+  return [$ediff_field];
+}
+
+## $errdiff_value = _error_difference($mfields,$config,$errdiff_field,$ediff_val)
+sub _error_difference {
+  my ($mf,$cfg,$ediff_field) = @_;
+  my $of = $mf->fieldValue($cfg,$ediff_field->{_of});
+  my $vs = $mf->fieldValue($cfg,$ediff_field->{_vs});
+  my $emax = $ediff_field->{errmax};
+
+  return $emax * (($emax-$vs) - ($emax-$of)) / ($emax-$vs);
+}
+
+##---------------------------------------------------------------
+## Fields: alias expander: _markmax_fields()
+
+## %field_aliases = _markmax_fields($of_field)
+sub _markmax_fields {
+  my ($of_field) = @_;
+
+  our ($_ifmax_corpus, $_ifmax_stage, $_ifmax_emi);
+  return (
+	  map {
+	    (
+	     "${_}:${of_field}:corpus" => { %$_ifmax_corpus, of=>$of_field, then=>$_ },
+	     "${_}:${of_field}:stage"  => { %$_ifmax_stage,  of=>$of_field, then=>$_ },
+	     "${_}:${of_field}:stg"    => "${_}:${of_field}:stage",
+	     "${_}:${of_field}:emi"    => { %$_ifmax_emi,    of=>$of_field, then=>$_ },
+	     ##--
+	     "${_}${_}:${of_field}"      => [
+					     "${_}:${of_field}:corpus",
+					     "${_}:${of_field}:stage",
+					    ],
+	     "${_}${_}${_}:${of_field}"  => [
+					     "${_}:${of_field}:corpus",
+					     "${_}:${of_field}:stage",
+					     "${_}:${of_field}:emi",
+					    ],
+	     "${_}:${of_field}"          => "${_}${_}${_}:${of_field}",
+	    )
+	  } ('*', '+', '-', '~')
+	 );
+}
+
+sub _markmax_fields_latex {
+  my ($of_field) = @_;
+
+  my %argsL = (latexAttach=>'r');
+  my %argsR = (latexAttach=>'l');
   our ($_ifmax_corpus, $_ifmax_stage, $_ifmax_emi);
   return
     (
-     "*l:${of_field}:corpus:<" => { %$_ifmax_corpus, of=>$of_field, %args, %argsL, then=>'$\star$' },
-     "*l:${of_field}:corpus:>" => { %$_ifmax_corpus, of=>$of_field, %args, %argsR, then=>'' },
+     "*l:${of_field}:corpus:<" => { %$_ifmax_corpus, of=>$of_field, %argsL, then=>'$\star$' },
+     "*l:${of_field}:corpus:>" => { %$_ifmax_corpus, of=>$of_field, %argsR, then=>'' },
 
-     "*l:${of_field}:stage:<" => { %$_ifmax_stage, of=>$of_field, %args, %argsL, then=>'\bfseries{', },
-     "*l:${of_field}:stage:>" => { %$_ifmax_stage, of=>$of_field, %args, %argsR, then=>'}', },
+     "*l:${of_field}:stage:<" => { %$_ifmax_stage, of=>$of_field, %argsL, then=>'\bfseries{', },
+     "*l:${of_field}:stage:>" => { %$_ifmax_stage, of=>$of_field, %argsR, then=>'}', },
 
      "*l:${of_field}:stg:<"  => "*l:${of_field}:stage:<",
      "*l:${of_field}:stg:>"  => "*l:${of_field}:stage:>",
 
-     "*l:${of_field}:emi:<"  => { %$_ifmax_emi,    of=>$of_field, %args, %argsL, then=>'\slshape{', },
-     "*l:${of_field}:emi:>"  => { %$_ifmax_emi,    of=>$of_field, %args, %argsR, then=>'}', },
+     "*l:${of_field}:emi:<"  => { %$_ifmax_emi,    of=>$of_field, %argsL, then=>'\slshape{', },
+     "*l:${of_field}:emi:>"  => { %$_ifmax_emi,    of=>$of_field, %argsR, then=>'}', },
 
      ##--
      "**l:${of_field}"       => [
@@ -409,6 +702,15 @@ sub _markbest_fields_latex {
 ## \@expanded = _expand_ifmax($mf,$ifmax_field,\@xfields)
 sub _expand_ifmax {
   my ($mf,$ifmax_field,$xfields) = @_;
+  $ifmax_field->{a} = $ifmax_field->{of};
+  $ifmax_field->{b} = $mf->_expand_max({%$ifmax_field, title=>undef,hidden=>0},$xfields)->[0];
+  delete($ifmax_field->{expand_code});
+  return $mf->_expand_ifequal($ifmax_field, $xfields);
+}
+
+## \@expanded = _expand_ifmax($mf,$ifmax_field,\@xfields)
+sub _expand_ifmax_0 {
+  my ($mf,$ifmax_field,$xfields) = @_;
 
   ##-- get nested 'max' field
   my $max_field
@@ -427,6 +729,47 @@ sub _expand_ifmax {
   return [$ifmax_field];
 }
 
+##---------------------------------------------------------------
+## Fields: expanders: 'ifequal'
+
+## \@expanded = _expand_ifequal($mf,$ifequal_field,\@xfields)
+sub _expand_ifequal {
+  my ($mf,$ifeq_field,$xfields) = @_;
+
+  ##-- get nested fields (a,b)
+  my $af = $ifeq_field->{_a} = $mf->expand($ifeq_field->{a})->[0];
+  my $bf = $ifeq_field->{_b} = $mf->expand($ifeq_field->{b})->[0];
+
+  $ifeq_field->{eval} = sub {
+    return ($af->{n} && $bf->{n}
+	    ? ($mf->fieldValue($_[1],$af) == $mf->fieldValue($_[1],$bf)
+	       ? $ifeq_field->{then}
+	       : $ifeq_field->{else})
+	    : ($mf->fieldValue($_[1],$af) eq $mf->fieldValue($_[1],$bf)
+	       ? $ifeq_field->{then}
+	       : $ifeq_field->{else}));
+  };
+
+  delete($ifeq_field->{expand_code});
+  return [$ifeq_field];
+}
+
+##---------------------------------------------------------------
+## Fields: aliases: 'max:*'
+
+## %FIELD_ALIASES = _max_fields($of_field)
+sub _max_fields {
+  my $of = shift;
+  our ($_max_field);
+  return (
+	  "max:${of}:corpus" => { %$_max_field, of=>$of, for=>'corpus',       title=>"max($of|S)"  },
+	  "max:${of}:stage"  => { %$_max_field, of=>$of, for=>'corpus,stage', title=>"max($of|stg)" },
+	  "max:${of}:stg"    => "max:${of}:stg",
+	  "max:${of}:emi"    => { %$_max_field, of=>$of, for=>'corpus,stage,emi', title=>"max($of|emi)" },
+	  ##--
+	  "max:${of}"        => { %$_max_field, of=>$of, for=>'corpus', title=>"max($of)", },
+	 );
+}
 
 ##---------------------------------------------------------------
 ## Fields: expanders: 'max'
@@ -448,10 +791,11 @@ sub _expand_max {
   }
   $max_field->{eval} = '$field->{for2max}{$field->{cfg2forkey}{$cfg}}';
 
-  my %bad_src_keys  = map { $_=>undef } qw(title name);
+  my %bad_src_keys  = map { $_=>undef } qw(title evaltitle name evalname);
   my @safe_src_keys = grep { !exists($bad_src_keys{$_}) && !exists($max_field->{$_}) } keys(%$of_field);
   @$max_field{@safe_src_keys} = @$of_field{@safe_src_keys};
 
+  delete($max_field->{expand_code});
   return [$max_field];
 }
 
@@ -464,7 +808,7 @@ sub vkey {
 ##---------------------------------------------------------------
 ## Fields: expanders: 'auto', 'all'
 
-## \@expanded = _expand_auto_all($mf,$auto_or_all_field,\@xfields,\@auto_or_all_vars)
+## \@expanded = _expand_auto_all($mf,$auto_or_all_field,\@xfields,\@which_vars)
 sub _expand_auto_all {
   my ($mf,$aa_field,$xfields,$aa_vars) = @_;
 
@@ -502,7 +846,7 @@ sub _expand_all {
 ##---------------------------------------------------------------
 ## Fields: expanders: 'auto'
 
-## \@expanded = _expand_auto($mf,\@xfields,$findex)
+## \@expanded = _expand_auto($mf,$auto_field,\@xfields)
 sub _expand_auto {
   my ($mf,$auto_field,$xfields) = @_;
   return $mf->_expand_auto_all($auto_field,$xfields,[activeVariables($mf->{configs})]);
@@ -638,11 +982,18 @@ sub fieldValue {
 
   if ($field->{eval}) {
     ##-- maybe eval some code
-    my $tmp=$_;
-    $_=$val; ##-- HACK
-    eval qq(no warnings 'void'; \$val=$field->{eval};);
-    $_=$tmp; ##-- HACK
-    carp(ref($mf)."::fieldValue(): error in eval($field->{eval}): $@") if ($@);
+    if (ref($field->{eval}) && ref($field->{eval}) eq 'CODE') {
+      ##-- it's a CODE ref: call it with arguments ($mf,$cfg,$field,$val)
+      $val = $field->{eval}->($mf,$cfg,$field,$val);
+    }
+    else {
+      ##-- treat as a code string
+      my $tmp=$_;
+      $_=$val; ##-- HACK
+      eval qq(no warnings 'void'; \$val=$field->{eval};);
+      $_=$tmp; ##-- HACK
+      carp(ref($mf)."::fieldValue(): error in eval($field->{eval}): $@") if ($@);
+    }
   }
   return $val;
 }

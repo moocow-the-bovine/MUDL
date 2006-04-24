@@ -77,7 +77,8 @@ sub new {
 			   dir=>'..',
 			   varfile=>'../Default.mak',
 			   userfile=>'user.mak',
-			   colmd5=>'', ##-- MD5 digest for collection file
+			   colmd5=>'',  ##-- MD5 digest for collection
+			   automd5=>1,  ##-- whether to automatically acquire collection MD5 digest on load()
 
 			   ##-- Selection (subcollection)
 			   selected=>undef,
@@ -893,7 +894,7 @@ sub loadCollection {
     return undef;
   }
   $mak->{loaded} = 1;
-  $mak->{coldigest} = $mak->collectionDigest();
+  $mak->{coldigest} = $mak->{automd5} ? $mak->collectionDigest() : '';
 
   $mak->vmsg('info', ref($mak),": loadCollection($mak->{colfile}): loaded.\n");
   return $mak->{col};
@@ -904,7 +905,11 @@ sub loadCollection {
 sub collectionDigest {
   my $mak = shift;
   return '' if (!$mak->{loaded});
-  return Digest::MD5::md5($mak->{col}->savePerlString);
+  my $tmp = $Storable::canonical;
+  $Storable::canonical = 1;
+  my $digest = Digest::MD5::md5(Storable::freeze($mak->{col}));
+  $Storable::canonical = $tmp;
+  return $digest;
 }
 
 ## $bool              = $mak->{changed} = $mak->changed(); ##-- scalar context

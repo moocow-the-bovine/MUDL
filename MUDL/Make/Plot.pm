@@ -37,6 +37,7 @@ our @ISA = qw(MUDL::Object);
 ##     view=>$string,          ##-- GNUplot 'set view ...' (default=undef [not set])
 ##
 ##     with=>$how,             ##-- default: 'lp'
+##     title=>$window_title,   ##-- global plot title
 ##
 ##     ...?
 ##
@@ -80,6 +81,7 @@ sub new {
 				xrange=>undef, ##-- not set
 				yrange=>undef, ##-- not set
 				with=>'lp',
+				title=>undef,  ##-- not set
 
 				##-- Low-level data
 				mfields=>MUDL::Make::Fields->new(),
@@ -236,13 +238,16 @@ sub script {
 	      ##-- Terminal
 	      (defined($plot->{term})   ? "set term $plot->{term};" : qw()),
 
+	      ##-- Plot Title
+	      (defined($plot->{title})   ? "set title \"$plot->{title}\";" : qw()),
+
 	      ##-- Labels
 	      (defined($plot->{xlabel}) ? "set xlabel \"$plot->{xlabel}\";" : qw()),
 	      (defined($plot->{ylabel}) ? "set ylabel \"$plot->{ylabel}\";" : qw()),
 
 	      ##-- Ranges
-	      (defined($plot->{xrange}) ? "set xrange \"$plot->{xrange}\";" : qw()),
-	      (defined($plot->{yrange}) ? "set yrange \"$plot->{yrange}\";" : qw()),
+	      (defined($plot->{xrange}) ? "set xrange $plot->{xrange};" : qw()),
+	      (defined($plot->{yrange}) ? "set yrange $plot->{yrange};" : qw()),
 
 	      ##-- View
 	      (defined($plot->{view})   ? "set view $plot->{view};" : qw()),
