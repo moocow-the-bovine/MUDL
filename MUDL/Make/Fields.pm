@@ -62,6 +62,7 @@ our %FIELDS =
    'plotKeyDefault' => [qw(corpus lrlab auto)],
 
    'default'          => 'tabDefault',
+   'tabid'            => 'tabId',
    'id'               => 'tabId',
    'results'          => 'tabResults',
 
@@ -92,6 +93,15 @@ our %FIELDS =
 			qw(*:F:t  F:t),
 			#qw(ar:t),
 		       ],
+
+   ##-- result variants
+   'emtab' => [ qw(tabId | emresults), ],
+   'emresults' => [qw(*:pr:g pr:g e+mp:pr:g | *:pr:t pr:t e+mp:pr:t)],
+   'emresults:a' => [qw(*:apr:g apr:g e+mp:apr:g | *:apr:t apr:t e+mp:apr:t)],
+   'res:prF:g' => [qw(*:pr:g pr:g e+mp:pr:g | +:rc:g rc:g e+mp:rc:g | ~:F:g F:g e+mp:F:g)],
+   'res:prF:t' => [qw(*:pr:t pr:t | +:rc:t rc:t | ~:F:t F:t)],
+   'res:aprF:g' => [qw(*:apr:g apr:g | +:arc:g arc:g | ~:aF:g aF:g)],
+   'res:aprF:t' => [qw(*:apr:t apr:t | +:arc:t arc:t | ~:aF:t aF:t)],
 
    ##-- Summarize (LaTeX)
    'latexDefault' => ['|', 'latexId', '||', 'latexResults', '|'],
@@ -246,14 +256,14 @@ our %FIELDS =
 
    ##-------------------------------------
    ## Eval: Tagwise-average-*: Global
-   'apr:g'  => { path=>[qw(eval_global avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' apr:g'},
-   'arc:g'  => { path=>[qw(eval_global avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' arc:g'},
+   'apr:g'  => { path=>[qw(eval_global avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'apr:g'},
+   'arc:g'  => { path=>[qw(eval_global avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'arc:g'},
    'aF:g'   => { path=>[qw(eval_global avg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' aF:g' },
 
    ##-------------------------------------
    ## Eval: Tagwise-average-*: Targets
-   'apr:t'  => { path=>[qw(eval_targets avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' apr:t'},
-   'arc:t'  => { path=>[qw(eval_targets avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' arc:t'},
+   'apr:t'  => { path=>[qw(eval_targets avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'apr:t'},
+   'arc:t'  => { path=>[qw(eval_targets avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'arc:t'},
    'aF:t'   => { path=>[qw(eval_targets avg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' aF:t' },
 
    ##-------------------------------------------------
@@ -400,10 +410,10 @@ our %FIELDS =
    ## errdiff(): aliases:
    ## + "e-max:${of}:${for}" --> errdiff(of="$of", vs="max:${of}:${for}")
    ## + "e-:${of}:${for}"    --> "e-max:${of}:${for}"
-   (map { _errdiff_fields($_) } qw(pr:g rc:g F:g)),
-   (map { _errdiff_fields($_) } qw(pr:t rc:t F:t)),
-   (map { _errdiff_fields($_) } qw(apr:g arc:g aF:g)),
-   (map { _errdiff_fields($_) } qw(apr:t arc:t aF:t)),
+   (map { _errdiff_max_fields($_) } qw(pr:g rc:g F:g)),
+   (map { _errdiff_max_fields($_) } qw(pr:t rc:t F:t)),
+   (map { _errdiff_max_fields($_) } qw(apr:g arc:g aF:g)),
+   (map { _errdiff_max_fields($_) } qw(apr:t arc:t aF:t)),
 
 
 
@@ -416,8 +426,13 @@ our %FIELDS =
 
    ##-------------------------------------
    ## Related configurations: previous EM-iteration
-   'pemi'  => { expand_code=>\&_expand_prev, 'index'=>'emi' },
+   'pemi'  => { expand_code=>\&_expand_prev_emi, 'index'=>'emi' },
    'emi-1' => 'pemi',
+
+   ##-------------------------------------
+   ## Related configurations: MetaProfile base (for EM-iteration)
+   'mp'     => { expand_code=>\&_expand_mp_base },
+   'mpbase' => 'mp',
 
    ##-------------------------------------
    ## Related configurations: field
@@ -438,6 +453,13 @@ our %FIELDS =
    (map { _relative_fields('pstage',$_) } qw(apr:g arc:g aF:g)),
    (map { _relative_fields('pstage',$_) } qw(apr:t arc:t aF:t)),
 
+   ## Relative configurations: aliases: previous stage: error-difference
+   ## + "e+pstage:${field}"
+   (map { _errdiff_relative_fields('pstage',$_) } qw(pr:g rc:g F:g)),
+   (map { _errdiff_relative_fields('pstage',$_) } qw(pr:t rc:t F:t)),
+   (map { _errdiff_relative_fields('pstage',$_) } qw(apr:g arc:g aF:g)),
+   (map { _errdiff_relative_fields('pstage',$_) } qw(apr:t arc:t aF:t)),
+
    ##-------------------------------------
    ## Relative configurations: aliases: previous EMI
    ## + "pemi:${field}"
@@ -446,6 +468,27 @@ our %FIELDS =
    (map { _relative_fields('pemi',$_) } qw(apr:g arc:g aF:g)),
    (map { _relative_fields('pemi',$_) } qw(apr:t arc:t aF:t)),
 
+   ## Relative configurations: aliases: previous EMI: error-difference
+   ## + "e+pemi:${field}"
+   (map { _errdiff_relative_fields('pemi',$_) } qw(pr:g rc:g F:g)),
+   (map { _errdiff_relative_fields('pemi',$_) } qw(pr:t rc:t F:t)),
+   (map { _errdiff_relative_fields('pemi',$_) } qw(apr:g arc:g aF:g)),
+   (map { _errdiff_relative_fields('pemi',$_) } qw(apr:t arc:t aF:t)),
+
+   ##-------------------------------------
+   ## Relative configurations: aliases: MetaProfile base
+   ## + "pemi:${field}"
+   (map { _relative_fields('mp',$_) } qw(pr:g rc:g F:g)),
+   (map { _relative_fields('mp',$_) } qw(pr:t rc:t F:t)),
+   (map { _relative_fields('mp',$_) } qw(apr:g arc:g aF:g)),
+   (map { _relative_fields('mp',$_) } qw(apr:t arc:t aF:t)),
+
+   ## Relative configurations: aliases: MetaProfile base: error-difference
+   ## + "e+pemi:${field}"
+   (map { _errdiff_relative_fields('mp',$_) } qw(pr:g rc:g F:g)),
+   (map { _errdiff_relative_fields('mp',$_) } qw(pr:t rc:t F:t)),
+   (map { _errdiff_relative_fields('mp',$_) } qw(apr:g arc:g aF:g)),
+   (map { _errdiff_relative_fields('mp',$_) } qw(apr:t arc:t aF:t)),
   );
 ##-- EOFIELDS
 
@@ -478,11 +521,100 @@ sub _expand_relative {
   return [$field];
 }
 
+##---------------------------------------------------------------
+## Fields: expanders: relative fields: config: MetaProfile base (for EM-iteration)
+
+## \@expanded = _expand_mp_base($mf,$mp_base_field,\@xfields, %args)
+##  + %args:
+##      configs => \@configs, ##-- default: $mf->{configs}
+sub _expand_mp_base {
+  my ($mf,$field,$xfields, %args) = @_;
+
+  ##-- Step 2: get potential MetaProfile configs (by class && emi==-1)
+  my $map       = $field->{_map} = {};
+  my $configs   = $args{configs} ? $args{configs} : $mf->{configs};
+  my @mpconfigs = grep {ref($_) =~ /::MetaProfile$/ && $_->{xvars}{emi}==-1} @$configs;
+
+  ##-- Step 2: map $config=>$mpbase for EM configs
+  my ($emcfg,$mpcfg,%em_mp_vars,@em_mpconfigs,$var);
+
+  foreach $emcfg (grep {ref($_) =~ /MetaProfile::EM$/} @$configs)
+    {
+      ##-- extract MetaProfile-relevant variables (hack)
+      %em_mp_vars = %{$emcfg->{uvars}};
+      delete(@em_mp_vars{ grep { $_ =~ /^em/ } keys(%em_mp_vars) });
+
+      ##-- find matching MetaProfile config(s)
+      @em_mpconfigs = qw();
+    MPCFG:
+      foreach $mpcfg (@mpconfigs) {
+	foreach $var (keys(%em_mp_vars)) {
+	  next MPCFG if ($mpcfg->{xvars}{$var} ne $em_mp_vars{$var});
+	}
+	push(@em_mpconfigs,$mpcfg);
+      }
+
+      ##-- no matching MetaProfile config found: can't handle it
+      next if (!@em_mpconfigs);
+
+      if (@em_mpconfigs > 1) {
+	carp(__PACKAGE__,
+	     "::_expand_mp_base(): mutliple matches for ", vkey(\%em_mp_vars), ": using longest.\n");
+	@em_mpconfigs = sort { scalar(keys(%{$b->{uvars}})) <=> scalar(keys(%{$a->{uvars}})) } @mpconfigs;
+      }
+
+      ##-- finally: map it
+      $map->{$emcfg} = $em_mpconfigs[0];
+    }
+
+  ##-- set base=$cfg for real MetaProfile configs
+  foreach $mpcfg (grep {ref($_) =~ /::MetaProfile$/} @$configs) {
+    $map->{$mpcfg} = $mpcfg;
+  }
+
+  ##-- Step 3: set field eval()
+  $field->{eval} =
+    sub {
+      return $map->{$_[1]};
+    };
+
+  delete($field->{expand_code}); ##-- avoid deep recursion (?)
+  return [$field];
+}
+
 
 ##---------------------------------------------------------------
-## Fields: expanders: relative fields: config: previous ${ $mf->{'index'} }
+## Fields: expanders: relative fields: config: previous EMI (hack)
 
-## \@expanded = _expand_prev($mf,$relative_field,\@xfields)
+## \@expanded = _expand_prev_emi($mf,$prev_emi_field,\@xfields)
+sub _expand_prev_emi {
+  my ($mf,$field,$xfields) = @_;
+
+  ##-- Step 1: default expansion (works for everything but maybe emi==0)
+  ##   + initializes $field->{_map}
+  $mf->_expand_prev($field,$xfields);
+  my $map = $field->{_map};
+
+  ##-- Step 2: expand 'mpbase' field for emi==0 configs
+  my $configs  = $mf->{configs};
+  my @configs0 = grep {$_->{xvars}{emi}<=0} @$configs;
+  my $mpbase   = $field->{_mpbase} = $mf->_expand_mp_base({}, $xfields, configs=>\@configs0)->[0];
+
+  ##-- Step 3: merge '_mpbase' configs in as map-values of emi==0 EM-configs
+  my ($emcfg);
+  foreach $emcfg (grep {!defined($map->{$_})} @$configs) {
+    $map->{$emcfg} = $mpbase->{_map}{$emcfg};
+  }
+
+  delete($field->{expand_code}); ##-- avoid deep recursion (?)
+  return [$field];
+}
+
+
+##---------------------------------------------------------------
+## Fields: expanders: relative fields: config: previous ${ $field->{'index'} }
+
+## \@expanded = _expand_prev($mf,$prev_field,\@xfields)
 sub _expand_prev {
   my ($mf,$field,$xfields) = @_;
 
@@ -512,53 +644,33 @@ sub _expand_prev {
       return $map->{$_[1]};
     };
 
-  delete($field->{expand_code});
-  return [$field];
-}
-
-##---------------------------------------------------------------
-## Fields: expanders: relative fields: config: previous stage
-
-## \@expanded = _expand_pstage($mf,$pstage_cfg_field,\@xfields)
-sub _expand_pstage_0 {
-  my ($mf,$field,$xfields) = @_;
-
-  ##-- Step 1: map key=>$config
-  my $stage_field = $mf->expand('stage')->[0];
-  my $key2cfg     = {}; ##-- $key   => $cfg, ...
-  my $cfg2stg     = {}; ##-- $cfg   => $stage, ...
-  my ($cfg,$ckey,$cstage);
-  foreach $cfg (@{$mf->{configs}}) {
-    $cstage = $mf->fieldValue($cfg,$stage_field);
-    $ckey   = vkey( {%{$cfg->{uvars}}, stage=>$cstage} );
-    $key2cfg->{$ckey} = $cfg;
-    $cfg2stg->{$cfg}  = $cstage;
-  }
-
-  ##-- Step 2: map config=>$pstage_config_or_undef
-  my $map = $field->{_map} = {};
-  my (%pvars,$pkey);
-  foreach $cfg (@{$mf->{configs}}) {
-    %pvars = ( %{$cfg->{uvars}}, stage=>($cfg2stg->{$cfg}-1) );
-    $map->{$cfg} = $key2cfg->{vkey(\%pvars)};
-  }
-
-  ##-- Step 3: set eval()
-  $field->{eval} =
-    sub {
-      return $map->{$_[1]};
-    };
-
-  delete($field->{expand_code});
+  delete($field->{expand_code}); ##-- avoid deep recursion (?)
   return [$field];
 }
 
 
 ##---------------------------------------------------------------
-## Fields: alias expander: _errdiff_fields
+## Fields: alias expander: _errdiff_relative_fields (error difference of=X vs. relative:field of=X,relative=Y)
+sub _errdiff_relative_fields {
+  my ($rel,$of) = @_;
+
+  our ($_errdiff_field);
+  return (
+	  "e+${rel}:${of}" => {
+			       %$_errdiff_field,
+			       of=>$of,
+			       vs=>"${rel}:${of}",
+			       title=>"e+${rel}:${of}",
+			      },
+	 );
+}
+
+
+##---------------------------------------------------------------
+## Fields: alias expander: _errdiff_max_fields (error difference of=X vs. max of=X,for=Y)
 
 ## %field_aliases = _errdiff_max_fields($of_field)
-sub _errdiff_fields {
+sub _errdiff_max_fields {
   my ($of_field) = @_;
 
   our ($_errdiff_field);

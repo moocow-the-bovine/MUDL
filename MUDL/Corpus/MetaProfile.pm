@@ -474,6 +474,15 @@ sub toHMM {
 	}
       }
     }
+    ##-- 'estimateb': use unigram probabilities drawn from 'bf' matrix
+    elsif ($arcmode eq 'estimateb') {
+      ##-- first, estimate pi,omega
+      my $b1f  = $bf->xchg(0,1)->sumover;
+      $b1f    /= ($N+1);                  ##-- one 'slot' for each following tag (incl. EOS ~ omega)
+      $af     .= $b1f;
+      $omegaf .= $b1f;
+      $pif    .= $b1f;
+    }
     else { #if ($arcmode eq 'estimate')
       ##-- loop: 'estimate'
       while (($w12,$f)=each(%{$bgd->{nz}})) {

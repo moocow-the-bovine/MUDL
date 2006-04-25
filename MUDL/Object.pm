@@ -7,11 +7,13 @@
 ##======================================================================
 
 package MUDL::Object;
-use MUDL::XML;
+use MUDL::XML;      ##-- for XML I/O
 use IO::File;
-use IO::Scalar;
-use Storable;
-use Data::Dumper;
+use IO::Scalar;     ##-- for string I/O (occasional goofiness)
+use Storable;       ##-- for binary I/O
+use Data::Dumper;   ##-- for perl-code I/O
+use PerlIO::gzip;   ##-- for :gzip I/O layer: useful for text-based I/O modes
+use Compress::Zlib; ##-- for zlib compression of binary files (:gzip I/O layer fails for these)
 
 ## PDL::IO::Storable
 ##  + very tricky: can cause errors "%Config::Config is read-only"
@@ -48,6 +50,8 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 ##======================================================================
 ## GLOBALS
 our $XMLPARSER = MUDL::XML::Parser->new();
+
+our $DEFAULT_ZBIN_ZLEVEL = 9; ##-- default compression level for compressed binary files (maximum)
 
 ##======================================================================
 ## Generic Constructor
@@ -582,7 +586,7 @@ sub saveBinString {
   return Storable::freeze($ref);
 }
 
-## $bool = $obj->saveBinFile($filename,@args)
+## $bool = $obj->saveBinFile($filename,%args)
 ##   + calls saveBinFh($fh)
 sub saveBinFile {
   my ($obj,$file,%args) = @_;
@@ -597,7 +601,7 @@ sub saveBinFile {
   return $rc;
 }
 
-## $bool = $obj->saveBinFh($fh,@args)
+## $bool = $obj->saveBinFh($fh,%args)
 sub saveBinFh {
   my ($obj,$fh,%args) = @_;
   require PDL::IO::Storable if (defined($PDL::VERSION)); ##-- HACK
@@ -608,7 +612,7 @@ sub saveBinFh {
   ##-- I/O layers
   my @iolayers = $args{iolayers} ? @{$args{iolayers}} : qw();
   binmode($fh);
-  binmode($fh,$_) foreach (@iolayers);
+  binmode($fh,$_) foreach (grep { $_ !~ /^:gzip/ } @iolayers); ##-- HAC: ignore ':gzip' layers!
 
   ##-- Hack: freeze & gzip (maybe)
   if (grep { $_ =~ /^:gzip/ } @iolayers) {
@@ -680,6 +684,79 @@ sub loadBinFh {
   }
   eval "require $ref;"; ##-- hack
   return UNIVERSAL::can($ref,'loadBinRef') ? $ref->loadBinRef() : $ref; ##-- BUGGY
+}
+
+
+##======================================================================
+## I/O: Compressed Binary: Save
+##======================================================================
+
+## $str = $obj->saveZBinString(%args)
+##  + calls $obj->saveBinString()
+##  + %args:
+##     zlevel=>$level
+sub saveZBinString {
+  my ($obj,%args) = @_;
+  return Compress::Zlib::compress($obj->saveBinString(%args),
+				  ($args{zlevel} ? $args{zlevel} : $DEFAULT_ZBIN_ZLEVEL));
+}
+
+## $bool = $obj->saveZBinFile($filename,%args)
+##   + calls $obj->saveZBinFh($fh,%args)
+sub saveZBinFile {
+  my ($obj,$file,%args) = @_;
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  if (!$fh) {
+    confess( __PACKAGE__ , "::saveZBinFile(): open failed for '$file': $!");
+    return undef;
+  }
+  binmode($fh);
+  my $rc  = $obj->saveZBinFh($fh,%args);
+  $fh->close() if (!ref($file));
+  return $rc;
+}
+
+## $bool = $obj->saveZBinFh($fh,%args)
+##   + calls $obj->saveBinString(%args)
+##  + %args:
+##     zlevel=>$level
+sub saveZBinFh {
+  my ($obj,$fh,%args) = @_;
+  $fh->print($obj->saveZBinString(%args));
+  return 1;
+}
+
+##======================================================================
+## I/O: Compressed Binary: Load
+##======================================================================
+
+## $obj_or_undef = $class_or_obj->loadZBinString($str,%args)
+##  + calls $class_or_obj->loadBinString()
+sub loadZBinString {
+  my $that = shift;
+  return $that->loadBinString(Compress::Zlib::uncompress($_[0]), @_[1..$#_]);
+}
+
+## $obj_or_undef = $class_or_obj->loadZBinFile($filename,%args)
+##   + calls $class_or_obj->loadZBinFh($fh)
+sub loadZBinFile {
+  my ($obj,$file) = splice(@_,0,2);
+  my $fh = ref($file) ? $file : IO::File->new("<$file");
+   if (!$fh) {
+    confess( __PACKAGE__ , "::loadZBinFile(): open failed for '$file': $!");
+    return undef;
+  }
+  my $rc = $obj->loadZBinFh($fh,@_);
+  $fh->close() if (!ref($file));
+  return $rc;
+}
+
+## $obj_or_undef = $class_or_obj->loadZBinFh($fh,%args)
+##  + calls $class_or_obj->loadZBinString(%args)
+sub loadZBinFh {
+  my ($that,$fh,%args) = @_;
+  binmode($fh);
+  return $that->loadZBinString(join('',<$fh>), %args);
 }
 
 
@@ -883,6 +960,7 @@ sub ioModes {
 	  'native'  => __PACKAGE__->ioModeHash('Native'),
 	  'xml'     => __PACKAGE__->ioModeHash('XML'),
 	  'bin'     => __PACKAGE__->ioModeHash('Bin'),
+	  'zbin'    => __PACKAGE__->ioModeHash('ZBin'),
 	  'perl'    => __PACKAGE__->ioModeHash('Perl'),
 	  ##--
 	  'DEFAULT' => __PACKAGE__->ioModeHash('Native'),
@@ -927,7 +1005,7 @@ sub registerIOMode {
 sub fileSuffixModes {
   return [
 	  {regex=>qr/\.bin$/i,     mode=>'bin', iolayers=>[]},
-	  {regex=>qr/\.bin\.gz$/i, mode=>'bin', iolayers=>[':gzip']},
+	  {regex=>qr/\.bin\.gz$/i, mode=>'zbin', iolayers=>[]},
 
 	  {regex=>qr/\.xml$/i,     mode=>'xml', iolayers=>[]},
 	  {regex=>qr/\.xml\.gz$/i, mode=>'xml', iolayers=>[':gzip']},
