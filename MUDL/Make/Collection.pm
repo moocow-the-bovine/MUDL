@@ -100,7 +100,27 @@ sub subcollection {
 }
 
 ## DESTROY : hook: clear configs
-sub DESTROY { $_[0]->clear(); }
+sub DESTROY { $_[0]->clearConfigs(); }
+
+##======================================================================
+## Manipulation: remove 
+
+## $mcol = $mcol->removeCollection($subCollection)
+sub removeCollection {
+  my ($mcol,$subcol) = @_;
+  delete(@{$mcol->{uconfigs}}{keys(%{$subcol->{uconfigs}})});
+  delete(@{$mcol->{xconfigs}}{keys(%{$subcol->{xconfigs}})});
+  return $mcol;
+}
+
+## $mcol = $mcol->removeConfigs(\@configs)
+sub removeConfigs {
+  my ($mcol,$configs) = @_;
+  delete(@{$mcol->{uconfigs}}{map {$mcol->ukey($_)} @$configs});
+  delete(@{$mcol->{xconfigs}}{map {$mcol->xkey($_)} @$configs});
+  return $mcol;
+}
+
 
 ##======================================================================
 ## Initialization: Parse Makefiles

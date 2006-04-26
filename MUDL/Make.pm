@@ -144,7 +144,7 @@ sub perform {
 
   my $code = ref($acth) ? $acth->{code} : $mak->can($acth);
   if (!defined($code)) {
-    carp(ref($mak),"::perform($actName,$actArg): skipping unknown action");
+    $mak->vmsg('error', ref($mak), ": unknown action: '$actName' -- skipping!\n");
     return 0;
   }
 
@@ -264,6 +264,21 @@ sub actSave {
 }
 
 ##---------------------------------------------------------------
+## Actions: save: selection
+
+
+$ACTIONS{saveSelection} = $ACTIONS{saveSel} =
+  {
+   syntax=>'saveSel FILE',
+   help  =>'save selection as a collection to a (new) file FILE',
+   code  => \&actSaveSelection,
+  };
+sub actSaveSelection {
+  my ($mak,$file) = @_;
+  return $mak->ensureLoaded && $mak->selected()->saveFile($file);
+}
+
+##---------------------------------------------------------------
 ## Actions: select
 
 $ACTIONS{xselect} = 
@@ -293,7 +308,7 @@ sub actSelectUser {
 ##---------------------------------------------------------------
 ## Actions: expand
 
-$ACTIONS{expandAll} = $ACTIONS{expandSelected} =
+$ACTIONS{expand} = $ACTIONS{expandAll} = $ACTIONS{expandSelected} = $ACTIONS{expandSel} =
   {
    syntax=>'expandSelected',
    help  =>'(re-)expand selected configurations',
@@ -303,7 +318,7 @@ sub actExpandAll {
   $_[0]->ensureLoaded() && $_[0]->selected()->expandAll();
 }
 
-$ACTIONS{expand} = $ACTIONS{expandMissing} =
+$ACTIONS{expandMissing} =
   {
    syntax=>'expandMissing',
    help  =>'expand unexpanded selected configurations',
@@ -311,6 +326,22 @@ $ACTIONS{expand} = $ACTIONS{expandMissing} =
   };
 sub actExpandMissing {
   $_[0]->ensureLoaded() && $_[0]->selected()->expandMissing();
+}
+
+##---------------------------------------------------------------
+## Actions: remove
+
+$ACTIONS{rm} = $ACTIONS{rmSel} = $ACTIONS{rmSelected} =
+  {
+   syntax=>'rmSelected',
+   help=>'remove selected configurations from collection',
+   code=>\&actRmSelected,
+  };
+sub actRmSelected {
+  my ($mak) = shift;
+  return 0 if (!$mak->ensureLoaded());
+  $mak->{col}->removeCollection($mak->selected);
+  return 1;
 }
 
 
@@ -943,6 +974,7 @@ $ACTIONS{sync} =
    code  => \&syncCollection,
   };
 
+*actSync = \&syncCollection;
 sub syncCollection {
   my ($mak,$file) = @_;
   $file = $mak->{colfile} if (!$file);

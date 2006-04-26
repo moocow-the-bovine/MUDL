@@ -388,7 +388,7 @@ sub compileArcs {
 
   my ($a,$a1,$omega) = @$hmm{qw(a a1 omega)};
 
-  $hmm->{atotal} = $af->sum + $omegaf->sum;
+  $hmm->{atotal} = $af->flat->sumover + $omegaf->flat->sumover;
   my $afsumover = ($omegaf + $af->xchg(0,1)->sumover)->inplace->log;
 
   ##-- a

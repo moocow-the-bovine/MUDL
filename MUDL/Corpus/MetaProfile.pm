@@ -476,21 +476,20 @@ sub toHMM {
     }
     ##-- 'estimateb': use unigram probabilities drawn from 'bf' matrix
     elsif ($arcmode eq 'estimateb') {
-      ##-- first, estimate pi,omega
-      my $b1f  = $bf->xchg(0,1)->sumover;
-      $b1f    /= ($N+1);                  ##-- one 'slot' for each following tag (incl. EOS ~ omega)
-      $af     .= $b1f;
-      $omegaf .= $b1f;
-      $pif    .= $b1f;
+      ##-- (later)
+      $mp->vmsg($vl_info, "toHMM(): arcmode='estimateb': delayed.\n");
+      $af     .= 1;
+      $pif    .= 1;
+      $omegaf .= 1;
     }
     else { #if ($arcmode eq 'estimate')
       ##-- loop: 'estimate'
       while (($w12,$f)=each(%{$bgd->{nz}})) {
 	($w1,$w2) = $bgd->split($w12);
-	
+
 	$w1id=$tenum->index($w1);
 	$w2id=$tenum->index($w2);
-	
+
 	##-- dispatch
 	if (defined($w1id) && defined($w2id)) {
 	  ##-- normal case: w1 and w2 are 'real' targets: update af
@@ -538,6 +537,26 @@ sub toHMM {
       confess(ref($mp), "::toHMM(): unknown restriction method '$args{restrictby}'!");
     }
   }
+
+  ##----------------------------
+  ## estimate: arcs: 'estimateb'
+  if (defined($args{arcmode}) && $args{arcmode} eq 'estimateb') {
+    ##-- delayed arc-probability estimation
+    $mp->vmsg($vl_info, "toHMM(): estimate: arcs (delayed): mode=$args{arcmode})\n");
+
+    my $b1f         = ($hmm->bf() * $hmm->restrictionMask())->xchg(0,1)->sumover;
+    my $a1f         = $b1f / ($N+1);
+    #$af            .= $a1f;
+    $af->xchg(0,1) .= $a1f;
+    $pif           .= $a1f;
+    $omegaf        .= 1;
+
+    ##-- recompile
+    $hmm->compileArcs($af, $omegaf, %args);
+    $hmm->compilePi($pif, %args);
+    $hmm->smootha(%args);
+  }
+
 
   ##-- return
   return $hmm;

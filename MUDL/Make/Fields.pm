@@ -94,14 +94,45 @@ our %FIELDS =
 			#qw(ar:t),
 		       ],
 
-   ##-- result variants
-   'emtab' => [ qw(tabId | emresults), ],
-   'emresults' => [qw(*:pr:g pr:g e+mp:pr:g | *:pr:t pr:t e+mp:pr:t)],
-   'emresults:a' => [qw(*:apr:g apr:g e+mp:apr:g | *:apr:t apr:t e+mp:apr:t)],
+   ##-- table: variants: MetapROFILE
+   'mpId'  => 'mpid',
+   'mpid'  => [ qw(stage corpus lrlabel auto) ],
+   'mptab' => [ qw(mpid | mpresults) ],
+   'mptab:a' => [ qw(mpid | mpresults:a) ],
+   'mptab:pstg' => [ qw(mpid | mpresults:pstg) ],
+   'mpresults' => [
+		   qw(*:pr:g pr:g *:rc:g rc:g *:F:g F:g),
+		   '|',
+		   qw(*:pr:t pr:t *:rc:t rc:t *:F:t F:t),
+		  ],
+   'mpresults:a' => [
+		     qw(*:apr:g apr:g *:arc:g rc:g *:aF:g aF:g),
+		     '|',
+		     qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
+		    ],
+   'mpresults:pstg' => [
+			qw(*:pr:g pr:g e+pstage:pr:g(title=e+pstg)),
+			'|',
+			qw(*:pr:t pr:t e+pstage:pr:t(title=e+pstg)),
+		       ],
+
+   ##-- table: variants: EM
+   'emtab'  => [ qw(tabId | emresults), ],
+   'emtab:emi' => [ qw(tabId | emresults:emi), ],
+   'emresults:mp'  => [qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) | *:pr:t pr:t e+mp:pr:t(title=e+mp))],
+   'emresults'     => [
+		       qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) e+pemi:pr:g(title=e+pemi)),
+		       '|',
+		       qw(*:pr:t pr:t e+mp:pr:t(title=e+mp) e+pemi:pr:t(title=e+pemi))
+		      ],
+   'emresults:emi' => [qw(*:pr:g pr:g e+pemi:pr:g | *:pr:t pr:t e+pemi:pr:t)],
+   'emresults:a'   => [qw(*:apr:g apr:g e+mp:apr:g | *:apr:t apr:t e+mp:apr:t)],
+
    'res:prF:g' => [qw(*:pr:g pr:g e+mp:pr:g | +:rc:g rc:g e+mp:rc:g | ~:F:g F:g e+mp:F:g)],
    'res:prF:t' => [qw(*:pr:t pr:t | +:rc:t rc:t | ~:F:t F:t)],
    'res:aprF:g' => [qw(*:apr:g apr:g | +:arc:g arc:g | ~:aF:g aF:g)],
    'res:aprF:t' => [qw(*:apr:t apr:t | +:arc:t arc:t | ~:aF:t aF:t)],
+
 
    ##-- Summarize (LaTeX)
    'latexDefault' => ['|', 'latexId', '||', 'latexResults', '|'],
