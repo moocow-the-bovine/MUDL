@@ -1,14 +1,15 @@
-##-*- Mode: CPerl -*-
+#-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRBigrams.pm
+## File: MUDL::Corpus::Profile::LRActivation.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R bigrams
+##  + MUDL unsupervised dependency learner: corpus profile: L-R base activation
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRBigrams;
+package MUDL::Corpus::Profile::LRActivation;
 use MUDL::Corpus::Profile::LR;
 use MUDL::Object;
+use MUDL::EDist;
 use PDL;
 use Carp;
 
@@ -18,20 +19,25 @@ our @ISA = qw(MUDL::Corpus::Profile::LR);
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
 ##   + %args:
+##     ##-- new in MUDL::Corpus::Profile::LRActivation:
+##       decay=>$decay,    ## decay coefficient (default=1)
+##       #thresh=>$thresh, ## activation threshhold [minimum] (default=0 (none))
+##       nmax=>$n,         ## maximum distance [number of words] between target and bound (default=3)
+##     ##-- inherited from MUDL::Corpus::Profile::LR:
 ##       eos => $eos_str,
 ##       bos => $bos_str,
 ##       bounds => $bounds_enum,
 ##       targets => $targets_enum,
-##       left=>$left_bigrams,       ## ($target,$lneighbor)
-##       right=>$right_bigrams,     ## ($target,$rneighbor)
-##       smoothgt=>$which,          ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
+##       left=>$left_pseudo_bigrams,   ## ($target,$lneighbor)
+##       right=>$right_pseudo_bigrams, ## ($target,$rneighbor)
+##       smoothgt=>$which,
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
+  return $that->SUPER::new(nfields=>1,donorm=>0,decay=>1,nmax=>3,%args); #thresh=>0
 }
 
 ##======================================================================
-## Profiling
+## Profiling: addSentence()
 
 ## undef = $profile->addSentence(\@sentence)
 sub addSentence {
@@ -48,80 +54,37 @@ sub addSentence {
 
   ##------ temporary sentence index profiles
 
+  ##-- get profile properties
+  my ($lact,$ract,$decay,$nmax) = @$pr{qw(left right decay nmax)};
+
   ##-- @st: sentence text
-  my @st = ((defined($pr->{bos}) ? $pr->{bos} : qw()),
+  my @st = ((defined($pr->{bos}) ? (map { $pr->{bos} } (1..$nmax)) : qw()),
 	    (map { $_->text } @$s),
-	    (defined($pr->{eos}) ? $pr->{eos} : qw()));
+	    (defined($pr->{eos}) ? (map { $pr->{eos} } (1..$nmax)) : qw()));
 
   ##-- @tids, @bids: sentence target (bound) ids
-  my @tids = map { $pr->{targets}{sym2id}{$_} } @st;
-  my @bids = map { $pr->{bounds}{sym2id}{$_}  } @st;
+  my @tids = @{$pr->{targets}{sym2id}}{@st};
+  my @bids = @{$pr->{bounds}{sym2id}}{@st};
 
-  my $lbg = $pr->{left};
-  my $rbg = $pr->{right};
 
-  my ($i,$tid,$bid);
+  my ($i,$j, $tid,$bid);
   for ($i=0; $i <= $#st; $i++) {
     next if (!defined($tid=$tids[$i]));
 
     ##-- left
-    if ($i > 0 && defined($bid=$bids[$i-1])) {
-      ++$lbg->{nz}{$tid.$lbg->{sep}.$bid};
+    for ($j=1; ($i-$j)>=0 && $j<=$nmax; $j++) {
+      next if (!defined($bid=$bids[$i-$j]));
+      $lact->{nz}{$tid.$lact->{sep}.$bid} += $j**(-$decay);
     }
 
     ##-- right
-    if ($i < $#st && defined($bid=$bids[$i+1])) {
-      ++$rbg->{nz}{$tid.$rbg->{sep}.$bid};
+    for ($j=1; ($i+$j)<=$#st && $j<=$nmax; $j++) {
+      next if (!defined($bid=$bids[$i+$j]));
+      $ract->{nz}{$tid.$ract->{sep}.$bid} += $j**(-$decay);
     }
   }
 
   return $pr;
-}
-
-
-##======================================================================
-## Profiling: special: addBigrams($bg)
-
-## $lr = $lr->addBigrams($bg,%args);
-##   + %args or $lr flags:
-##      #smoothgt => $which,  ##-- call smoothGTLogLin on bigrams, sets $lr->{norm_zero_f} if $which eq 'bigrams'
-sub addBigrams {
-  my ($lr,$bg,%args) = @_;
-  require MUDL::Bigrams;
-
-  ##-- sanity checks: bos/eos
-  if (defined($lr->{bos})) {
-    $lr->{bounds}->addSymbol($lr->{bos});
-  }
-  if (defined($lr->{eos})) {
-    $lr->{bounds}->addSymbol($lr->{eos});
-  }
-
-  ##-- smoothing
-  $lr->{smoothgt} = $args{smoothgt} if (defined($args{smoothgt}));
-  if ($lr->{smoothgt} && $lr->{smoothgt} eq 'bigrams') {
-    $bg->smoothGTLogLin;
-    $lr->{norm_zero_f} += $bg->zeroCount;
-  }
-
-  my ($tgs,$bds,$lbg,$rbg) = @$lr{qw(targets bounds left right)};
-  my ($w12,$f12,$w1,$w2, $tid,$bid);
-  while (($w12,$f12)=each(%{$bg->{nz}})) {
-    ##-- split
-    my ($w1,$w2) = $bg->split($w12);
-
-    ##-- left-bound
-    if (defined($bid=$bds->{sym2id}{$w1}) && defined($tid=$tgs->{sym2id}{$w2})) {
-      $lbg->{nz}{$tid.$lbg->{sep}.$bid} += $f12;
-    }
-
-    ##-- right-bound
-    if (defined($tid=$tgs->{sym2id}{$w1}) && defined($bid=$bds->{sym2id}{$w2})) {
-      $rbg->{nz}{$tid.$rbg->{sep}.$bid} += $f12;
-    }
-  }
-
-  return $lr;
 }
 
 
@@ -133,11 +96,15 @@ sub addBigrams {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
-## undef = $lr->smoothPdl($pdl);
+## $pdl3d = $lr->smoothPdl($pdl3d);
+##-- inherited from MUDL:::Corpus::Profile::LR
 
-## undef = $lr->finishPdl($pdl);
+## $pdl3d = $lr->finishPdl($pdl3d);
+##-- does nothing
 
 ## undef = $lr->normalizePdl($pdl);
+##-- inherited from MUDL:::Corpus::Profile::LR
+
 
 ##======================================================================
 ## Help
@@ -146,14 +113,15 @@ sub addBigrams {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract left- and right-bigram profile wrt. fixed boundary set.\n)
+    (qq(Extract left- and right-activation profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
      .qq(  eos=EOS_STRING   [default='__\$']\n)
      .qq(  bos=BOS_STRING   [default='__\$']\n)
-     .qq(  smoothgt=WHICH   [default=0] : one of 'bigrams','pdl',0\n)
      .qq(  donorm=BOOL      [default=1]\n)
+     .qq(  decay=COEFF      [default=1]\n)
+     .qq(  nmax=N           [default=3 (use (n<=4)-grams)]\n)
     );
 }
 

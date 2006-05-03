@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRFBigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -12,6 +12,7 @@ use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
+use strict;
 our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 
 ##======================================================================
@@ -27,7 +28,6 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 sub new {
   my ($that,%args) = @_; 
   return $that->SUPER::new(nfields=>1,donorm=>0,%args);
-  return $self;
 }
 
 ##======================================================================
@@ -51,7 +51,7 @@ sub new {
 ##-- inherited
 
 ## $pdl3d = $lr->finishPdl($pdl3d);
-##-- inherited
+##-- does nothing
 sub finishPdl { ; }
 
 ## undef = $lr->normalizePdl($pdl);
