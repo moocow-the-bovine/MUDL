@@ -1,8 +1,9 @@
-foo ?= bar={$(bar)},baz={$(baz)}
-bar ?= bar
-baz ?= baz
+lrwhich ?= fbg
 
-long ?= line1 \
-	line2 \
-	line3
+lractn ?= 3
+lractd ?= 4
+lractsuffix = +$(lractn)+$(lractd)
 
+ifeq "$(lrwhich)" "act"
+lrsuffix = $(lractsuffix)
+endif

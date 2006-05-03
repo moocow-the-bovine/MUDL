@@ -73,6 +73,22 @@ lrinfix     ?= b$(bds_infix)-t$(tgs_infix)
 lrdir       ?= .
 
 ##------------------------------------------------------
+## Profiling: L-/R- Activation
+
+## lractn : use (n<=$(lractn)+1)-grams for activation-level acquisition
+lractn ?= 3
+
+## lractd : decay rate exponent (negated) for activation
+lractd ?= 4
+
+## lractsuffix : $(lrwhich) suffix for activation-based (meta-)profiles
+lractsuffix = +n$(lractn)+d$(lractd)
+
+ifeq "$(lrwhich)" "act"
+lrsuffix = $(lractsuffix)
+endif
+
+##------------------------------------------------------
 ## Profiling: L-/R- trigrams (targets are trigrams)
 
 ##-- raw frequency trigram target selection
@@ -250,7 +266,7 @@ tcniters       ?=0
 svdr           ?=0
 
 ## $(tcinfix): configuration identifier infix for clustering-dependent files
-tcinfix ?= lr$(lrwhich)-$(lrinfix).$(tcd)$(tcm)-$(tccd)$(tccm).$(tcclass).k-$(tck).i-$(tcniters).svd-$(svdr)
+tcinfix ?= lr$(lrwhich)$(lrsuffix)-$(lrinfix).$(tcd)$(tcm)-$(tccd)$(tccm).$(tcclass).k-$(tck).i-$(tcniters).svd-$(svdr)
 
 ##------------------------------------------------------
 ## Clustering / metaprofile-3
@@ -294,10 +310,12 @@ mp3dir ?= $(mpdir)/mp3.stage$(stage).tgs3-$(mp3targets_infix).$(mp3tcd)$(mp3tcm)
 ##------------------------------------------------------
 ## Multi-stage profiling
 
+lrlabel ?= $(lrwhich)-$(tcd)$(tcm)-$(tccd)$(tccm)
+
 mpdir ?= mp$(mpc).$(mpt)-$(tcd)$(tcm)-$(tccd)$(tccm)-$(tcclass).k-$(tck).b0-$(bds_infix).t-$(tgmethod).ns-$(nstages).fmin-$(mpfmin).imax-$(mpimax).pn-$(mppn).pm-$(mppm).pb-$(mppb).pbeta-$(mppbeta).$(icbase).sr-$(srand).stages
 
 stage ?=1
-mpt   ?=lr$(lrwhich)
+mpt   ?=lr$(lrwhich)$(lrsuffix)
 
 ## $(mpc): MetaProfile subclass
 ## full   : full reclustering
@@ -387,8 +405,8 @@ embm ?=invert+mask+ebonus-8
 #emum ?=none            ##-- no smoothing
 #emum ?=uniform         ##-- use restricted smoothb='uniform'
 #emum ?=types-$(total)  ##-- use number of types (hard cluster size), total unknown count $(total)
-emum ?= 1
-emum ?= types-$(emsmoothutotal)
+emsmoothutotal ?= 1
+emum           ?= types-$(emsmoothutotal)
 
 
 ## $(emrm): state restriction mode
@@ -404,7 +422,7 @@ emrm   ?= freq-z$(emrmfz)+q$(emrmfq)
 #embs0 ?=none    ##-- no smoothing
 #embs0 ?=joint   ##-- new, Laplace-like smoothing
 #embs0 ?=uniform ##-- still there, now an alias for 'joint'
-embs0 ?= uniform
+embs0 ?=joint
 
 ## $(embs): observation-probability smoothing mode for HMM re-estimation ONLY
 ##   + should have no effect for HMMs with no zero-probabilties
@@ -414,7 +432,7 @@ embs0 ?= uniform
 #embs ?=uniform_c ##-- gone
 #embs ?=joint   ##-- new, Laplace-like smoothing
 #embs ?=uniform ##-- still there, now an alias for 'joint': CHANGED SEMANTICS: Wed, 20 Jul 2005 12:35:35 +0200
-embs ?=uniform
+embs  ?=none
 
 
 ## $(emas0): arc-probability (a,pi,omega) smoothing mode for HMM estimation ONLY
@@ -427,7 +445,7 @@ emas0 ?= none
 ##   + should have no effect for HMMs with no zero-probabilties (i.e. truly re-estimated HMMs)
 #emas ?= none    ##-- no smoothing
 #emas ?= uniform ##-- alias for 'joint'
-emas ?= joint
+emas ?= none
 
 
 ## $(emmax): non-empty string indicating which HMM parameters to maximize

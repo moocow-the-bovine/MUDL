@@ -1,10 +1,26 @@
 #!/usr/bin/perl -wd
 
-use lib '../..';
+use lib qw(../ ../MUDL ../.. ../../MUDL ../../.. ../../../MUDL);
 use MUDL::Make;
 use MUDL::Make::Vars;
 use MUDL::Make::Config;
 use MUDL::Make::Collection;
+
+
+##----------------------------------------------------------------------
+## test: vars
+
+sub testVars {
+  our $vars = MUDL::Make::Vars->new();
+  $vars->parse('test.mak');
+  $vars->writeMakefile(file=>'test-tmp.mak', target=>'vars');
+
+  our $xvars = $vars->expandMakefile('test-tmp.mak', target=>'vars', unlink=>0);
+
+  print "Vars:\n", (map { "$_=$xvars->{$_}\n" } sort(keys(%$xvars)));
+}
+testVars;
+
 
 ##--------------------------------------------------------------
 ## test: perl i/o on shared & self-referential structures

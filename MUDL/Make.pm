@@ -9,6 +9,7 @@
 package MUDL::Make;
 use Cwd qw(abs_path);
 use Digest::MD5 qw(md5);
+use MUDL::Object;
 use MUDL::Make::Fields qw(:all);
 use MUDL::Make::Table;
 use MUDL::Make::Plot;

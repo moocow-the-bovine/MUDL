@@ -24,10 +24,18 @@ our $DEBUG = 0;
 ##======================================================================
 ## OBJECT STRUCTURE:
 ##  + HASH:
-##     $varName => "${assignmentOp} ${varValue}", ...
+##     {
+##       vars=>{$varName => undef, ...},
+##       uvars=>{$varName => $userValue, ... },
+##       source=>$makefileText,
+##       ...
+##     }
 sub new {
   my $that = shift;
   my $self = bless $that->SUPER::new(
+				     vars=>{},
+				     uvars=>{},
+				     source=>'',
 				     @_
 				    ), ref($that)||$that;
   return $self;
@@ -36,7 +44,9 @@ sub new {
 ## $vars = $vars->clear;
 sub clear {
   my $vars = shift;
-  %$vars = qw();
+  %{$vars->{vars}}  = qw();
+  %{$vars->{uvars}} = qw();
+  $vars->{source}   = '';
   return $vars;
 }
 
@@ -61,7 +71,8 @@ sub ctarget {
 ##  + implicitly adds operation ':=' to assigned values
 sub assign {
   my ($vars,$uvars) = @_;
-  $vars->{$_} = ":= $uvars->{$_}" foreach (keys(%$uvars));
+  @{$vars->{uvars}}{keys(%$uvars)} = values(%$uvars);
+  @{$vars->{vars}}{keys(%$uvars)}  = undef;
   return $vars;
 }
 
@@ -86,7 +97,7 @@ sub expand {
 ## \%xvars = $vars->expandMakefile($generated_makefile,%args)
 ##  + %args:
 ##     target=>$target,
-##     xvars=>\%xvars, ##-- destination object
+##     xvars=>\%xvars, ##-- destination object (default: new)
 ##     unlink=>$bool,  ##-- unlink the generated makefile?
 sub expandMakefile {
   my ($vars,$makefile,%args) = @_;
@@ -143,15 +154,17 @@ sub writeMakefile {
 
   ##-- write makefile
   $fh->print(
-	     ##-- Variables
-	     (map { ($_, ' ', $vars->{$_}, "\n") } keys(%$vars)),
+	     ##-- User Variables
+	     (map { ($_, ' :=', $vars->{uvars}{$_}, "\n") } keys(%{$vars->{uvars}})),
 
+	     ##-- Inherited makefile source
 	     "\n",
+	     $vars->{source}, "\n\n",
 
 	     ##-- Pseudo-target
 	     ($target ne ''
 	      ? ("${target}::\n",
-		 (map { "\t\@echo \"$_=\$($_)\"\n" } keys(%$vars)),
+		 (map { "\t\@echo \"$_=\$($_)\"\n" } keys(%{$vars->{vars}})),
 		 "\n",
 		)
 	      : qw()),
@@ -207,8 +220,9 @@ sub parse {
 
   my $buf = '';
   my ($line);
-  my ($var,$op,$val);
+  #my ($var,$op,$val);
   while (defined($line=<$fh>)) {
+    $vars->{source} .= $line;
     chomp($line);
 
     if ($args{makep}) {
@@ -231,9 +245,13 @@ sub parse {
     next if ($buf =~ s/\s*\\$/ /); ##-- honor newline escapes
 
     ##-- parse buffer
-    if ($buf =~ /^\s*([^\=]*?\S)\s*([\?\:]?=)\s*(.*)/) { ##-- it's a variable assignment
-      ($var,$op,$val) = ($1,$2,$3);
-      $vars->{$var}   = $op.' '.$val;
+    #if ($buf =~ /^\s*([^\=]*?\S)\s*([\?\:]?=)\s*(.*)/) { ##-- it's a variable assignment
+    #  ($var,$op,$val) = ($1,$2,$3);
+    #  $vars->{$var}   = $op.' '.$val;
+    #}
+    ##--
+    if ($buf =~ /^\s*([^\=]*?\S)\s*[\?\:]?=/) { ##-- it's a variable assignment
+      $vars->{vars}{$1} = undef;
     }
     $buf = '';                   ##-- clear buffer
   }
