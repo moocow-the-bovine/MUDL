@@ -327,7 +327,7 @@ sub getStateVector {
 ##  + gets state-id path for longest known prefix of address \@labels
 ##  + implicitly reverses \@labels if $trie->{reversed} is true
 ##  + returns undef if no state is defined
-sub getStatePathPathLabels {
+sub getStatePathLabels {
   my ($trie,$labs) = @_;
   return undef if (grep { !defined($_) || $_ == $Gfsm::noLabel } @$labs);
   return $trie->{fsm}->find_prefix_states(($trie->{reversed} ? [reverse @$labs] : $labs), []);

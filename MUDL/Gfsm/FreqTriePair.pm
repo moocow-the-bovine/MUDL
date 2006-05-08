@@ -3,7 +3,8 @@
 ## File: MUDL::Gfsm::FreqTriePair.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: prefix-, suffix-trie pair
+##  + MUDL unsupervised dependency learner: (prefix-, suffix-) trie pair
+##    using Gfsm
 ##======================================================================
 
 package MUDL::Gfsm::FreqTriePair;

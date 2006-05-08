@@ -8,6 +8,7 @@
 
 package MUDL::Gfsm::Alphabet;
 use Gfsm;
+use Gfsm::Alphabet;
 use MUDL::Object;
 
 use Carp qw(carp croak);

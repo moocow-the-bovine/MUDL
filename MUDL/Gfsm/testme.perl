@@ -282,17 +282,22 @@ sub proftpair_dummy {
   ##-- now construct dummy trie-pair
   my ($penum,$senum,$pfreq,$sfreq,$pwidth,$swidth);
   $tp0 = bless {
-		cenum => ($cenum=MUDL::Enum->new()),
-		penum => ($penum=MUDL::Enum->new()),
-		senum => ($senum=MUDL::Enum->new()),
-		pfreq => ($pfreq=[]),
-		sfreq => ($sfreq=[]),
-		pwidth => ($pwidth=[]),
-		swidth => ($swidth=[]),
+		cenum => ($cenum=MUDL::Enum->new()), ##-- character enum (input alphabet)
+		penum => ($penum=MUDL::Enum->new()), ##-- enum of prefix *strings*
+		senum => ($senum=MUDL::Enum->new()), ##-- enum of suffix *strings* (reversed)
 
-		pairs=>($pairs={}),
-		s2p=>([]),
-		p2s=>([]),
+		pfreq => ($pfreq=[]),                ##-- $prefix_id => $prefix_freq
+		sfreq => ($sfreq=[]),                ##-- $suffix_id => $suffix_freq
+
+		pwidth => ($pwidth=[]),              ##-- $prefix_id => $number_of_continuations
+		swidth => ($swidth=[]),              ##-- $suffix_id => $number_of_continuations
+
+		pairs=>($pairs={}),                  ##-- Equivalent prefix- and suffix-ids:
+		                                     ##    pack('LL', $prefix_id, $suffix_id)=>undef
+
+		##-- post-index():
+		s2p=>([]),                           ##-- $prefix_id => pack('L*', @equiv_suffix_ids), ...
+		p2s=>([]),                           ##-- $suffix_id => pack('L*', @equiv_prefix_ids), ...
 	       }, 'MUDL::Object';
   my ($tvec,$text,$freq,$i, $pid,$sid, $lastpid,$lastsid);
   foreach $text (sort(keys(%$ugs))) {
@@ -302,9 +307,11 @@ sub proftpair_dummy {
     ##-- add ids, freqs
     foreach $i (0..(length($text))) {
       if (@{$penum->{id2sym}}==($pid=$penum->addSymbol(substr($tvec,0,($i*2))))) {
+	##-- new prefix string: update width
 	$pwidth->[$lastpid]++ if (defined($lastpid));
       }
       if (@{$senum->{id2sym}}==($sid=$senum->addSymbol(substr($tvec,length($tvec)-($i*2),($i*2))))) {
+	##-- new suffix string: update width
 	$swidth->[$lastsid]++ if (defined($lastsid));
       }
       $pfreq->[$pid] += $freq;
