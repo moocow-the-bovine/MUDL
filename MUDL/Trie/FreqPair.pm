@@ -17,9 +17,14 @@ our @ISA = qw(MUDL::Object);
 ## Constructors
 
 ## $obj = $class_or_obj->new(%args)
-## + args:
+## + args (shared):
 ##    cw      => $char_width,   ##-- for string methods
 ##    chars   => \%chars,       ##-- shared alphabet (pseudo-set)
+##    reversed => $bool,        ##-- swap (pta,sta) ?
+##    indexDepth => $bool,      ##-- index state depth on finish()?
+##    indexWidth => $bool,      ##-- index state out degree (width) on finish()?
+##    indexStrings => $bool,    ##-- index full prefixes on finish()?
+##    indexSort=>$bool,         ##-- sort equivalence maps by numeric id value?
 ##
 ## + data (new in Trie::FreqPair)
 ##    pta     => $prefix_trie,  ##-- a MUDL::Trie::Freq object
@@ -33,33 +38,43 @@ our @ISA = qw(MUDL::Object);
 ##                              ##        pack('LL', $prefix_id, $suffix_id) => undef
 ##
 ## + index data (post finish())
-##    p2s     => \@p2s,         ##-- [$prefix_qid] => pack('L*', @equiv_suffix_qids) ##-- sorted(?)
-##    s2p     => \@s2p,         ##-- [$suffix_qid] => pack('L*', @equiv_prefix_qids) ##-- sorted(?)
+##    p2s     => \@p2s,         ##-- [$prefix_qid] => pack('L*', @equiv_suffix_qids) #-- +sorted if {indexSort}
+##    s2p     => \@s2p,         ##-- [$suffix_qid] => pack('L*', @equiv_prefix_qids) #-- +sorted if {indexSort}
+##                              ## : a pair ($prefix_qid, $suffix_qid) are equivalent iff:
+##                              ##   for some @w[1..$n] \in @paths,
+##                              ##        $prefix_id = $pta->string2id(        @w[1..$i]    ) , and
+##                              ##        $suffix_id = $sta->string2id(reverse(@w[$i+1..$n])) .
 ##
 sub new {
   my ($that,%args) = @_;
 
   ##-- shared data
-  my $chars = {};
-  my $cw = $args{cw} ? $args{cw} : 1;
+  my $reversed = $args{reversed} ? 1 : 0;
+  my @shared_keys = qw(chars cw indexDepth indexWidth indexStrings);
+  $args{chars} = {} if (!$args{chars});
+  $args{cw}    = 1  if (!$args{cw});
+  $args{indexDepth} = 0 if (!$args{indexDepth});
+  $args{indexWidth} = 0 if (!$args{indexWidth});
+  $args{indexStrings} = 0 if (!$args{indexStrings});
+
+  my %shared_args = map { $_=>$args{$_} } @shared_keys;
 
   ##-- object
   my $tp = bless {
-		   ##-- Shared data
-		   chars=>$chars,
-		   cw=>$cw,
+		  ##-- User args (new)
+		  indexSort=>0,
 
-		   ##-- Profiling data
-		   pta=>MUDL::Trie::Freq->new(chars=>$chars, cw=>$cw, reversed=>0),
-		   sta=>MUDL::Trie::Freq->new(chars=>$chars, cw=>$cw, reversed=>1),
-		   pspairs=>{},
+		  ##-- Profiling data
+		  pta=>MUDL::Trie::Freq->new(%shared_args, reversed=>$args{reversed}),
+		  sta=>MUDL::Trie::Freq->new(%shared_args, reversed=>!$args{reversed}),
+		  pspairs=>{},
 
-		   ##-- Index data
-		   s2p=>[],
-		   p2s=>[],
+		  ##-- Index data
+		  s2p=>[],
+		  p2s=>[],
 
-		   ##-- user args
-		   %args,
+		  ##-- user & shared args
+		  %args,
 		 }, ref($that)||$that;
 
   return $tp;
@@ -81,10 +96,24 @@ sub clear {
 
 
 ##--------------------------------------------------------------
-## ($qid_prefix,$qid_suffix) = $tp->addString($string,$freq)
+## [$qid_prefix,  $qid_suffix]   = $tp->addString($string,$freq)  ##-- scalar context
+## (\@path_prefix,\@path_suffix) = $tp->addString($string,$freq)  ##-- array context
 ##  + adds paths for $string; returns pairs of ids
 *add = \&addString;
 sub addString {
+  my ($tp,$str,$freq) = @_;
+  my @pathpta = $tp->{pta}->addString($str,$freq);
+  my @pathsta = $tp->{sta}->addString($str,$freq);
+
+  ##-- save state-id pairs
+  foreach (0..$#pathpta) {
+    $tp->{pspairs}{pack('LL', $pathpta[$_], $pathsta[$#pathsta-$_])} = undef;
+  }
+
+  return wantarray ? (\@pathpta,\@pathsta) : [$pathpta[$#pathpta], $pathsta[$#pathsta]];
+}
+
+sub addString0 {
   my ($tp,$str,$freq) = @_;
 
   my ($i,$q,$a,$qnext);
@@ -100,7 +129,6 @@ sub addString {
     if (!defined($qnext=$tp->{pta}{goto}[$q]{$a})) {
       $qnext = $tp->{pta}{goto}[$q]{$a} = $tp->{pta}{nq}++;
       $tp->{pta}{rgoto}[$qnext] = $q.' '.$a;
-      $tp->{pta}{depth}[$qnext] = $i/$tp->{cw};
 
       ##-- Chars
       $tp->{chars}{$a} = undef;
@@ -113,7 +141,6 @@ sub addString {
     if (!defined($qnext=$tp->{sta}{goto}[$q]{$a})) {
       $qnext = $tp->{sta}{goto}[$q]{$a} = $tp->{sta}{nq}++;
       $tp->{sta}{rgoto}[$qnext] = $q.' '.$a;
-      $tp->{sta}{depth}[$qnext] = $i/$tp->{cw};
     }
     push(@qs,$qnext);
   }
@@ -136,9 +163,23 @@ sub addString {
 }
 
 ##--------------------------------------------------------------
-## ($qid_prefix,$qid_suffix) = $tp->addArray(\@chars,$freq)
+## [$qid_prefix,  $qid_suffix]   = $tp->addArray(\@chars,$freq)  ##-- scalar context
+## (\@path_prefix,\@path_suffix) = $tp->addArray(\@chars,$freq)  ##-- array context
 ##  + adds paths for \@chars, returns pair of ids
 sub addArray {
+  my ($tp,$chars,$freq) = @_;
+  my @pathpta = $tp->{pta}->addArray($chars,$freq);
+  my @pathsta = $tp->{sta}->addArray($chars,$freq);
+
+  ##-- save state-id pairs
+  foreach (0..$#pathpta) {
+    $tp->{pspairs}{pack('LL', $pathpta[$_], $pathsta[$#pathsta-$_])} = undef;
+  }
+
+  return wantarray ? (\@pathpta,\@pathsta) : [$pathpta[$#pathpta], $pathsta[$#pathsta]];
+}
+
+sub addArray0 {
   my ($tp,$chars,$freq) = @_;
 
   my ($i,$q,$a,$qnext);
@@ -153,7 +194,6 @@ sub addArray {
     if (!defined($qnext=$tp->{pta}{goto}[$q]{$a})) {
       $qnext = $tp->{pta}{goto}[$q]{$a} = $tp->{pta}{nq}++;
       $tp->{pta}{rgoto}[$qnext] = $q.' '.$a;
-      $tp->{pta}{depth}[$qnext] = $i;
     }
     push(@qp,$qnext);
 
@@ -163,7 +203,6 @@ sub addArray {
     if (!defined($qnext=$tp->{sta}{goto}[$q]{$a})) {
       $qnext = $tp->{sta}{goto}[$q]{$a} = $tp->{sta}{nq}++;
       $tp->{sta}{rgoto}[$qnext] = $q.' '.$a;
-      $tp->{sta}{depth}[$qnext] = $i;
     }
     push(@qs,$qnext);
   }
@@ -171,7 +210,7 @@ sub addArray {
   ##-- Chars
   @{$tp->{chars}}{@$chars} = undef;
 
-  ##-- Add pairs
+  ##-- Add pairs (!)
   foreach $i (0..$#qp) {
     $tp->{pspairs}{pack('LL', $qp[$i], $qs[$#qs-$i])} = undef;
   }
@@ -192,29 +231,45 @@ sub addArray {
 ## Methods: Manipulation: final index
 ##==============================================================================
 
-## $tp = $tp->finish()
+## $tp = $tp->finish(%args)
 ##  + sets prefix frequencies from full-word frequencies in PTA and STA
 ##  + builds PTA<->STA equivalence maps $tp->{p2s} and $tp->{s2p}
 sub finish {
-  my $tp = shift;
+  my ($tp,%args) = @_;
+  @$tp{keys %args} = values(%args);
 
   ##-- Frequency inheritance
-  $tp->{pta}->finish();
-  $tp->{sta}->finish();
+  $tp->{pta}->finish(%args);
+  $tp->{sta}->finish(%args);
 
   ##-- Generate equivalence maps
   my $pspairs = $tp->{pspairs};
-  my $p2s = $tp->{p2s}; @$p2s = qw();
-  my $s2p = $tp->{s2p}; @$s2p = qw();
+
+  my $p2s = $tp->{p2s};
+  my $s2p = $tp->{s2p};
+  @$p2s = qw();
+  @$s2p = qw();
+
   my ($pair,$qpta,$qsta);
-  foreach $pair (sort(keys(%$pspairs))) {
+  foreach $pair (keys(%$pspairs)) {
     ($qpta,$qsta) = unpack('LL',$pair);
     $p2s->[$qpta] .= pack('L',$qsta);
     $s2p->[$qsta] .= pack('L',$qpta);
   }
 
+  ##-- Sort equivalence maps?
+  if ($tp->{indexSort}) {
+    foreach $qpta (0..$#$p2s) {
+      $p2s->[$qpta] = pack('L*', sort {$a<=>$b} (unpack('L*', $p2s->[$qpta])));
+    }
+    foreach $qsta (0..$#$s2p) {
+      $s2p->[$qsta] = pack('L*', sort {$a<=>$b} (unpack('L*', $s2p->[$qsta])));
+    }
+  }
+
   return $tp;
 }
+
 
 ##==============================================================================
 ## Methods: Lookup: Prefixes, Suffixes

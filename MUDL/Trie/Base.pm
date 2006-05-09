@@ -22,6 +22,9 @@ our @ISA = qw(MUDL::Object);
 ## + user args:
 ##   cw    => $char_width,    ##-- character width (default=1)
 ##   reversed=>$bool,         ##-- true if this is a reversed trie (suffix acceptor)
+##   indexDepth => $bool,     ##-- index state depth on finish()?
+##   indexWidth => $bool,     ##-- index state out degree (width) on finish()?
+##   indexStrings => $bool,   ##-- index full prefixes on finish()?
 ##
 ## + data:
 ##   chars => \%chars,        ##-- pseudo-set: $sym => undef
@@ -29,21 +32,35 @@ our @ISA = qw(MUDL::Object);
 ##   goto  => \@delta,        ##-- [$qid]{$sym} => $qid_to      s.t. $qid --$sym--> $qid_to
 ##   rgoto => \@rdelta,       ##-- [$qid_to]    => "$qid $sym"  s.t. $qid --$sym--> $qid_to
 ##   final => \%final,        ##-- {$qid}       => undef        s.t. $qid \in F
-##   depth => \@q2depth,      ##-- [$qid]       => $depth
-
-
+##
+## + index data (post finish())
+##   depth => \@q2depth,      ##-- [$qid] => $depth
+##   width => \@q2width,      ##-- [$qid] => out_degree($qid)
+##   str2id => \%str2id,    ##-- {$prefix_string} => $qid,
+##   id2str => \@id2str,    ##-- [$qid]           => $prefix_string,
 ##
 sub new {
   my ($that,%args) = @_;
   my $trie = bless {
-		    reversed=>0,
+		    ##-- User args
 		    cw=>1,
+		    reversed=>0,
+		    indexDepth=>0,
+		    indexWidth=>0,
+		    indexStrings=>0,
+
+		    ##-- Data
 		    goto=>[],
 		    rgoto=>[],
 		    nq=>1,
 		    chars=>{},
 		    final=>{},
-		    depth=>[],
+
+		    ##-- Index data
+		    #depth=>[],
+		    #width=>[],
+		    #id2str=>[],
+		    #str2id=>{},
 
 		    ##-- data (not required)
 		    #q2f=>[],
@@ -62,7 +79,7 @@ sub clear {
   @{$trie->{goto}} = @{$trie->{rgoto}} = qw();
   %{$trie->{chars}} = undef;
   %{$trie->{final}} = qw();
-  @{$trie->{depth}} = qw();
+  delete(@$trie{qw(depth width id2str str2id)});
   return $trie;
 }
 
@@ -70,12 +87,14 @@ sub clear {
 ## Methods: Manipulation
 ##======================================================================
 
-## $qid = $trie->addString($string)
+## $qid  = $trie->addString($string)     ##-- scalar context
+## @qids = $trie->addString($string)     ##-- array context
 ##  + adds path for $string; returns ID
 *add = \&addString;
 sub addString {
   my ($trie,$str) = @_;
 
+  my @path = (0);
   my ($i,$q,$a,$qnext);
   for ($q=0,$i=0; $i < length($str); $q=$qnext, $i+=$trie->{cw}) {
     $a = ($trie->{reversed}
@@ -85,31 +104,102 @@ sub addString {
       $qnext = $trie->{goto}[$q]{$a} = $trie->{nq}++;
       $trie->{rgoto}[$qnext] = $q.' '.$a;
       $trie->{chars}{$a} = undef;
-      $trie->{depth}[$qnext] = $i/$trie->{cw};
     }
+    push(@path,$qnext);
   }
   $trie->{final}{$q} = undef;
-  return $q;
+  return wantarray ? @path : $q;
 }
 
-## $qid = $trie->addArray(\@chars)
+## $qid  = $trie->addArray(\@chars)  ##-- scalar context
+## @qids = $trie->addArray(\@chars)  ##-- array context
 ##  + adds path for \@chars, returns id
 sub addArray {
   my ($trie,$chars) = @_;
 
   my ($i,$a,$qnext);
+  my @path = (0);
   my $q=0;
   foreach $i (0..$#$chars) {
     $a = $trie->{reversed} ? $chars->[$#$chars-$i] : $chars->[$i];
     if (!defined($qnext=$trie->{goto}[$q]{$a})) {
       $qnext = $trie->{goto}[$q]{$a} = $trie->{nq}++;
       $trie->{rgoto}[$qnext] = $q.' '.$a;
-      $trie->{depth}[$qnext] = $i;
     }
+    push(@path,$qnext);
   }
   @{$trie->{chars}}{@$chars} = undef;
   $trie->{final}{$q} = undef;
-  return $q;
+  return wantarray ? @path : $q;
+}
+
+##==============================================================================
+## Methods: Indexing (finish)
+##==============================================================================
+
+## $trie = $trie->finish(%args)
+##  + %args: overrides @$trie{keys %args}
+##  + creates indices
+##  + only call this after all data has been added
+sub finish {
+  my ($trie,%args) = @_;
+
+  ##-- override trie args
+  @$trie{keys(%args)} = values(%args);
+
+  ##-- Do we want to index anything at all?
+  my ($indexDepth,$indexWidth,$indexStrings) = @$trie{qw(indexDepth indexWidth indexStrings)};
+
+  ##-- Index: Traverse
+  if ($indexDepth || $indexWidth || $indexStrings) {
+    my $goto   = $trie->{goto};
+
+    my $widthx = $trie->{width} = $indexWidth ? [] : undef;
+    my $depthx = $trie->{depth} = $indexDepth ? [] : undef;
+    my $id2str = $trie->{id2str} = $indexStrings ? [] : undef;
+    my $str2id = $trie->{str2id} = $indexStrings ? {} : undef;
+
+    my ($qid,$depth,$prefix);
+    my @fifo = (0,0,''); ##-- ($qid,$depth,$prefix, ...)
+    while (@fifo) {
+      ($qid,$depth,$prefix) = splice(@fifo,0,3);
+      $widthx->[$qid] = scalar(keys(%{$trie->{goto}[$qid]})) if ($indexWidth);
+      $depthx->[$qid] = $depth if ($indexDepth);
+      if ($indexStrings) {
+	$str2id->{$prefix} = $qid;
+	$id2str->[$qid]    = $prefix;
+      }
+      push(@fifo,
+	   map {
+	     (
+	      $goto->[$qid]{$_},
+	      $depth+1,
+	      ($trie->{reversed} ? ($_.$prefix) : ($prefix.$_))
+	     )
+	   } keys(%{$goto->[$qid]})
+	  );
+    }
+  }
+
+  return $trie;
+}
+
+##==============================================================================
+## Methods: Properties
+##==============================================================================
+
+## $depth = $trie->depth($qid)
+sub depth {
+  return $_[0]{depth}[$_[1]] if ($_[0]{depth}); ##-- use index if available
+  my $depth = $#{$_[0]->id2path($_[1])};
+  return $depth < 0 ? undef : $depth;
+}
+
+## $width = $trie->width($qid);
+sub width {
+  return $_[0]{qidth}[$_[1]] if ($_[0]{width}); ##-- use index if available
+  my $gotoq = $_[0]{goto}[$_[1]];
+  return ($gotoq ? scalar(keys(%$gotoq)) : undef);
 }
 
 ##==============================================================================
@@ -119,6 +209,8 @@ sub addArray {
 ## $qid_or_undef = $trie->string2id($str)
 *str2id = \&string2id;
 sub string2id {
+  return $_[0]{str2id}{$_[1]} if ($_[0]{str2id}); ##-- use index if available
+
   my ($trie,$str) = @_;
   my ($q,$i);
   for ($q=0,$i=0; defined($q) && $i < length($str); $i+=$trie->{cw}) {
@@ -132,7 +224,9 @@ sub string2id {
 
 ## $qid_or_undef = $trie->array2id(\@chars)
 sub array2id {
+  return $_[0]{str2id}{join('',@{$_[1]})} if ($_[0]{str2id}); ##-- use index if available
   my ($trie,$ary) = @_;
+
   my $q = 0;
   my ($a);
   foreach $a ($trie->{reversed} ? reverse(@$ary) : @$ary) {
@@ -149,6 +243,7 @@ sub array2id {
 ## $str = $trie->id2string($qid)
 *id2str = \&id2string;
 sub id2string {
+  return $_[0]{id2str}[$_[1]] if ($_[0]{id2str}); ##-- check for index
   return join('', @{$_[0]->id2array($_[1])});
 }
 
@@ -165,7 +260,7 @@ sub id2array {
 }
 
 ##==============================================================================
-## Methods: Lookup: Id -> Path
+## Methods: Lookup: * -> State-Path
 ##==============================================================================
 
 ## \@qids = $trie->id2path($qid)

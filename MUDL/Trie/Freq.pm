@@ -18,11 +18,14 @@ our @ISA = qw(MUDL::Trie::Base);
 
 ## $obj = $class_or_obj->new(%args)
 ##
-## + args (inherited from Trie::Base)
+## + user args (inherited from Trie::Base)
 ##   cw       => $char_width, ##-- character width (default=1)
 ##   reversed => $bool,       ##-- true iff trie is reversed (suffix acceptor)
+##   indexDepth => $bool,     ##-- index state depth on finish()?
+##   indexWidth => $bool,     ##-- index state out degree (width) on finish()?
+##   indexStrings => $bool,   ##-- index full prefixes on finish()?
 ##
-## + data (new in Trie::Freq)
+## + data (new in Trie::Freq): post-finish()
 ##   q2f   => \@q2f,          ##-- state frequency: [$qid] => $qid_freq,
 ##
 ## + data (inherited from Trie::Base)
@@ -52,33 +55,38 @@ sub clear {
 ## Methods: Manipulation
 ##======================================================================
 
-## $qid = $trie->addString($string,$freq)
+## $qid  = $trie->addArray(\@chars)  ##-- scalar context
+## @qids = $trie->addArray(\@chars)  ##-- array context
 ##  + adds path for $string; returns ID
 *add = \&addString;
 sub addString {
   my ($trie,$str,$freq) = @_;
-  my $qid = $trie->SUPER::addString($str);
-  $trie->{q2f}[$qid] += defined($freq) ? $freq : 1;
-  return $qid;
+  my @path = $trie->SUPER::addString($str);
+  $trie->{q2f}[$path[$#path]] += defined($freq) ? $freq : 1;
+  return wantarray ? @path : $path[$#path];
 }
 
-## $qid = $trie->addArray(\@chars,$freq)
+## $qid  = $trie->addArray(\@chars)  ##-- scalar context
+## @qids = $trie->addArray(\@chars)  ##-- array context
 ##  + adds path for \@chars, returns id
 sub addArray {
   my ($trie,$chars,$freq) = @_;
-  my $qid = $trie->SUPER::addArray($chars);
-  $trie->{q2f}[$qid] += defined($freq) ? $freq : 1;
-  return $qid;
+  my @path = $trie->SUPER::addArray($chars);
+  $trie->{q2f}[$path[$#path]] += defined($freq) ? $freq : 1;
+  return wantarray ? @path : $path[$#path];
 }
 
 ##==============================================================================
 ## Methods: Manipulation: final index
 ##==============================================================================
 
-## $trie = $trie->finish()
+## $trie = $trie->finish(%args)
 ##  + sets prefix frequencies from full-word frequencies
+##  + performs indexing if requested
 sub finish {
   my $trie = shift;
+  $trie->SUPER::finish(@_); ##-- inherited method
+
   my $q2f = $trie->{q2f};
   my ($qfinal,$f,$qa,$q,$a);
   foreach $qfinal (keys(%{$trie->{final}})) {
