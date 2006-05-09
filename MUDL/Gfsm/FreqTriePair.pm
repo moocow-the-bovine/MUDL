@@ -5,6 +5,9 @@
 ## Description:
 ##  + MUDL unsupervised dependency learner: (prefix-, suffix-) trie pair
 ##    using Gfsm
+##
+##  --> OBSOLETE: use MUDL::Trie::FreqPair instead <--
+##
 ##======================================================================
 
 package MUDL::Gfsm::FreqTriePair;

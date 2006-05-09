@@ -4,6 +4,9 @@
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: frequency tries using libgfsm
+##
+##  --> OBSOLETE: use MUDL::Trie::Freq instead <--
+##
 ##======================================================================
 
 package MUDL::Gfsm::FreqTrie;
