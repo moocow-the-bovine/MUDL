@@ -7,7 +7,7 @@
 ##======================================================================
 
 package MUDL::Morph::Goldsmith;
-use MUDL::Gfsm::FreqTrie;
+use MUDL::Trie::FreqPair;
 use MUDL::Corpus::Profile;
 use MUDL::Enum;
 use Carp;
@@ -19,14 +19,16 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ## Globals
 
 ##-- verbosity levels
-our $vl_none  = 0;
-our $vl_error = 1;
-our $vl_warn  = 2;
-our $vl_info  = 3;
-our $vl_debug = 10;
-our $vl_full  = 255;
+our %VLEVELS = (
+		none=>0,
+		error=>1,
+		warn=>2,
+		info=>3,
+		debug=>10,
+		full=>255,
 
-our $vl_default = $vl_debug;
+		default=>'debug',
+	       );
 
 
 ##======================================================================
@@ -96,6 +98,7 @@ sub new {
      tsplit=>undef,
      #tjoin=>'',
      nosta=>0,
+
      ##-- induction arguments
      minStemLen1 => 3,
      maxNeighborSuccCount1 => 1,
@@ -104,6 +107,7 @@ sub new {
      minStemsPerLargeSig=>25,
      minLongAffixLen=>2,
      minLongAffixCount=>2,
+
      ##-- profiling data
      #abet=>MUDL::Gfsm::Alphabet->new(),
      pta=>MUDL::Gfsm::FreqTrie->new(reversed=>0),
@@ -113,8 +117,9 @@ sub new {
      ##...
 
      ##-- debug
-     verbose => $vl_default,
+     verbose => 'default',
 
+     ##-- user args
      %args,
     );
 
@@ -147,8 +152,12 @@ sub new {
 ## $mp->vmsg($level, @msg)
 sub vmsg {
   my ($morph,$level,@msg) = @_;
-  $morph->{verbose} = $vl_default if (!defined($morph->{verbose}));
-  return if (!defined($morph->{verbose}) || $morph->{verbose} < $level);
+  $morph->{verbose} = 'default' if (!defined($morph->{verbose}));
+  my $mlevel = $morph->{verbose};
+  $mlevel = $VLEVELS{$mlevel} while (defined($VLEVELS{$mlevel}));
+  $level  = $VLEVELS{$level}  while (defined($VLEVELS{$level}));
+  return if ($mlevel < $level);
+
   print STDERR ref($morph), ": ", @msg;
 }
 
@@ -173,7 +182,7 @@ sub successorFrequencies {
   my $cuts = $morph->{cuts};
   $cuts = $morph->{cuts} = {} if (!$cuts);
 
-  $morph->vmsg($vl_info, "successorFrequencies(mode=>$mode)\n");
+  $morph->vmsg('info', "successorFrequencies(mode=>$mode)\n");
 
   my ($vec,@labs,$qid,$i,@sf,$wcutsv,@wcuts);
   my $vid = -1;
@@ -251,7 +260,7 @@ sub generateModelFromCuts {
   my $morph = shift;
   my $cuts  = $morph->{cuts};
 
-  $morph->vmsg($vl_info, "generateModelFromCuts()\n");
+  $morph->vmsg('info', "generateModelFromCuts()\n");
 
   ##-- generate model enums
   my $f2t   = $morph->{f2t}   = {};
@@ -302,7 +311,7 @@ sub generateModelFromCuts0 {
   my $morph = shift;
   my $cuts  = $morph->{cuts};
 
-  $morph->vmsg($vl_info, "generateModelFromCuts()\n");
+  $morph->vmsg('info', "generateModelFromCuts()\n");
 
   ##-- generate model enums
   my $f2t   = $morph->{f2t}   = {};
@@ -349,7 +358,7 @@ sub filterFirstModel {
 
   ##-- filter 1: eliminate all suffixes associated with too few stems
   $morph->{minStemsPerAffix} = 3 if (!defined($morph->{minStemsPerAffix}));
-  $morph->vmsg($vl_info,
+  $morph->vmsg('info',
 	       "filterFirstModel(): ensure many stems:\n",
 	       "  + minStemsPerAffix    = $morph->{minStemsPerAffix}\n");
 
@@ -362,7 +371,7 @@ sub filterFirstModel {
   $morph->{minStemsPerLargeSig} = 25 if (!defined($morph->{minStemsPerLargeSig}));
   $morph->{minLongAffixLen}     = 2  if (!defined($morph->{minLongAffixLen}));
   $morph->{minLongAffixCount}   = 2  if (!defined($morph->{minLongAffixCount}));
-  $morph->vmsg($vl_info,
+  $morph->vmsg('info',
 	       "filterFirstModel(): doubt single-letter suffixes:\n",
 	       "  + minStemsPerLargeSig = $morph->{minStemsPerLargeSig}\n",
 	       "  + minLongAffixLen     = $morph->{minLongAffixLen}\n",
@@ -397,7 +406,7 @@ sub filterFirstModel {
 sub removeSuffixes {
   my ($morph,$badsuffs) = @_;
 
-  #$morph->vmsg($vl_info, "removeSuffixes()\n");
+  #$morph->vmsg('info', "removeSuffixes()\n");
 
   my ($f,$fth, $t, $sig, $cutvec, $w,$wid, %fh);
   foreach $f (@$badsuffs) {
@@ -451,7 +460,7 @@ sub removeSuffixes {
 sub removeSignatures {
   my ($morph,$badsigs) = @_;
 
-  #$morph->vmsg($vl_info, "removeSignatures()\n");
+  #$morph->vmsg('info', "removeSignatures()\n");
 
   my ($sig,$newsig,$sigth,@sigfs, $t,$f,$w,$wid,$cutvec,%fh);
   foreach $sig (@$badsigs) {
@@ -508,7 +517,7 @@ sub computeRobustness {
   my $avg_mode = $args{avg};
   $avg_mode = 'local' if (!defined($avg_mode) || $avg_mode ne 'global');
 
-  $morph->vmsg($vl_info,"computeRobustness(avg=$avg_mode)\n");
+  $morph->vmsg('info', "computeRobustness(avg=$avg_mode)\n");
 
   my ($nt,$nf,$avg_len_t,$avg_len_f);
 
