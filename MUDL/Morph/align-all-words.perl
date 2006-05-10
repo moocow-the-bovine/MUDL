@@ -8,6 +8,9 @@ use PDL;
 use PDL::EditDistance;
 use Encode;
 
+##-- progress globals
+our $progress_mod = 16384;
+
 ##======================================================================
 ## Read in Unigram profile
 $ugp = MUDL::Unigrams->new();
@@ -73,7 +76,7 @@ foreach $i (1..$#words) {
     $jpdl = $wpdls[$j];
 
     ##-- report
-    if ($ncomps++ % 1024 == 0) {
+    if ($ncomps++ % $progress_mod == 0) {
       print STDERR sprintf("$0: computing edit distance: %5.2f%% complete.\n", 100.0*$ncomps/$npairs);
     }
 
