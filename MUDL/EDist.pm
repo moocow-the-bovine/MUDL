@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::EDist.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -226,6 +226,16 @@ sub toPDL {
     $pdl->set($de->split($_), $de->{nz}{$_});
   }
   return $pdl;
+}
+
+## $pdlDist = $de->toPdlDist()
+sub toPdlDist {
+  require MUDL::PdlDist;
+  my $de = shift;
+  return MUDL::PdlDist->new(
+			    pdl=>$de->toPDL,
+			    enum=>$de->{enum},
+			   );
 }
 
 

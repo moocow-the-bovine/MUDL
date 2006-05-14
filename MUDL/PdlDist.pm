@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::PdlDist.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -93,7 +93,7 @@ sub total { return sum($_[0]{pdl}); }
 ## Batch-Conversions
 
 ## $d = $d->normalize()
-sub normalize { $_[0]{pdl} /= $_[0]{pdl}->sum; return $_[0]; }
+sub normalize { $_[0]{pdl} /= $_[0]{pdl}->flat->sumover; return $_[0]; }
 
 ## $d = $d->conditionalize(\@givenDims)
 sub conditionalize {
