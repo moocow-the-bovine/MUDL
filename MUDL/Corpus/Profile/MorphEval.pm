@@ -26,6 +26,8 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     label2 => $label2,      ##-- for summary, native save
 ##     seg1a => $seg1attr,     ##-- key(s) for 'seg1': used as $tok->attribute($key): default: 'tag'
 ##     seg2a => $seg2attr,     ##-- key(s) for 'seg2': used as $tok->attribute($key): default: '1'
+##     unk1  => $unkown1,      ##-- value for 'seg1' indicating an unknown word-type [default='@UNKNOWN']
+##     unk2  => $unkown1,      ##-- value for 'seg2' indicating an unknown word-type [default='@UNKNOWN']
 ##     enum  => $enum,         ##-- enum only wrt these targets (default=none~all tokens)
 ##     sep   => $sep_char,     ##-- morph separator character (default='.')
 ##
@@ -65,6 +67,8 @@ sub new {
 			       label2=>'(seg2)',
 			       seg1a=>'tag',
 			       seg2a=>'1',
+			       unk1=>'@UNKNOWN',
+			       unk2=>'@UNKNOWN',
 			       enum=>undef,
 			       sep=>'.',
 
@@ -119,9 +123,12 @@ sub error {
 sub addSentence {
   my ($pr,$s) = @_;
 
-  my ($tok, $txt, $seg1,$seg2, $known);
+  my ($tok, $txt, $seg1,$seg2, $newtype);
   my (@segs1,@segs2,%segs1,%matches);
   $pr->{ntoks} += @$s;
+  $pr->{unk1} = '' if (!defined($pr->{unk1}));
+  $pr->{unk2} = '' if (!defined($pr->{unk2}));
+
   foreach $tok (@$s) {
     ##-- eval-by-target
     next if (defined($pr->{targets})
@@ -131,19 +138,19 @@ sub addSentence {
     $txt  = $tok->text;
     $seg1 = $tok->attribute($pr->{seg1a});
     $seg2 = $tok->attribute($pr->{seg2a});
-    $pr->{wtypes}{$txt} = undef if ( ! ($known=exists($pr->{wtypes}{$txt})) );
+    $pr->{wtypes}{$txt} = undef if ( ($newtype=!exists($pr->{wtypes}{$txt})) );
 
-    if (!defined($seg1) || $seg1 eq '') {
+    if (!defined($seg1) || $seg1 eq $pr->{unk1}) {
       ++$pr->{nunk1};
-      ++$pr->{nunk1_bytype} if (!$known);
-      if (!defined($seg2) || $seg2 eq '') {
+      ++$pr->{nunk1_bytype} if ($newtype);
+      if (!defined($seg2) || $seg2 eq $pr->{unk2}) {
 	++$pr->{nunk2};
-	++$pr->{nunk2_bytype} if (!$known);
+	++$pr->{nunk2_bytype} if ($newtype);
       }
     }
-    elsif (!defined($seg2) || $seg2 eq '') {
+    elsif (!defined($seg2) || $seg2 eq $pr->{unk2}) {
       ++$pr->{nunk2};
-      ++$pr->{nunk2_bytype} if (!$known);
+      ++$pr->{nunk2_bytype} if ($newtype);
     }
     else {
       @segs1 = @segs2 = %segs1 = %matches = qw();
@@ -164,7 +171,7 @@ sub addSentence {
       $pr->{nsegs2} += @segs2;
       $pr->{nmatches} += scalar(keys(%matches));
 
-      if (!$known) {
+      if ($newtype) {
 	$pr->{nsegs1_bytype} += @segs1;
 	$pr->{nsegs2_bytype} += @segs2;
 	$pr->{nmatches_bytype} += scalar(keys(%matches));
@@ -244,6 +251,8 @@ sub helpString {
      .qq(  label2=LABEL [default=(seg2)]\n)
      .qq(  seg1=ATTR    [default='tag']\n)
      .qq(  seg2=ATTR    [default='1']\n)
+     .qq(  unk1=VALUE   [default='\@UNKNOWN']\n)
+     .qq(  unk2=VALUE   [default='\@UNKNOWN']\n)
      .qq(  targets=ENUM [default=none (eval wrt all tokens)]\n)
      .qq(  targeta=ATTR [default=text]\n)
     );
@@ -300,7 +309,11 @@ sub saveNativeFh {
 
   my ($tag2);
   $fh->print
-    ("\$coverage1=$esum->{coverage1};\n",
+    (
+     "\$ntoks=$esum->{ntoks};\n",
+     "\$ntypes=$esum->{ntypes};\n",
+
+     "\$coverage1=$esum->{coverage1};\n",
      "\$coverage2=$esum->{coverage2};\n",
      "\$precision=$esum->{precision};\n",
      "\$recall=$esum->{recall};\n",
@@ -334,7 +347,7 @@ sub saveNativeFh {
      "## Type Precision           : ", sprintf("%6.2f %%", 100*$esum->{precision_bytype}), "\n",
      "## Type Recall              : ", sprintf("%6.2f %%", 100*$esum->{recall_bytype}), "\n",
      "## Type F                   : ", sprintf("%6.2f %%", 100*$esum->{F_bytype}), "\n",
-     "##\n",
+     #"##\n",
 
      "##", ("-" x 78), "\n",
      "1;\n",
