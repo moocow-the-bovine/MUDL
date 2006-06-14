@@ -1,11 +1,10 @@
 #!/bin/sh
 
-
-#fst=/usr/local/share/moot/mootm-stts-lemmas-nocase-initial.gfst.gz
-#lab=/usr/local/share/moot/mootm-stts.lab
-##--
-fst=mootm-stts-lemmas-nocase-initial.gfst
-lab=mootm-stts.lab
+##-- morphology selection
+#fstdir=/usr/local/share/moot
+fstdir="."
+fst="$fstdir/mootm-stts-lemmata-nocase-initial.gfst"
+lab="$fstdir/mootm-stts.lab"
 
 ##-- MAIN
 tfile="$1"
@@ -23,6 +22,7 @@ cat "$tfile" \
  | recode utf8..latin1 \
  | mootm \
      -a \
+     -e "%" \
      -s"$lab" \
      -m"$fst" \
  | grep "${tab}." \
