@@ -4,7 +4,7 @@
 #fst=/usr/local/share/moot/mootm-stts-lemmas-nocase-initial.gfst.gz
 #lab=/usr/local/share/moot/mootm-stts.lab
 ##--
-fst=mootm-stts-lemmas-nocase-initial.gfst.gz
+fst=mootm-stts-lemmas-nocase-initial.gfst
 lab=mootm-stts.lab
 
 ##-- MAIN
