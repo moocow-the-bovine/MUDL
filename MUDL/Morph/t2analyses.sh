@@ -3,7 +3,7 @@
 ##-- morphology selection
 #fstdir=/usr/local/share/moot
 fstdir="."
-fst="$fstdir/mootm-stts-lemmata-nocase-initial.gfst"
+fst="$fstdir/mootm-stts-lemma-segs-nocase-initial.gfst"
 lab="$fstdir/mootm-stts.lab"
 
 ##-- MAIN
