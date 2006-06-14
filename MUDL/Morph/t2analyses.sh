@@ -22,6 +22,7 @@ cat "$tfile" \
  | recode utf8..latin1 \
  | mootm \
      -a \
+     -d 1024 \
      -e "%" \
      -s"$lab" \
      -m"$fst" \
