@@ -110,7 +110,7 @@ sub initialize {
   $prof->reset();
 
   ##-- setup: cm
-  @{$ct->{cm}}{qw(cdata cmask)} = $cm->getcenters();
+  @$ct{qw(cdata cmask)} = $cm->getcenters(ctrmethod=>'mean');
   $ct->{cids} = $cm->{clusterids};
   $ct->{cm} = $cm->shadow();
   $ct->{cm}{enum}->clear();
@@ -120,7 +120,7 @@ sub initialize {
 
   ##-- get best unknown id
   if (!defined($ct->{ustr})) {
-    my $udata = zeroes(double, $ct->{cm}{cdata}->dim(0), 1);
+    my $udata = zeroes(double, $ct->{cdata}->dim(0), 1);
     my $umask = ones(double, $udata->dims);
     my $uweight = ones(double, $udata->dim(0));
     my $useq   = zeroes(long,1);
@@ -128,7 +128,7 @@ sub initialize {
     my $udists = zeroes(double,1);
     attachtonearest($udata,$umask,$uweight,
 		    $useq,
-		    @{$ct->{cm}}{qw(cdata cmask)},
+		    @$ct{qw(cdata cmask)},
 		    $uids, $udists,
 		    $ct->{cm}->cddist, $ct->{cm}->cdmethod);
     $ct->{uid} = $uids->at(0);
@@ -219,12 +219,12 @@ sub attachBlock {
   $ct->vmsg($vl_debug, "attachBlock[$blocki]: attach (attachtonearest)\n");
   my $cm   = $ct->{cm};
   my $ntgs = $targets3->size;
-  my ($cdata,$cmask) = @{$ct->{cm}}{qw(cdata cmask)};
 
   my ($tgcids,$tgdist) = $cm->attach(data=>$data,
 				     rowids=>sequence(long,$ntgs),
-				     cdata=>$cdata,
-				     cmask=>$cmask);
+				     cdata=>$ct->{cdata},
+				     cmask=>$ct->{cmask},
+				    );
   ##-- adopt into top-level
   $ct->vmsg($vl_debug, "attachBlock[$blocki]: adopt: trigram targets\n");
   my $alltargets3 = $ct->{targets};
