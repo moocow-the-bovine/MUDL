@@ -544,6 +544,9 @@ sub d2c_mean {
   my $cm = shift;
   my ($cdata,$cmask) = $cm->d2c_pdls(@_);
   getclustermean(@$cm{qw(data mask clusterids)}, $cdata,$cmask);
+  ##-- stupidity check
+  croak(__PACKAGE__, "::d2c_mean(): PDL::Cluster::getclustermean() returned zero matrix!")
+    if (all($cdata==0));
   return ($cdata,$cmask);
 }
 
@@ -553,6 +556,9 @@ sub d2c_median {
   my $cm = shift;
   my ($cdata,$cmask) = $cm->d2c_pdls(@_);
   getclustermean(@$cm{qw(data mask clusterids)}, $cdata,$cmask);
+  ##-- stupidity check
+  croak(__PACKAGE__, "::d2c_mean(): PDL::Cluster::getclustermedian() returned zero matrix!")
+    if (all($cdata==0));
   return ($cdata,$cmask);
 }
 
