@@ -100,6 +100,7 @@ our %FIELDS =
    'mptab' => [ qw(mpid | mpresults) ],
    'mptab:a' => [ qw(mpid | mpresults:a) ],
    'mptab:pstg' => [ qw(mpid | mpresults:pstg) ],
+   'mptab:e-'   => [ qw(mpid || mpresults:e-) ],
    'mpresults' => [
 		   qw(*:pr:g pr:g *:rc:g rc:g *:F:g F:g),
 		   '|',
@@ -115,6 +116,15 @@ our %FIELDS =
 			'|',
 			qw(*:pr:t pr:t e+pstage:pr:t(title=e+pstg)),
 		       ],
+   'mpresults:e-' => [
+		       qw(*:pr:g pr:g e-max:pr:g:stg(title=e-max)),
+		       '|',
+		       qw(*:rc:g rc:g e-max:rc:g:stg(title=e-max)),
+		       '/',
+		       qw(*:pr:t pr:t e-max:pr:t:stg(title=e-max)),
+		       '|',
+		       qw(*:rc:t rc:t e-max:rc:t:stg(title=e-max)),
+		      ],
 
    ##-- table: variants: EM
    'emtab'  => [ qw(tabId | emresults), ],

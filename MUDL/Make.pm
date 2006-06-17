@@ -306,6 +306,18 @@ sub actSelectUser {
    && ($mak->{selected} = $mak->{col}->ucollect($crit)));
 }
 
+$ACTIONS{oselect} =
+  {
+   syntax=>'oselect OBJCRITERIA',
+   help  =>'select a subset of the collection configurations',
+   code  => \&actSelectObject,
+  };
+sub actSelectObject {
+  my ($mak,$crit) = @_;
+  ($mak->ensureLoaded()
+   && ($mak->{selected} = $mak->{col}->collect($crit)));
+}
+
 ##---------------------------------------------------------------
 ## Actions: expand
 
