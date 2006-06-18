@@ -158,14 +158,19 @@ sub formatRows {
   }
 
   ##-- Format: step 5: condense field values
+  my @condense = qw(); ##-- [$nullfieldref, ... ]
   foreach $i (grep { !defined($crows->[$_]{__hr__}) && !defined($crows->[$_-1]{__hr__}) } (1..$#$crows)) {
     ($cf,$cfprev) = @$crows[$i,$i-1];
     foreach $field (grep {$_->{condense}} @$xfields) {
       $fname = $field->{name}.":str";
       if ($cf->{$fname} eq $cfprev->{$fname}) {
-	$cf->{$fname} = '';
+	push(@condense, \$cf->{$fname});
       }
     }
+  }
+  my ($fieldref);
+  foreach $fieldref (@condense) {
+    $$fieldref = '';
   }
 
   return $tab;

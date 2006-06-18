@@ -107,7 +107,7 @@ our %FIELDS =
 		   qw(*:pr:t pr:t *:rc:t rc:t *:F:t F:t),
 		  ],
    'mpresults:a' => [
-		     qw(*:apr:g apr:g *:arc:g rc:g *:aF:g aF:g),
+		     qw(*:apr:g apr:g *:arc:g arc:g *:aF:g aF:g),
 		     '|',
 		     qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
 		    ],
@@ -128,6 +128,9 @@ our %FIELDS =
 
    ##-- table: variants: EM
    'emtab'  => [ qw(tabId | emresults), ],
+   'emtab:max' => [ qw(tabId | emresults:max), ],
+   'emtab:a' => [qw(tabId | emresults:a), ],
+   'emtab:a:max' => [qw(tabId | emresults:a:max), ],
    'emtab:emi' => [ qw(tabId | emresults:emi), ],
    'emresults:mp'  => [qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) | *:pr:t pr:t e+mp:pr:t(title=e+mp))],
    'emresults'     => [
@@ -135,8 +138,23 @@ our %FIELDS =
 		       '|',
 		       qw(*:pr:t pr:t e+mp:pr:t(title=e+mp) e+pemi:pr:t(title=e+pemi))
 		      ],
+   'emresults:max'     => [
+			   qw(*:pr:g pr:g e+pemi:pr:g(title=e+pemi) e-max:pr:g:emi(title=e-max)),
+			   '|',
+			   qw(*:pr:t pr:t e+pemi:pr:t(title=e+pemi) e-max:pr:t:emi(title=e-max))
+			  ],
    'emresults:emi' => [qw(*:pr:g pr:g e+pemi:pr:g | *:pr:t pr:t e+pemi:pr:t)],
-   'emresults:a'   => [qw(*:apr:g apr:g e+mp:apr:g | *:apr:t apr:t e+mp:apr:t)],
+   'emresults:a'   => [
+		       qw(*:apr:g apr:g *:arc:g arc:g *:aF:g aF:g),
+		       '|',
+		       qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
+		      ],
+   'emresults:a:max'   => [
+		       qw(*:apr:g apr:g e+pemi:apr:g(title=e+pemi) e-max:apr:g:emi(title=e-max)),
+		       '|',
+		       qw(*:apr:t apr:t e+pemi:apr:t(title=e+pemi) e-max:apr:t:emi(title=e-max)),
+		      ],
+
 
    'res:prF:g' => [qw(*:pr:g pr:g e+mp:pr:g | +:rc:g rc:g e+mp:rc:g | ~:F:g F:g e+mp:F:g)],
    'res:prF:t' => [qw(*:pr:t pr:t | +:rc:t rc:t | ~:F:t F:t)],
