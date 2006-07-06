@@ -27,6 +27,7 @@ sub new {
 				 ##-- Data options
 				 'ndims'=>2,      ##-- number of dimensions
 				 'title'=>'?',    ##-- plot title
+				 'notitle'=>0,    ##-- if true, no actual title will be printed
 				 'points'=>[],    ##-- data points (MUDL::Make::FieldData objects)
 				                  ##    + contain array-ref '__point__'=>[$x,$y,...]
 
@@ -37,6 +38,7 @@ sub new {
 
 				 ##-- Display Options
 				 'with'  =>'lp',
+				 'smooth'=> undef,
 
 				 ##-- User arguments
 				 @_
@@ -133,8 +135,9 @@ sub plotCommand {
   @$pdata{keys(%args)} = values(%args);
   return (''
 	  .'"'.$pdata->datafile().'"'
+	  .(defined($pdata->{smooth}) ? " smooth $pdata->{smooth}" : '')
 	  .(defined($pdata->{with})  ? " with $pdata->{with}" : '')
-	  .(defined($pdata->{title}) ? " title \"$pdata->{title}\"" : ' notitle')
+	  .(defined($pdata->{title}) && !$pdata->{notitle} ? " title \"$pdata->{title}\"" : ' notitle')
 	  #--.... more options here...
 	 );
 }

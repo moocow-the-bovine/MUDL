@@ -172,14 +172,16 @@ our %FIELDS =
 		      ],
 
    ##-- table: variants: EM
-   'emtab'  => [ qw(tabId | emresults), ],
-   'emtab:max' => [ qw(tabId | emresults:max), ],
-   'emtab:a' => [qw(tabId | emresults:a), ],
-   'emtab:wa' => [qw(tabId | emresults:wa), ],
-   'emtab:p' => [qw(tabId | emresults:p), ],
-   'emtab:wp' => [qw(tabId | emresults:wp), ],
-   'emtab:a:max' => [qw(tabId | emresults:a:max), ],
-   'emtab:emi' => [ qw(tabId | emresults:emi), ],
+   'emid'  => [ qw(stg.emi corpus lrlabel auto) ],
+   'emtab'  => [ qw(emid | emresults), ],
+   'emtab:max' => [ qw(emid | emresults:max), ],
+   'emtab:a' => [qw(emid | emresults:a), ],
+   'emtab:a:max' => [qw(emid | emresults:a:max), ],
+   'emtab:wa' => [ 'emid', '|', 'emresults:wa', ],
+   'emtab:wa:max' => [ 'emid', '|', 'emresults:wa:max', ],
+   'emtab:p' => [ qw(emid | emresults:p), ],
+   'emtab:wp' => [ 'emid', '|', 'emresults:wp', ],
+   'emtab:emi' => [ 'emid', '|', 'emresults:emi', ],
    'emresults:mp'  => [qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) | *:pr:t pr:t e+mp:pr:t(title=e+mp))],
    'emresults'     => [
 		       qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) e+pemi:pr:g(title=e+pemi)),
@@ -191,6 +193,21 @@ our %FIELDS =
 			   '|',
 			   qw(*:pr:t pr:t e+pemi:pr:t(title=e+pemi) e-max:pr:t:emi(title=e-max))
 			  ],
+   'emresults:Max'     => [
+			  '*:pr:g',  'pr:g', 'e-max:pr:g:stg(title=e-Max)',
+			  '|',
+			  '*:rc:g', 'rc:g', 'e-max:rc:g:stg(title=e-Max)',
+			  '|',
+			  '*:F:g', 'F:g', 'e-max:F:g:stg(title=e-Max)',
+			  ],
+   'emresults:MAX'     => [
+			  '*:pr:g',  'pr:g', 'e-max:pr:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:rc:g', 'rc:g', 'e-max:rc:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:F:g', 'F:g', 'e-max:F:g:corpus(title=e-MAX)',
+			  ],
+
    'emresults:emi' => [qw(*:pr:g pr:g e+pemi:pr:g | *:pr:t pr:t e+pemi:pr:t)],
    'emresults:a'   => [
 		       qw(*:apr:g apr:g *:arc:g arc:g *:aF:g aF:g),
@@ -207,16 +224,77 @@ our %FIELDS =
 			'|',
 			qw(*:wapr:t wapr:t *:warc:t warc:t *:waF:t waF:t),
 		       ],
+   'emresults:wa:max' => [
+			 qw(*:wapr:g wapr:g e+pemi:wapr:g(title=e+pemi) e-max:wapr:g:emi(title=e-max)),
+			 '|',
+			 qw(*:wapr:t wapr:t e+pemi:wapr:t(title=e+pemi) e-max:wapr:t:emi(title=e-max)),
+			],
+   'emresults:wa:Max' => [
+			  '*:wapr:g',  'wapr:g', 'e-max:wapr:g:stg(title=e-Max)',
+			  '|',
+			  '*:warc:g', 'warc:g', 'e-max:warc:g:stg(title=e-Max)',
+			  '|',
+			  '*:waF:g', 'waF:g', 'e-max:waF:g:stg(title=e-Max)',
+			],
+   'emresults:wa:MAX' => [
+			  '*:wapr:g',  'wapr:g', 'e-max:wapr:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:warc:g', 'warc:g', 'e-max:warc:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:waF:g', 'waF:g', 'e-max:waF:g:corpus(title=e-MAX)',
+			],
+
    'emresults:p'   => [
 		       qw(*:ppr:g ppr:g *:prc:g prc:g *:pF:g pF:g),
 		       '|',
 		       qw(*:ppr:t ppr:t *:prc:t prc:t *:pF:t pF:t),
 		      ],
+   'emresults:p:max' => [
+			 '*:ppr:g', 'wppr:g', 'e+pemi:ppr:g(title=e+pemi)', 'e-max:ppr:g:emi(title=e-max)',
+			 '|',
+			 '*:ppr:t', 'wppr:t', 'e+pemi:ppr:t(title=e+pemi)', 'e-max:ppr:t:emi(title=e-max)',
+			],
+   'emresults:p:Max' => [
+			  '*:ppr:g', 'wppr:g', 'e-max:ppr:g:stg(title=e-Max)',
+			  '|',
+			  '*:prc:g', 'wprc:g', 'e-max:prc:g:stg(title=e-Max)',
+			  '|',
+			  '*:pF:g',  'wpF:g',  'e-max:pF:g:stg(title=e-Max)',
+			],
+   'emresults:p:MAX' => [
+			  '*:ppr:g', 'wppr:g', 'e-max:ppr:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:prc:g', 'wprc:g', 'e-max:prc:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:pF:g',  'wpF:g',  'e-max:pF:g:corpus(title=e-MAX)',
+			],
+
+
    'emresults:wp'   => [
-			qw(*:wppr:g wppr:g *:wprc:g wprc:g *:wpF:g wpF:g),
+			'*:wppr:g', 'wppr:g', '*:wprc:g', 'wprc:g', '*:wpF:g', 'wpF:g',
 			'|',
-			qw(*:wppr:t wppr:t *:wprc:t wprc:t *:wpF:t wpF:t),
+			'*:wppr:t', 'wppr:t', '*:wprc:t', 'wprc:t', '*:wpF:t', 'wpF:t',
 		       ],
+   'emresults:wp:max' => [
+			  '*:wppr:g', 'wppr:g', 'e+pemi:wppr:g(title=e+pemi)', 'e-max:wppr:g:emi(title=e-max)',
+			 '|',
+			  '*:wppr:t', 'wppr:t', 'e+pemi:wppr:t(title=e+pemi)', 'e-max:wppr:t:emi(title=e-max)',
+			],
+   'emresults:wp:Max' => [
+			  '*:wppr:g', 'wppr:g', 'e-max:wppr:g:stg(title=e-Max)',
+			  '|',
+			  '*:wprc:g', 'wprc:g', 'e-max:wprc:g:stg(title=e-Max)',
+			  '|',
+			  '*:wpF:g',  'wpF:g',  'e-max:wpF:g:stg(title=e-Max)',
+			],
+   'emresults:wp:MAX' => [
+			  '*:wppr:g', 'wppr:g', 'e-max:wppr:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:wprc:g', 'wprc:g', 'e-max:wprc:g:corpus(title=e-MAX)',
+			  '|',
+			  '*:wpF:g',  'wpF:g',  'e-max:wpF:g:corpus(title=e-MAX)',
+			],
+
 
 
    'res:prF:g' => [qw(*:pr:g pr:g e+mp:pr:g | +:rc:g rc:g e+mp:rc:g | ~:F:g F:g e+mp:F:g)],
@@ -396,13 +474,13 @@ our %FIELDS =
    ## Eval: Weighted Tagwise-average-*: Global
    'wapr:g'  => { path=>[qw(eval_global wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wapr:g'},
    'warc:g'  => { path=>[qw(eval_global wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'warc:g'},
-   'waF:g'   => { path=>[qw(eval_global wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' waF:g'},
+   'waF:g'   => { path=>[qw(eval_global wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'waF:g'},
 
    ##-------------------------------------
    ## Eval: Weighted Tagwise-average-*: Targets
    'wapr:t'  => { path=>[qw(eval_targets wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wapr:t'},
    'warc:t'  => { path=>[qw(eval_targets wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'warc:t'},
-   'waF:t'   => { path=>[qw(eval_targets wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' waF:t'},
+   'waF:t'   => { path=>[qw(eval_targets wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'waF:t'},
 
    ##-------------------------------------------------
    ## Eval: Pairwise (precision,recall,F)
@@ -426,13 +504,13 @@ our %FIELDS =
    ## Eval: Weighted Pairwise: Global
    'wppr:g' => { path=>[qw(eval_global wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wppr:g'},
    'wprc:g' => { path=>[qw(eval_global wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:g'},
-   'wpF:g'  => { path=>[qw(eval_global wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' wpF:g'},
+   'wpF:g'  => { path=>[qw(eval_global wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wpF:g'},
 
    ##-------------------------------------
    ## Eval: Weighted Pairwise: Targets
    'wppr:t' => { path=>[qw(eval_targets wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wppr:t'},
    'wprc:t' => { path=>[qw(eval_targets wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:t'},
-   'wpF:t'  => { path=>[qw(eval_targets wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' wpF:t'},
+   'wpF:t'  => { path=>[qw(eval_targets wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wpF:t'},
 
 
    ##-------------------------------------------------
