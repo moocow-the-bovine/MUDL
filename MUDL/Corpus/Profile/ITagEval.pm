@@ -1,4 +1,4 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::ITagEval.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -36,8 +36,8 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     txttag2 => \%txttag2,   ##-- tok,tag2 pair pseudo-set
 ##
 ##     ##-- on finish()
-##     tag12m => $map12,       ##-- map $tag1=>$tag2,
-##     tag21m => $map21,       ##-- map $tag2=>$tag1,
+##     tag12m => $map12,       ##-- map $tag1=>$tag2, # s.t. $tag2 = arg_{$tag2} max p($tag2|$tag1)
+##     tag21m => $map21,       ##-- map $tag2=>$tag1, # s.t. $tag1 = arg_{$tag1} max p($tag1|$tag2)
 ##     tag12b => $dist12,      ##-- $tag1=>$best_tag12_count,
 ##     tag21b => $dist21,      ##-- $tag2=>$best_tag21_count,
 ##
@@ -46,9 +46,31 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     nanals1 => $n1,         ##-- total number of (type,tag1) pairs
 ##     nanals2 => $n2,         ##-- total number of (type,tag2) pairs
 ##
-##     ##-- summary data
+##     ##-- summary data: token-wise
 ##     precision=>$prec,       ##-- p(best(tag2|tag1)|tag1)
 ##     recall=>$recall,        ##-- p(best(tag1|tag2)|tag2)
+##     F=>$F,
+##
+##     ##-- summary data: average (Sch"utze-style)
+##     avg_precision=>$pr,
+##     avg_recall=>$rc,
+##     avg_F=>$F,
+##
+##     ##-- summary data: weighted average (pseudo Sch"utze-style)
+##     wavg_precision=>$pr,
+##     wavg_recall=>$rc,
+##     wavg_F=>$F,
+##
+##     ##-- summary data: pair-wise (Schulte-im-Walde style, following Hatzivassiloglou & McKeown (1993))
+##     pair_precision=>$pr,
+##     pair_recall=>$rc,
+##     pair_F=>$F,
+##
+##     ##-- summary data: weighted pair-wise
+##     wpair_precision=>$pr,
+##     wpair_recall=>$rc,
+##     wpair_F=>$F,
+##
 sub new {
   my ($that,%args) = @_;
   my $self = $that->SUPER::new(cr=>'MUDL::CorpusIO',
@@ -151,7 +173,9 @@ sub finish {
   my $tag21b = $eval->{tag21b} = MUDL::Dist->new();
 
   my ($tag12,$f12, $tag1,$tag2, $tb);
+  my $ftotal = 0;
   while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
+    $ftotal += $f12;
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
 
     next if ($tag1 eq '@UNKNOWN'); ##-- unknowns are always bad
@@ -171,12 +195,13 @@ sub finish {
 
   my $precision = 0;
   $precision += $_ foreach (values(%$tag12b));
-  $eval->{precision} = $precision / $eval->{ntoks};
+  $eval->{precision} = $precision = $precision / $eval->{ntoks};
 
   my $recall = 0;
   $recall += $_ foreach (values(%$tag21b));
-  $eval->{recall} = $recall / $eval->{ntoks};
+  $eval->{recall} = $recall = $recall / $eval->{ntoks};
 
+  my $F = $eval->{F} = pr2F(@$eval{qw(precision recall)});
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tag-wise precision, recall (Sch"utze-style)
@@ -193,6 +218,7 @@ sub finish {
     $t2nc->{$tag2}++;
   }
 
+  my $t1f   = $eval->{t1f}   = {}; ##-- $tag1 => f($tag1)
   my $t2f   = $eval->{t2f}   = {}; ##-- $tag2 => f($tag2)
   my $t2cor = $eval->{t2cor} = {}; ##-- $tag2 => \sum_{$tag1 : bestmatch($tag1)==$tag2} f($tag1, $tag2)
   my $t2inc = $eval->{t2inc} = {}; ##-- $tag2 => \sum_{$tag1 : bestmatch($tag1)==$tag2} f($tag1,!$tag2)
@@ -201,9 +227,11 @@ sub finish {
   my ($besttag2);
   while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
+    $t1f->{$tag1} += $f12;
     $t2f->{$tag2} += $f12;
 
     ##-- ensure everything is defined
+    $t1f->{$tag1}  = 0 if (!defined($t1f->{$tag1}));
     $t2f->{$tag2}  = 0 if (!defined($t2f->{$tag2}));
     $t2nc->{$tag2} = 0 if (!defined($t2nc->{$tag2}));
     $t2cor->{$tag2} = 0 if (!defined($t2cor->{$tag2}));
@@ -240,7 +268,7 @@ sub finish {
 
     $t2pr->{$tag2} = ($ncor+$ninc ? ($ncor / ($ncor + $ninc)) : 0);
     $t2rc->{$tag2} = ($ftag2      ? ($ncor / $ftag2)          : 0);
-    $t2F->{$tag2}  = 2/($t2pr->{$tag2}**-1 + $t2rc->{$tag2}**-1);
+    $t2F->{$tag2}  = pr2F($t2pr->{$tag2}, $t2rc->{$tag2});
 
     $avg_pr += $t2pr->{$tag2};
     $avg_rc += $t2rc->{$tag2};
@@ -251,11 +279,92 @@ sub finish {
   }
   $avg_pr /= scalar(keys(%$t2f));
   $avg_rc /= scalar(keys(%$t2f));
-  @$eval{qw(avg_precision avg_recall avg_F)} = ($avg_pr, $avg_rc, 2/($avg_pr**-1 + $avg_rc**-1));
+  @$eval{qw(avg_precision avg_recall avg_F)} = ($avg_pr, $avg_rc, pr2F($avg_pr,$avg_rc));
   $eval->{total_precision} = $total_cor / ($total_cor + $total_inc);
   $eval->{total_recall}    = $total_cor / ($total_cor + $total_f);
-  $eval->{total_F}         = 2/($eval->{total_precision}**-1 + $eval->{total_recall}**-1);
+  $eval->{total_F}         = pr2F($eval->{total_precision}, $eval->{total_recall});
 
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## weighted tag-wise precision, recall (pseudo-Sch"utze-style)
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my $wa_pr = 0;
+  my $wa_rc = 0;
+  while (($tag2,$ftag2)=each(%$t2f)) {
+    $wa_pr += ($ftag2/$ftotal) * $t2pr->{$tag2};
+    $wa_rc += ($ftag2/$ftotal) * $t2rc->{$tag2};
+  }
+  @$eval{qw(wavg_precision wavg_recall wavg_F)} = ($wa_pr,$wa_rc, pr2F($wa_pr,$wa_rc));
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## pair-wise precision, recall
+  ##  + Schulte im Walde, following Hatzivassiloglou & McKeown (1993)
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my $pair_tp1 = $eval->{pair_tp1} = {}; ##-- true positives by $tag1:  $tag1=>tp($tag1)
+  my $pair_tp2 = $eval->{pair_tp2} = {}; ##-- true positives by $tag2:  $tag2=>tp($tag2)
+  my ($npairs12);
+  while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
+    ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
+    if ($tag1 eq '@UNKNOWN') {
+      ##-- UNKNOWN tag1 is always bad
+      $pair_tp1->{$tag1}  = 0;
+      $pair_tp2->{$tag2} += 0;
+      next;
+    }
+    $npairs12 = npairs($f12);
+    $pair_tp1->{$tag1} += $npairs12;
+    $pair_tp2->{$tag2} += $npairs12;
+  }
+
+
+  my ($pair_tp,$pair_fp,$pair_fn) = (0,0,0);
+  my $pair_fp1 = $eval->{pair_fp} = {}; ##-- false positives by $tag1: $tag1=>fp($tag1)
+  my $pair_fn2 = $eval->{pair_fn} = {}; ##-- false negatives by $tag2: $tag1=>fn($tag2)
+  my $pair_pr1 = $eval->{pair_pr1} = {};
+  my $pair_rc2 = $eval->{pair_rc2} = {};
+  my ($ntp, $npairs1, $npairs2, $tp);
+  while (($tag1,$tp)=each(%$pair_tp1)) {
+    $npairs1 = npairs($t1f->{$tag1});
+    $pair_fp += $pair_fp1->{$tag1} = $npairs1-$tp;
+    $pair_tp += $tp;
+    $pair_pr1->{$tag1} = $tp / $npairs1;
+  }
+  while (($tag2,$tp)=each(%$pair_tp2)) {
+    $npairs2 = npairs($t2f->{$tag2});
+    $pair_fn += $pair_fn2->{$tag2} = $npairs2-$tp;
+    $pair_rc2->{$tag2} = $tp / $npairs2;
+  }
+  my $pair_pr = $eval->{pair_precision} = $pair_tp / ($pair_fp + $pair_tp);
+  my $pair_rc = $eval->{pair_recall}    = $pair_tp / ($pair_fn + $pair_tp);
+  my $pair_F  = $eval->{pair_F}         = pr2F($pair_pr,$pair_rc);
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## weighted pair-wise precision, recall
+  ##  + pseudo-Schulte im Walde, following Hatzivassiloglou & McKeown (1993)
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my $wpair_pr = 0;
+  my $wpair_rc = 0;
+  my $npairs_total = npairs($ftotal);
+  while (($tag1,$tp)=each(%$pair_tp1)) {
+    ##-- weight by total number of pairs belonging to this tag1
+    #$npairs1 = npairs($t1f->{$tag1});
+    #$wpair_pr += $npairs1/$npairs_total * $tp/$npairs1;
+    ##    ^-- equiv ------v
+    #$wpair_pr += $tp/$npairs_total;
+    ##    ^-- NOT equiv --v
+    ##-- weight by relative tag1 frequency
+    $wpair_pr += $t1f->{$tag1}/$ftotal * $tp/npairs($t1f->{$tag1});
+  }
+  while (($tag2,$tp)=each(%$pair_tp2)) {
+    ##-- weight by total number of pairs belonging to this tag2
+    #$npairs2 = npairs($t2f->{$tag2});
+    #$wpair_pr += $npairs2/$npairs_total * $tp/$npairs2;
+    ##    ^-- equiv ------v
+    #$wpair_rc += $tp/$npairs_total;
+    ##    ^-- NOT equiv --v
+    ##-- weight by relative tag2 frequency
+    $wpair_rc += $t2f->{$tag2}/$ftotal * $tp/npairs($t2f->{$tag2});
+  }
+  @$eval{qw(wpair_precision wpair_recall wpair_F)} = ($wpair_pr, $wpair_rc, pr2F($wpair_pr,$wpair_rc));
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Ambiguity rates
@@ -273,6 +382,26 @@ sub finish {
   $eval->reset();
 
   return $eval;
+}
+
+##======================================================================
+## Utilities
+
+## $F = pr2F($precision,$recall)
+##  + compute harmonic average of precision and recall
+sub pr2F {
+  my ($pr,$rc) = @_;
+  return
+    2/($pr**-1 + $rc**-1) ##-- Schütze
+    #(2*$pr*$rc)/($pr+$rc)  ##-- Schulte im Walde (equivalent to Schütze)
+    ;
+}
+
+## $npairs = npairs($n)
+##  + computes binomial coefficient binom($n,2)
+sub npairs {
+  my $n = shift;
+  return ($n/2) * ($n-1);
 }
 
 
@@ -344,13 +473,16 @@ sub fromEval {
   ##-- duplicate some keys
   my @dup = (
 	     qw(label1 label2),
-	     qw(precision recall),
+	     qw(precision recall F),
 	     qw(avg_precision avg_recall avg_F),
+	     qw(wavg_precision wavg_recall wavg_F),
+	     qw(pair_precision pair_recall pair_F),
+	     qw(wpair_precision wpair_recall wpair_F),
 	     qw(total_precision total_recall total_F),
 	     qw(ntoks ntypes nanals1 nanals2),
 
-	     'tag12m', ##-- $tag1=>$best_tag2_for_tag1,
-	     'tag21m', ##-- $tag2=>$best_tag1_for_tag2,
+	     #'tag12m', ##-- $tag1=>$best_tag2_for_tag1,
+	     #'tag21m', ##-- $tag2=>$best_tag1_for_tag2,
 
 	     #'g2i',   ##-- $tag2=> [ $tag1 : bestmatch($tag1) == $tag2 ]
 	     #'t2f',   ##-- $tag2=>$freq{$tag2}
@@ -376,13 +508,15 @@ sub fromEval {
 			       pr=>$eval->{t2pr}{$_},
 			       rc=>$eval->{t2rc}{$_},
 			       F=>$eval->{t2F}{$_},
+			       ##--
+			       pair_rc=>$eval->{pair_rc2}{$_},
 			      )
 			     }
 		       } keys(%{$eval->{t2f}})
 		      };
 
   ##-- generate new keys: meta-F
-  $esum->{F} = 2.0/($eval->{precision}**-1 + $eval->{recall}**-1);
+  #$esum->{F} = 2.0/($eval->{precision}**-1 + $eval->{recall}**-1);
 
   ##-- generate new keys: ambiguity rates
   $esum->{arate1} = $eval->{nanals1}/$eval->{ntypes} if ($eval->{ntypes});
@@ -403,10 +537,21 @@ sub saveNativeFh {
   $fh->print
     ("\$precision=$esum->{precision};\n",
      "\$recall=$esum->{recall};\n",
+     "",
      "\$avg_precision=$esum->{avg_precision};\n",
      "\$avg_recall=$esum->{avg_recall};\n",
-     "\$total_precision=$esum->{total_precision};\n",
-     "\$total_recall=$esum->{total_recall};\n",
+     "",
+     "\$wavg_precision=$esum->{wavg_precision};\n",
+     "\$wavg_recall=$esum->{wavg_recall};\n",
+     "",
+     "\$pair_precision=$esum->{pair_precision};\n",
+     "\$pair_recall=$esum->{pair_recall};\n",
+     "",
+     "\$wpair_precision=$esum->{wpair_precision};\n",
+     "\$wpair_recall=$esum->{wpair_recall};\n",
+     #"",
+     #"\$total_precision=$esum->{total_precision};\n",
+     #"\$total_recall=$esum->{total_recall};\n",
 
      (defined($esum->{ntypes})  ? "\$ntypes=$esum->{ntypes};\n" : qw()),
      (defined($esum->{nanals1}) ? "\$nanals1=$esum->{nanals1};\n" : qw()),
@@ -423,6 +568,7 @@ sub saveNativeFh {
 	     sprintf("pr=>%0.4f", $esum->{tag2info}{$_}{pr}),
 	     sprintf("rc=>%0.4f", $esum->{tag2info}{$_}{rc}),
 	     sprintf("F =>%0.4f", $esum->{tag2info}{$_}{F}),
+	     sprintf("pair_rc =>%0.4f", $esum->{tag2info}{$_}{pair_rc}),
 	    ),
 	"},\n")
      } sort(keys(%{$esum->{tag2info}}))),
@@ -456,6 +602,18 @@ sub saveNativeFh {
      "## Avg tag2-Precision       : ", sprintf("%6.2f %%", 100*$esum->{avg_precision}), "\n",
      "## Avg tag2-Recall          : ", sprintf("%6.2f %%", 100*$esum->{avg_recall}), "\n",
      "## Avg F                    : ", sprintf("%6.2f %%", 100*$esum->{avg_F}), "\n",
+     "##\n",
+     "## WAvg tag2-Precision      : ", sprintf("%6.2f %%", 100*$esum->{wavg_precision}), "\n",
+     "## WAvg tag2-Recall         : ", sprintf("%6.2f %%", 100*$esum->{wavg_recall}), "\n",
+     "## WAvg F                   : ", sprintf("%6.2f %%", 100*$esum->{wavg_F}), "\n",
+     "##\n",
+     "## Pair Precision           : ", sprintf("%6.2f %%", 100*$esum->{pair_precision}), "\n",
+     "## Pair Recall              : ", sprintf("%6.2f %%", 100*$esum->{pair_recall}), "\n",
+     "## Pair F                   : ", sprintf("%6.2f %%", 100*$esum->{pair_F}), "\n",
+     "##\n",
+     "## WPair Precision          : ", sprintf("%6.2f %%", 100*$esum->{wpair_precision}), "\n",
+     "## WPair Recall             : ", sprintf("%6.2f %%", 100*$esum->{wpair_recall}), "\n",
+     "## WPair F                  : ", sprintf("%6.2f %%", 100*$esum->{wpair_F}), "\n",
      "##\n",
      "## Total Precision          : ", sprintf("%6.2f %%", 100*$esum->{total_precision}), "\n",
      "## Total Recall             : ", sprintf("%6.2f %%", 100*$esum->{total_recall}), "\n",

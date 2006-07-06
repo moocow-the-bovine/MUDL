@@ -16,6 +16,32 @@ our @ISA = qw(MUDL::Object Exporter);
 ##======================================================================
 ## Globals
 
+## @_eval_base_fields
+##  + many generated fields are created by iterating over these
+our @_eval_base_fields =
+  (
+   ##-- Meta (token-wise)
+   qw(pr:g rc:g F:g ar:g),
+   qw(pr:t rc:t F:t ar:t),
+
+   ##-- Average tag2 (Schütze-style)
+   qw(apr:g arc:g aF:g),
+   qw(apr:t arc:t aF:t),
+
+   ##-- Weighted Average tag2 (Schütze-style, weighted)
+   qw(wapr:g warc:g waF:g),
+   qw(wapr:t warc:t waF:t),
+
+   ##-- Pairwise (Schulte im Walde-style)
+   qw(ppr:g prc:g pF:g),
+   qw(ppr:t prc:t pF:t),
+
+   ##-- Weighted Pairwise (Schulte im Walde-style)
+   qw(wppr:g wprc:g wpF:g),
+   qw(wppr:t wprc:t wpF:t),
+  );
+
+
 ##---------------------------------------------------------------
 ## Globals: Field Aliases (end = search for 'EOFIELDS')
 
@@ -39,6 +65,7 @@ our @ISA = qw(MUDL::Object Exporter);
 ##     ##-- TODO--
 ##     vcode =>\&vcode,      ##-- dynamic value: calls $code->($mf,$cfg,$field) for val
 ##     ....
+
 our %FIELDS =
   (
    ##-- Pseudo-fields
@@ -99,6 +126,9 @@ our %FIELDS =
    'mpid'  => [ qw(stage corpus lrlabel auto) ],
    'mptab' => [ qw(mpid | mpresults) ],
    'mptab:a' => [ qw(mpid | mpresults:a) ],
+   'mptab:wa' => [ qw(mpid | mpresults:wa) ],
+   'mptab:p' => [ qw(mpid | mpresults:p) ],
+   'mptab:wp' => [ qw(mpid | mpresults:wp) ],
    'mptab:pstg' => [ qw(mpid | mpresults:pstg) ],
    'mptab:e-'   => [ qw(mpid || mpresults:e-) ],
    'mpresults' => [
@@ -111,6 +141,21 @@ our %FIELDS =
 		     '|',
 		     qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
 		    ],
+   'mpresults:wa' => [
+		      qw(*:wapr:g wapr:g *:warc:g warc:g *:waF:g waF:g),
+		      '|',
+		      qw(*:wapr:t wapr:t *:warc:t warc:t *:waF:t waF:t),
+		     ],
+   'mpresults:p' => [
+		     qw(*:ppr:g ppr:g *:prc:g prc:g *:pF:g pF:g),
+		     '|',
+		     qw(*:ppr:t ppr:t *:prc:t prc:t *:pF:t pF:t),
+		    ],
+   'mpresults:wp' => [
+		      qw(*:wppr:g wppr:g *:wprc:g wprc:g *:wpF:g wpF:g),
+		      '|',
+		      qw(*:wppr:t wppr:t *:wprc:t wprc:t *:wpF:t wpF:t),
+		     ],
    'mpresults:pstg' => [
 			qw(*:pr:g pr:g e+pstage:pr:g(title=e+pstg)),
 			'|',
@@ -130,6 +175,9 @@ our %FIELDS =
    'emtab'  => [ qw(tabId | emresults), ],
    'emtab:max' => [ qw(tabId | emresults:max), ],
    'emtab:a' => [qw(tabId | emresults:a), ],
+   'emtab:wa' => [qw(tabId | emresults:wa), ],
+   'emtab:p' => [qw(tabId | emresults:p), ],
+   'emtab:wp' => [qw(tabId | emresults:wp), ],
    'emtab:a:max' => [qw(tabId | emresults:a:max), ],
    'emtab:emi' => [ qw(tabId | emresults:emi), ],
    'emresults:mp'  => [qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) | *:pr:t pr:t e+mp:pr:t(title=e+mp))],
@@ -149,11 +197,26 @@ our %FIELDS =
 		       '|',
 		       qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
 		      ],
-   'emresults:a:max'   => [
-		       qw(*:apr:g apr:g e+pemi:apr:g(title=e+pemi) e-max:apr:g:emi(title=e-max)),
+   'emresults:a:max' => [
+			 qw(*:apr:g apr:g e+pemi:apr:g(title=e+pemi) e-max:apr:g:emi(title=e-max)),
+			 '|',
+			 qw(*:apr:t apr:t e+pemi:apr:t(title=e+pemi) e-max:apr:t:emi(title=e-max)),
+			],
+   'emresults:wa'   => [
+			qw(*:wapr:g wapr:g *:warc:g warc:g *:waF:g waF:g),
+			'|',
+			qw(*:wapr:t wapr:t *:warc:t warc:t *:waF:t waF:t),
+		       ],
+   'emresults:p'   => [
+		       qw(*:ppr:g ppr:g *:prc:g prc:g *:pF:g pF:g),
 		       '|',
-		       qw(*:apr:t apr:t e+pemi:apr:t(title=e+pemi) e-max:apr:t:emi(title=e-max)),
+		       qw(*:ppr:t ppr:t *:prc:t prc:t *:pF:t pF:t),
 		      ],
+   'emresults:wp'   => [
+			qw(*:wppr:g wppr:g *:wprc:g wprc:g *:wpF:g wpF:g),
+			'|',
+			qw(*:wppr:t wppr:t *:wprc:t wprc:t *:wpF:t wpF:t),
+		       ],
 
 
    'res:prF:g' => [qw(*:pr:g pr:g e+mp:pr:g | +:rc:g rc:g e+mp:rc:g | ~:F:g F:g e+mp:F:g)],
@@ -290,6 +353,7 @@ our %FIELDS =
 	     },
    'd2pn' => 'mbest',
 
+   'tck' => { path=>[qw(xvars tck)], n=>1, alt=>[qw(xvars->tck)], },
 
 
 
@@ -324,6 +388,52 @@ our %FIELDS =
    'apr:t'  => { path=>[qw(eval_targets avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'apr:t'},
    'arc:t'  => { path=>[qw(eval_targets avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'arc:t'},
    'aF:t'   => { path=>[qw(eval_targets avg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' aF:t' },
+
+   ##-------------------------------------------------
+   ## Eval: Weighted Tagwise-average (precision,recall,F)
+
+   ##-------------------------------------
+   ## Eval: Weighted Tagwise-average-*: Global
+   'wapr:g'  => { path=>[qw(eval_global wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wapr:g'},
+   'warc:g'  => { path=>[qw(eval_global wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'warc:g'},
+   'waF:g'   => { path=>[qw(eval_global wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' waF:g'},
+
+   ##-------------------------------------
+   ## Eval: Weighted Tagwise-average-*: Targets
+   'wapr:t'  => { path=>[qw(eval_targets wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wapr:t'},
+   'warc:t'  => { path=>[qw(eval_targets wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'warc:t'},
+   'waF:t'   => { path=>[qw(eval_targets wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' waF:t'},
+
+   ##-------------------------------------------------
+   ## Eval: Pairwise (precision,recall,F)
+
+   ##-------------------------------------
+   ## Eval: Pairwise: Global
+   'ppr:g'  => { path=>[qw(eval_global pair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ppr:g'},
+   'prc:g'  => { path=>[qw(eval_global pair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'prc:g'},
+   'pF:g'   => { path=>[qw(eval_global pair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pF:g'},
+
+   ##-------------------------------------
+   ## Eval: Pairwise: Targets
+   'ppr:t'  => { path=>[qw(eval_targets pair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ppr:t'},
+   'prc:t'  => { path=>[qw(eval_targets pair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'prc:t'},
+   'pF:t'   => { path=>[qw(eval_targets pair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pF:t'},
+
+   ##-------------------------------------------------
+   ## Eval: Weighted Pairwise (precision,recall,F)
+
+   ##-------------------------------------
+   ## Eval: Weighted Pairwise: Global
+   'wppr:g' => { path=>[qw(eval_global wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wppr:g'},
+   'wprc:g' => { path=>[qw(eval_global wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:g'},
+   'wpF:g'  => { path=>[qw(eval_global wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' wpF:g'},
+
+   ##-------------------------------------
+   ## Eval: Weighted Pairwise: Targets
+   'wppr:t' => { path=>[qw(eval_targets wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wppr:t'},
+   'wprc:t' => { path=>[qw(eval_targets wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:t'},
+   'wpF:t'  => { path=>[qw(eval_targets wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' wpF:t'},
+
 
    ##-------------------------------------------------
    ## Eval: Single-tag (precision,recall,F,ambig-rate)
@@ -387,10 +497,7 @@ our %FIELDS =
    ##-------------------------------------------------
    ## Eval: max-value: aliases
    ##  + max:${of_field}:${innermost_for_field}
-   (map { _max_fields($_) } qw(pr:g rc:g F:g ar:g)),
-   (map { _max_fields($_) } qw(pr:t rc:t F:t ar:t)),
-   (map { _max_fields($_) } qw(apr:g arc:g aF:g)),
-   (map { _max_fields($_) } qw(apr:t arc:t aF:t)),
+   (map { _max_fields($_) } @_eval_base_fields),
 
    ##-------------------------------------------------
    ## Eval: ifequal (numeric or string: uses 'n' field-flag)
@@ -440,15 +547,10 @@ our %FIELDS =
    ##'**:pr:g'       => [ '*:pr:g:corpus', '*:pr:g:stage' ]
    ##'***:pr:g'      => [ '*:pr:g:corpus', '*:pr:g:stage', '*:pr:g:emi' ]
    ##'*:pr:g'        => '***:pr:g',
-   (map { _markmax_fields($_) } qw(pr:g rc:g F:g ar:g)),
-   (map { _markmax_fields($_) } qw(pr:t rc:t F:t ar:t)),
-   (map { _markmax_fields($_) } qw(apr:g arc:g aF:g)),
-   (map { _markmax_fields($_) } qw(apr:t arc:t aF:t)),
+   (map { _markmax_fields($_) } @_eval_base_fields),
 
-   (map { _markmax_fields_latex($_) } qw(pr:g rc:g F:g ar:g)),
-   (map { _markmax_fields_latex($_) } qw(pr:t rc:t F:t ar:t)),
-   (map { _markmax_fields_latex($_) } qw(apr:g arc:g aF:g)),
-   (map { _markmax_fields_latex($_) } qw(apr:t arc:t aF:t)),
+   ##-- mark max: latex
+   (map { _markmax_fields_latex($_) } @_eval_base_fields),
 
    ##-------------------------------------
    ## Error difference (vs. best): errdiff
@@ -469,12 +571,7 @@ our %FIELDS =
    ## errdiff(): aliases:
    ## + "e-max:${of}:${for}" --> errdiff(of="$of", vs="max:${of}:${for}")
    ## + "e-:${of}:${for}"    --> "e-max:${of}:${for}"
-   (map { _errdiff_max_fields($_) } qw(pr:g rc:g F:g)),
-   (map { _errdiff_max_fields($_) } qw(pr:t rc:t F:t)),
-   (map { _errdiff_max_fields($_) } qw(apr:g arc:g aF:g)),
-   (map { _errdiff_max_fields($_) } qw(apr:t arc:t aF:t)),
-
-
+   (map { _errdiff_max_fields($_) } @_eval_base_fields),
 
    ##-------------------------------------
    ## Related configurations: previous stage
@@ -507,47 +604,29 @@ our %FIELDS =
    ##-------------------------------------
    ## Relative configurations: aliases: previous stage
    ## + "pstage:${field}"
-   (map { _relative_fields('pstage',$_) } qw(pr:g rc:g F:g)),
-   (map { _relative_fields('pstage',$_) } qw(pr:t rc:t F:t)),
-   (map { _relative_fields('pstage',$_) } qw(apr:g arc:g aF:g)),
-   (map { _relative_fields('pstage',$_) } qw(apr:t arc:t aF:t)),
+   (map { _relative_fields('pstage',$_) } @_eval_base_fields),
 
    ## Relative configurations: aliases: previous stage: error-difference
    ## + "e+pstage:${field}"
-   (map { _errdiff_relative_fields('pstage',$_) } qw(pr:g rc:g F:g)),
-   (map { _errdiff_relative_fields('pstage',$_) } qw(pr:t rc:t F:t)),
-   (map { _errdiff_relative_fields('pstage',$_) } qw(apr:g arc:g aF:g)),
-   (map { _errdiff_relative_fields('pstage',$_) } qw(apr:t arc:t aF:t)),
+   (map { _errdiff_relative_fields('pstage',$_) } @_eval_base_fields),
 
    ##-------------------------------------
    ## Relative configurations: aliases: previous EMI
    ## + "pemi:${field}"
-   (map { _relative_fields('pemi',$_) } qw(pr:g rc:g F:g)),
-   (map { _relative_fields('pemi',$_) } qw(pr:t rc:t F:t)),
-   (map { _relative_fields('pemi',$_) } qw(apr:g arc:g aF:g)),
-   (map { _relative_fields('pemi',$_) } qw(apr:t arc:t aF:t)),
+   (map { _relative_fields('pemi',$_) } @_eval_base_fields),
 
    ## Relative configurations: aliases: previous EMI: error-difference
    ## + "e+pemi:${field}"
-   (map { _errdiff_relative_fields('pemi',$_) } qw(pr:g rc:g F:g)),
-   (map { _errdiff_relative_fields('pemi',$_) } qw(pr:t rc:t F:t)),
-   (map { _errdiff_relative_fields('pemi',$_) } qw(apr:g arc:g aF:g)),
-   (map { _errdiff_relative_fields('pemi',$_) } qw(apr:t arc:t aF:t)),
+   (map { _errdiff_relative_fields('pemi',$_) } @_eval_base_fields),
 
    ##-------------------------------------
    ## Relative configurations: aliases: MetaProfile base
-   ## + "pemi:${field}"
-   (map { _relative_fields('mp',$_) } qw(pr:g rc:g F:g)),
-   (map { _relative_fields('mp',$_) } qw(pr:t rc:t F:t)),
-   (map { _relative_fields('mp',$_) } qw(apr:g arc:g aF:g)),
-   (map { _relative_fields('mp',$_) } qw(apr:t arc:t aF:t)),
+   ## + "mp:${field}"
+   (map { _relative_fields('mp',$_) } @_eval_base_fields),
 
    ## Relative configurations: aliases: MetaProfile base: error-difference
-   ## + "e+pemi:${field}"
-   (map { _errdiff_relative_fields('mp',$_) } qw(pr:g rc:g F:g)),
-   (map { _errdiff_relative_fields('mp',$_) } qw(pr:t rc:t F:t)),
-   (map { _errdiff_relative_fields('mp',$_) } qw(apr:g arc:g aF:g)),
-   (map { _errdiff_relative_fields('mp',$_) } qw(apr:t arc:t aF:t)),
+   ## + "e+mp:${field}"
+   (map { _errdiff_relative_fields('mp',$_) } @_eval_base_fields),
   );
 ##-- EOFIELDS
 

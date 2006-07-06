@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Utils.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -24,6 +24,7 @@ our %EXPORT_TAGS =
    dists => [qw(uniform randprobs pround probs2dist)],
    info => [qw(msglen KLDivergence D mutualInformation MI)],
    rv => [qw(rv_expect rv_var)],
+   sys => [qw(mudl_system)],
   );
 $EXPORT_TAGS{all} = [ @EXPORT_OK=(map { @$_ } values(%EXPORT_TAGS)) ];
 
@@ -312,6 +313,47 @@ sub dist2latex {
   return $s;
 }
 
+
+##--------------------------------------------------------------
+## System utilities
+
+## $rc = mudl_system($cmd)
+## $rc = mudl_system(@cmd)
+##  + like system(), but uses explicit fork()
+##  + propagates the TSTP signal as STOP to self and to child process
+##  + GOOFY!
+sub mudl_system {
+  my @cmd = @_;
+  my ($pid);
+
+  my %SIG_DEFAULT = %SIG;
+  local %SIG;
+  $SIG{TSTP} = sub {
+    print "$0: caught stop ($_[0])...\n";
+    if (defined($pid)) { kill(STOP=>$pid); }
+    kill(STOP=>$$);
+    $SIG_DEFAULT{TSTP}->(@_) if (defined($SIG_DEFAULT{TSTP}));
+  };
+  $SIG{CONT} = sub {
+    print "$0: caught CONT...\n";
+    if (defined($pid)) { kill(CONT=>$pid); }
+    $SIG_DEFAULT{CONT}->(@_) if (defined($SIG_DEFAULT{CONT}));
+  };
+
+  die("mudl_system(): cannot fork(): $!\n") if (!defined($pid=fork()));
+
+  my ($rc);
+  if ($pid) {
+    ##-- parent
+    wait();
+    $rc = $? >> 8;
+  } else {
+    ##-- child
+    exec(@cmd);
+  }
+
+  return $rc;
+}
 
 1;
 

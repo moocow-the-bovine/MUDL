@@ -10,6 +10,7 @@ package MUDL::Make::Config;
 use MUDL::Object;
 use MUDL::Make qw(:all);
 use MUDL::Make::Vars;
+use MUDL::Utils qw(:sys);
 use IO::File;
 use Cwd qw(getcwd abs_path);
 use File::Temp qw(tempfile);
