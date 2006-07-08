@@ -24,6 +24,9 @@ our @_eval_base_fields =
    qw(pr:g rc:g F:g ar:g),
    qw(pr:t rc:t F:t ar:t),
 
+   ##-- MI (token-wise)
+   qw(mi:g mi:t),
+
    ##-- Average tag2 (Schütze-style)
    qw(apr:g arc:g aF:g),
    qw(apr:t arc:t aF:t),
@@ -172,7 +175,7 @@ our %FIELDS =
 		      ],
 
    ##-- table: variants: EM
-   'emid'  => [ qw(stg.emi corpus lrlabel auto) ],
+   'emid'  => [ qw(stg emi corpus lrlabel auto) ],
    'emtab'  => [ qw(emid | emresults), ],
    'emtab:max' => [ qw(emid | emresults:max), ],
    'emtab:a' => [qw(emid | emresults:a), ],
@@ -451,6 +454,12 @@ our %FIELDS =
    'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:t'},
    'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:t' },
    'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t' },
+
+   ##-------------------------------------
+   ## Eval: MI
+   'mi:g'  => { path=>[qw(eval_global mi)],        n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' mi:g' },
+   'mi:t'  => { path=>[qw(eval_targets mi)],       n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' mi:t' },
+
 
    ##-------------------------------------------------
    ## Eval: Tagwise-average (precision,recall,F,ambig-rate)
