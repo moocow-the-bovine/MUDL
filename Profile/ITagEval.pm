@@ -71,6 +71,9 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     wpair_recall=>$rc,
 ##     wpair_F=>$F,
 ##
+##     ##-- summary data: mutual information (token-wise)
+##     mi=>$mi_bits,     ##-- I(tag1;tag2)
+##
 sub new {
   my ($that,%args) = @_;
   my $self = $that->SUPER::new(cr=>'MUDL::CorpusIO',
@@ -326,12 +329,12 @@ sub finish {
     $npairs1 = npairs($t1f->{$tag1});
     $pair_fp += $pair_fp1->{$tag1} = $npairs1-$tp;
     $pair_tp += $tp;
-    $pair_pr1->{$tag1} = $tp / $npairs1;
+    $pair_pr1->{$tag1} = $npairs1 ? ($tp / $npairs1) : 0;
   }
   while (($tag2,$tp)=each(%$pair_tp2)) {
     $npairs2 = npairs($t2f->{$tag2});
     $pair_fn += $pair_fn2->{$tag2} = $npairs2-$tp;
-    $pair_rc2->{$tag2} = $tp / $npairs2;
+    $pair_rc2->{$tag2} = $npairs2 ? ($tp / $npairs2) : 0;
   }
   my $pair_pr = $eval->{pair_precision} = $pair_tp / ($pair_fp + $pair_tp);
   my $pair_rc = $eval->{pair_recall}    = $pair_tp / ($pair_fn + $pair_tp);
@@ -352,7 +355,8 @@ sub finish {
     #$wpair_pr += $tp/$npairs_total;
     ##    ^-- NOT equiv --v
     ##-- weight by relative tag1 frequency
-    $wpair_pr += $t1f->{$tag1}/$ftotal * $tp/npairs($t1f->{$tag1});
+    $npairs1 = npairs($t1f->{$tag1});
+    $wpair_pr += $t1f->{$tag1}/$ftotal * $tp/$npairs1 if ($npairs1);
   }
   while (($tag2,$tp)=each(%$pair_tp2)) {
     ##-- weight by total number of pairs belonging to this tag2
@@ -362,9 +366,34 @@ sub finish {
     #$wpair_rc += $tp/$npairs_total;
     ##    ^-- NOT equiv --v
     ##-- weight by relative tag2 frequency
-    $wpair_rc += $t2f->{$tag2}/$ftotal * $tp/npairs($t2f->{$tag2});
+    $npairs2 = npairs($t2f->{$tag2});
+    $wpair_rc += $t2f->{$tag2}/$ftotal * $tp/$npairs2 if ($npairs2);
   }
   @$eval{qw(wpair_precision wpair_recall wpair_F)} = ($wpair_pr, $wpair_rc, pr2F($wpair_pr,$wpair_rc));
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## mutual informaion
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my ($p1,$p2,$p12);
+  my $mi=0;
+  my $log2 = log(2.0);
+  while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
+    ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
+    #next if ($tag1 eq '@UNKNOWN'); ##-- UNKNOWN tag1 is always bad
+    $p12 = $f12/$ftotal;
+    $p1  = $t1f->{$tag1} / $ftotal;
+    $p2  = $t2f->{$tag2} / $ftotal;
+    $p1  = 2**-64 if ($p12 != 0 && $p1==0); ##-- avoid singularities (should never happen)
+    $p2  = 2**-64 if ($p12 != 0 && $p2==0); ##-- avoid singularities (should never happen)
+    if ($tag1 eq '@UNKNOWN') {
+      ##-- hack: subtract MI for unknown $tag1
+      $mi -= $p12 * log($p12 / ($p1 *$p2)) / $log2;
+    } else {
+      $mi += $p12 * log($p12 / ($p1 *$p2)) / $log2;
+    }
+  }
+  $eval->{mi} = $mi;
+
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Ambiguity rates
@@ -478,6 +507,7 @@ sub fromEval {
 	     qw(wavg_precision wavg_recall wavg_F),
 	     qw(pair_precision pair_recall pair_F),
 	     qw(wpair_precision wpair_recall wpair_F),
+	     qw(mi),
 	     qw(total_precision total_recall total_F),
 	     qw(ntoks ntypes nanals1 nanals2),
 
@@ -549,6 +579,8 @@ sub saveNativeFh {
      "",
      "\$wpair_precision=$esum->{wpair_precision};\n",
      "\$wpair_recall=$esum->{wpair_recall};\n",
+     "",
+     "\$mi=$esum->{mi};\n",
      #"",
      #"\$total_precision=$esum->{total_precision};\n",
      #"\$total_recall=$esum->{total_recall};\n",
@@ -618,6 +650,8 @@ sub saveNativeFh {
      "## Total Precision          : ", sprintf("%6.2f %%", 100*$esum->{total_precision}), "\n",
      "## Total Recall             : ", sprintf("%6.2f %%", 100*$esum->{total_recall}), "\n",
      "## Total F                  : ", sprintf("%6.2f %%", 100*$esum->{total_F}), "\n",
+     "##\n",
+     "## Mutual Information       : ", sprintf("%6.2f", $esum->{mi}), "\n",
      "##", ("-" x 78), "\n",
      "1;\n",
     );
