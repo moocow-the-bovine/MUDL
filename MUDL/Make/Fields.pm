@@ -20,6 +20,10 @@ our @ISA = qw(MUDL::Object Exporter);
 ##  + many generated fields are created by iterating over these
 our @_eval_base_fields =
   (
+   ##-- Total (token-wise)
+   qw(tpr:g trc:g tF:g),
+   qw(tpr:t trc:t tF:t),
+
    ##-- Meta (token-wise)
    qw(pr:g rc:g F:g ar:g),
    qw(pr:t rc:t F:t ar:t),
@@ -454,6 +458,19 @@ our %FIELDS =
    'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:t'},
    'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:t' },
    'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t' },
+
+   ##-------------------------------------
+   ## Eval: Total-*: Global
+   'tpr:g'  => { path=>[qw(eval_global total_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:g'},
+   'trc:g'  => { path=>[qw(eval_global total_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:g'},
+   'tF:g'   => { path=>[qw(eval_global total_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:g' },
+
+   ##-------------------------------------
+   ## Eval: Total-*: Targets
+   'tpr:t'  => { path=>[qw(eval_targets total_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:t'},
+   'trc:t'  => { path=>[qw(eval_targets total_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:t'},
+   'tF:t'   => { path=>[qw(eval_targets total_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:t' },
+
 
    ##-------------------------------------
    ## Eval: MI
