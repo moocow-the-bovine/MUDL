@@ -26,6 +26,7 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     tag1a => $tag1attr,     ##-- key(s) for 'tag1': used as $tok->attribute($key): default: 'tag'
 ##     tag2a => $tag2attr,     ##-- key(s) for 'tag2': used as $tok->attribute($key): default: '1'
 ##     do_ambig=>$bool,        ##-- whether to track ambiguity data
+##     unknown1=>$unk1,        ##-- unknown tag1 value (default='@UNKNOWN')
 ##
 ##     ##-- runtime data
 ##     enum  => $enum,         ##-- enum only wrt these targets (default=none~all tokens)
@@ -71,8 +72,12 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     wpair_recall=>$rc,
 ##     wpair_F=>$F,
 ##
-##     ##-- summary data: mutual information (token-wise)
-##     mi=>$mi_bits,     ##-- I(tag1;tag2)
+##     ##-- summary data: information-theoretic
+##     ##    + where H_u(X) = entropy contribution of '@UNKNOWN' tag1 to H(X)
+##     mi=>$mi_bits,     ##-- I(tag1;tag2) [HACKED]
+##     H_precision=>$pr,        ##-- 1 - H(tag2|tag1)/H(tag2) - H_u(tag2|tag1)/H(tag2)
+##     H_recall=>$rc,        ##-- 1-(H(tag1|tag2)+H_u(tag1|tag2))/H(tag1)
+##     H_F=>$F,
 ##
 sub new {
   my ($that,%args) = @_;
@@ -84,6 +89,7 @@ sub new {
 			       ntoks=>0,
 			       jdist=>MUDL::Dist::Nary->new(nfields=>2,sep=>"\t"),
 			       enum=>undef,
+			       unknown1=>'@UNKNOWN',
 			       do_ambig=>1,
 			       %args);
   return $self;
@@ -169,132 +175,233 @@ sub finish {
     $eval->{ntoks} = -1;
   }
 
-  ##-- get best maps
-  my $tag12m = $eval->{tag12m} = MUDL::Map->new();
-  my $tag21m = $eval->{tag21m} = MUDL::Map->new();
-  my $tag12b = $eval->{tag12b} = MUDL::Dist->new();
-  my $tag21b = $eval->{tag21b} = MUDL::Dist->new();
+  ##-- common vars
+  my $jdist = $eval->{jdist};
+  my ($tag12,$f12, $tag1,$tag2,$tagi, $pr,$rc,$F);
 
-  my ($tag12,$f12, $tag1,$tag2, $tb);
-  my $ftotal = 0;
-  while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
-    $ftotal += $f12;
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision, recall
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  ##-- allocate tag1-, tag2- info structures
+  ##   %info_tag =
+  ##   (
+  ##    ##-- best-map information
+  ##    freq=>$f_tag,
+  ##    fbest => max(f($tag,$othertag)),                 ##-- best match frequency
+  ##    tbest => arg_{$othertag} max(f($tag,$othertag)), ##-- best match
+  ##
+  ##    ##-- Summary: structure
+  ##    nbesti => $number_of_best_othertags_matching_this_tag, ##-- via inverse match
+  ##
+  ##    ##-- Summary: meta-*
+  ##    meta_ncor12    => $ncorrect_tag1_to_tag2,
+  ##    meta_ninc12    => $nincorrect_tag1_to_tag2,
+  ##    meta_ncor21    => $ncorrect_tag2_to_tag1,
+  ##    meta_ninc21    => $nincorrect_tag2_to_tag1,
+  ##    nunknown       => $nunknowns,                    ##-- by tag2, distributed among best tag1s
+  ##
+  ##    meta_precision => $meta_precision,
+  ##    meta_recall    => $meta_recall,
+  ##    meta_F         => $meta_F,
+  ##   )
+  my $tag1i = $eval->{tag1i} = {}; ##-- $tag1 => \%info_tag1
+  my $tag2i = $eval->{tag2i} = {}; ##-- $tag2 => \%info_tag2
+
+  ##-- allocate unigram (tag1,tag2) distributions
+  my $tag1d  = MUDL::Dist::Partial->new();
+  my $tag2d  = MUDL::Dist::Partial->new();
+  my $ftotal = 0; ##-- total frequency, including unknowns
+
+  ##-- get best-match maps
+  my ($fbest);
+  while (($tag12,$f12)=each(%{$jdist->{nz}})) {
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
 
-    next if ($tag1 eq '@UNKNOWN'); ##-- unknowns are always bad
+    $tag1d->{nz}{$tag1} += $f12;
+    $tag2d->{nz}{$tag2} += $f12;
+    $ftotal             += $f12;
 
-    $tb = $tag12b->{$tag1};
-    if (!$tb || $f12 > $tb) {
-      $tag12b->{$tag1} = $f12;
-      $tag12m->{$tag1} = $tag2;
+    $tag1i->{$tag1}{freq} += $f12 if ($tag1 ne $eval->{unknown1});
+    $tag2i->{$tag2}{freq} += $f12;
+
+    ##-- record number unknowns for tag2, but don't consider them for best-match
+    if ($tag1 eq $eval->{unknown1}) {
+      $tag2i->{$tag2}{nunknown} += $f12;
+      next;
     }
 
-    $tb = $tag21b->{$tag2};
-    if (!$tb || $f12 > $tb) {
-      $tag21b->{$tag2} = $f12;
-      $tag21m->{$tag2} = $tag1;
+    $fbest = $tag1i->{$tag1}{fbest};
+    if (!$fbest || $f12 > $fbest) {
+      $tag1i->{$tag1}{fbest} = $f12;
+      $tag1i->{$tag1}{tbest} = $tag2;
+    }
+    $fbest = $tag2i->{$tag2}{fbest};
+    if (!$fbest || $f12 > $fbest) {
+      $tag2i->{$tag2}{fbest} = $f12;
+      $tag2i->{$tag2}{tbest} = $tag1;
     }
   }
 
-  my $precision = 0;
-  $precision += $_ foreach (values(%$tag12b));
-  $eval->{precision} = $precision = $precision / $eval->{ntoks};
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision,recall: get number of matching classes
+  my ($tbest);
+  while (($tag1,$tagi)=each(%$tag1i)) {
+    $tagi->{nbesti} = 0;
+    $tagi->{nunknown} = 0;
+    $tag2i->{$tagi->{tbest}}{nbesti}++;
+  }
+  while (($tag2,$tagi)=each(%$tag2i)) {
+    $tagi->{nbesti} = 0 if (!$tagi->{nbesti});
+    $tagi->{nunknown} = 0 if (!$tagi->{nunknown});
+    $tag1i->{$tagi->{tbest}}{nbesti}++;
+  }
 
-  my $recall = 0;
-  $recall += $_ foreach (values(%$tag21b));
-  $eval->{recall} = $recall = $recall / $eval->{ntoks};
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision,recall: distribute unknowns among matching tag1s
+  while (($tag1,$tagi)=each(%$tag1i)) {
+    $tbest = $tagi->{tbest};
+    $tagi->{nunknown} += $tag2i->{$tbest}{nunknown} / $tag2i->{$tbest}{nbesti};
+  }
 
-  my $F = $eval->{F} = pr2F(@$eval{qw(precision recall)});
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision,recall: get {meta_ncor*},{meta_ninc*}
+  my ($ncor,$ninc);
+  while (($tag1,$tagi)=each(%$tag1i)) {
+    #next if ($tag1 eq $eval->{unknown1}); ##-- ignore unknowns (shouldn't be here anyway)
+    $ncor = $tagi->{meta_ncor12} = $tagi->{fbest};
+    $ninc = $tagi->{meta_ninc12} = ($tag1d->{nz}{$tag1} - $ncor) + $tagi->{nunknown};
+    if (defined($tbest=$tagi->{tbest})) {
+      $tag2i->{$tbest}{meta_ncor12} += $ncor;
+      $tag2i->{$tbest}{meta_ninc12} += $ninc;
+    }
+  }
+  while (($tag2,$tagi)=each(%$tag2i)) {
+    $ncor = $tagi->{meta_ncor21} = $tagi->{fbest};
+    $ninc = $tagi->{meta_ninc21} = $tag2d->{nz}{$tag2} - $ncor; ##-- unknowns are already handled here
+    if (defined($tbest=$tagi->{tbest})) {
+      $tag1i->{$tbest}{meta_ncor21} += $ncor;
+      $tag1i->{$tbest}{meta_ninc21} += $ninc;
+    }
+  }
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision,recall: get breakdown precision, recall
+  while (($tag1,$tagi)=each(%$tag1i)) {
+    ##-- ensure everything is defined
+    foreach (qw(meta_ncor12 meta_ninc12 meta_ncor21 meta_ninc21)) {
+      $tagi->{$_}=0 if (!defined($tagi->{$_}));
+    }
+    ##-- compute precision, recall
+    $pr = $tagi->{meta_precision} = frac($tagi->{meta_ncor12}, $tagi->{meta_ncor12}+$tagi->{meta_ninc12});
+    $rc = $tagi->{meta_recall}    = frac($tagi->{meta_ncor21}, $tagi->{meta_ncor21}+$tagi->{meta_ninc21});
+    $F  = $tagi->{meta_F}         = pr2F($pr,$rc);
+  }
+  while (($tag2,$tagi)=each(%$tag2i)) {
+    ##-- ensure everything is defined
+    foreach (qw(meta_ncor12 meta_ninc12 meta_ncor21 meta_ninc21)) {
+      $tagi->{$_}=0 if (!defined($tagi->{$_}));
+    }
+    ##-- compute precision, recall
+    $pr = $tagi->{meta_precision} = frac($tagi->{meta_ncor12}, $tagi->{meta_ncor12}+$tagi->{meta_ninc12});
+    $rc = $tagi->{meta_recall}    = frac($tagi->{meta_ncor21}, $tagi->{meta_ncor21}+$tagi->{meta_ninc21});
+    $F  = $tagi->{meta_F}         = pr2F($pr,$rc);
+  }
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision,recall: get totals
+  $ncor=0;
+  while (($tag1,$tagi)=each(%$tag1i)) { $ncor += $tagi->{meta_ncor12}; }
+  $pr = $eval->{meta_precision} = frac($ncor, $ftotal);
+
+  $ncor=0;
+  while (($tag2,$tagi)=each(%$tag2i)) { $ncor += $tagi->{meta_ncor21}; }
+  $rc = $eval->{meta_recall} = frac($ncor, $ftotal);
+
+  $eval->{meta_F} = pr2F($pr,$rc);
+
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## tag-wise precision, recall (Sch"utze-style)
+  ##  + adds \%tag2i values for $tag2:
+  ##    (
+  ##     avg_ncor => $avg_ncorrect,
+  ##     avg_ncor => $avg_nincorrect,
+  ##
+  ##     avg_precision=>$avg_pr,
+  ##     avg_recall=>$avg_recall,
+  ##     avg_F=>$avg_F,
+  ##    )
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-  my $g2i   = $eval->{g2i}   = {}; ##-- $tag2 => [ $tag1 : bestmatch($tag1) = $tag2 ] = bestmatch^{-1}($tag2)
-  my $t2nc  = $eval->{t2nc}  = {}; ##-- $tag2 => | bestmatch^{-1}($tag2) |
+  ##-- get total number of tag2-types
+  my @tags2 = keys(%$tag2i);
 
-  ##-- best-tag sets (best gold-tag(2) for each induced-tag(1), indexed by gold-tag)
-  while (($tag1,$tag2)=each(%$tag12m)) {
-    $g2i->{$tag2} = [] if (!defined($g2i->{$tag2}));
-    push(@{$g2i->{$tag2}}, $tag1);
-
-    $t2nc->{$tag2}++;
-  }
-
-  my $t1f   = $eval->{t1f}   = {}; ##-- $tag1 => f($tag1)
-  my $t2f   = $eval->{t2f}   = {}; ##-- $tag2 => f($tag2)
-  my $t2cor = $eval->{t2cor} = {}; ##-- $tag2 => \sum_{$tag1 : bestmatch($tag1)==$tag2} f($tag1, $tag2)
-  my $t2inc = $eval->{t2inc} = {}; ##-- $tag2 => \sum_{$tag1 : bestmatch($tag1)==$tag2} f($tag1,!$tag2)
-  my @tags2 = keys(%$tag21b);
-
+  ##-- get number of correct, incorrect assignments
   my ($besttag2);
-  while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
+  while (($tag12,$f12)=each(%{$jdist->{nz}})) {
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
-    $t1f->{$tag1} += $f12;
-    $t2f->{$tag2} += $f12;
 
     ##-- ensure everything is defined
-    $t1f->{$tag1}  = 0 if (!defined($t1f->{$tag1}));
-    $t2f->{$tag2}  = 0 if (!defined($t2f->{$tag2}));
-    $t2nc->{$tag2} = 0 if (!defined($t2nc->{$tag2}));
-    $t2cor->{$tag2} = 0 if (!defined($t2cor->{$tag2}));
-    $t2inc->{$tag2} = 0 if (!defined($t2inc->{$tag2}));
+    $tagi = $tag2i->{$tag2};
+    $tagi->{avg_ncor} = 0 if (!defined($tagi->{avg_ncor}));
+    $tagi->{avg_ninc} = 0 if (!defined($tagi->{avg_ninc}));
 
-    $besttag2 = $tag12m->{$tag1};
+    ##-- get best_{1->2}(tag1)
+    $besttag2 = $tag1i->{$tag1}{tbest};
 
-    if ($tag1 eq '@UNKNOWN') {
-      ##-- unknown tag1: distribute 'incorrect' among all tags
-      $t2inc->{$_} += $f12/@tags2 foreach (@tags2);
+    if ($tag1 eq $eval->{unknown1}) {
+      ##-- unknown tag1: distribute 'incorrect' among all tag2s
+      $tag2i->{$_}{avg_ninc} += $f12/@tags2 foreach (@tags2);
       next;
     }
     elsif (!defined($besttag2)) {
-      ##-- no best gold-tag for induced-tag $tag1: complain
+      ##-- no best $tag2 (gold) for $tag1 (induced): complain
       carp(ref($eval),"::finish(): no best gold-tag for induced-tag '$tag1' -- using empty string");
       $besttag2 = ''; ##--> inconsistent (tag1==UNKNOWN)
     }
 
     if ($besttag2 eq $tag2) {
-      $t2cor->{$tag2} += $f12;
+      $tag2i->{$tag2}{avg_ncor} += $f12;
     } else {
-      $t2inc->{$besttag2} += $f12; ##--> inconsistent results when ($besttag2 eq '')
+      $tag2i->{$tag2}{avg_ninc} += $f12; ##--> inconsistent results when ($besttag2 eq '') [?]
     }
   }
 
-  ##-- precision, recall (by tag)
-  my $t2pr  = $eval->{t2pr}  = {}; ##-- $tag2 => precision($tag2) = correct($tag2) / (correct($tag2)+incorrect($tag2))
-  my $t2rc  = $eval->{t2rc}  = {}; ##-- $tag2 => recall($tag2)    = correct($tag2) / f($tag2)
-  my $t2F   = $eval->{t2F}   = {}; ##-- $tag2 => F($tag2)         = 1/( .5*1/$p + .5*1/$r ) = 2/($p**-1 + $r**-1)
-  my ($ftag2,$ncor,$ninc, $avg_pr,$avg_rc, $total_cor,$total_inc,$total_f);
-  while (($tag2,$ftag2)=each(%$t2f)) {
-    $ncor = $t2cor->{$tag2};
-    $ninc = $t2inc->{$tag2};
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## Average precision, recall: breakdown by tag2
+  my ($ftag2);
+  while (($tag2,$tagi)=each(%$tag2i)) {
+    $ncor  = $tagi->{avg_ncor};
+    $ninc  = $tagi->{avg_ninc};
+    $ftag2 = $tag2d->{nz}{$tag2};
 
-    $t2pr->{$tag2} = ($ncor+$ninc ? ($ncor / ($ncor + $ninc)) : 0);
-    $t2rc->{$tag2} = ($ftag2      ? ($ncor / $ftag2)          : 0);
-    $t2F->{$tag2}  = pr2F($t2pr->{$tag2}, $t2rc->{$tag2});
-
-    $avg_pr += $t2pr->{$tag2};
-    $avg_rc += $t2rc->{$tag2};
-
-    $total_cor += $ncor;
-    $total_inc += $ninc;
-    $total_f   += $ftag2;
+    $pr = $tagi->{avg_precision} = frac($ncor, $ncor+$ninc);
+    $rc = $tagi->{avg_recall}    = frac($ncor, $ftag2);
+    $F  = $tagi->{avg_F}         = pr2F($pr,$rc);
   }
-  $avg_pr /= scalar(keys(%$t2f));
-  $avg_rc /= scalar(keys(%$t2f));
-  @$eval{qw(avg_precision avg_recall avg_F)} = ($avg_pr, $avg_rc, pr2F($avg_pr,$avg_rc));
-  $eval->{total_precision} = $total_cor / ($total_cor + $total_inc);
-  $eval->{total_recall}    = $total_cor / ($total_cor + $total_f);
-  $eval->{total_F}         = pr2F($eval->{total_precision}, $eval->{total_recall});
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## Average precision, recall: total average
+  my $avg_pr = 0;
+  my $avg_rc = 0;
+  while (($tag2,$tagi)=each(%$tag2i)) {
+    $avg_pr += $tagi->{avg_precision};
+    $avg_rc += $tagi->{avg_recall};
+  }
+  $avg_pr /= scalar(@tags2);
+  $avg_rc /= scalar(@tags2);
+  @$eval{qw(avg_precision avg_recall avg_F)} = ($avg_pr, $avg_rc, pr2F($avg_pr, $avg_rc));
+
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## weighted tag-wise precision, recall (pseudo-Sch"utze-style)
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   my $wa_pr = 0;
   my $wa_rc = 0;
-  while (($tag2,$ftag2)=each(%$t2f)) {
-    $wa_pr += ($ftag2/$ftotal) * $t2pr->{$tag2};
-    $wa_rc += ($ftag2/$ftotal) * $t2rc->{$tag2};
+  while (($tag2,$ftag2)=each(%{$tag2d->{nz}})) {
+    $wa_pr += ($ftag2/$ftotal) * $tag2i->{$tag2}{avg_precision};
+    $wa_rc += ($ftag2/$ftotal) * $tag2i->{$tag2}{avg_recall};
   }
   @$eval{qw(wavg_precision wavg_recall wavg_F)} = ($wa_pr,$wa_rc, pr2F($wa_pr,$wa_rc));
 
@@ -307,7 +414,7 @@ sub finish {
   my ($npairs12);
   while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
-    if ($tag1 eq '@UNKNOWN') {
+    if ($tag1 eq $eval->{unknown1}) {
       ##-- UNKNOWN tag1 is always bad
       $pair_tp1->{$tag1}  = 0;
       $pair_tp2->{$tag2} += 0;
@@ -321,18 +428,18 @@ sub finish {
 
   my ($pair_tp,$pair_fp,$pair_fn) = (0,0,0);
   my $pair_fp1 = $eval->{pair_fp} = {}; ##-- false positives by $tag1: $tag1=>fp($tag1)
-  my $pair_fn2 = $eval->{pair_fn} = {}; ##-- false negatives by $tag2: $tag1=>fn($tag2)
+  my $pair_fn2 = $eval->{pair_fn} = {}; ##-- false negatives by $tag2: $tag2=>fn($tag2)
   my $pair_pr1 = $eval->{pair_pr1} = {};
   my $pair_rc2 = $eval->{pair_rc2} = {};
   my ($ntp, $npairs1, $npairs2, $tp);
   while (($tag1,$tp)=each(%$pair_tp1)) {
-    $npairs1 = npairs($t1f->{$tag1});
+    $npairs1 = npairs($tag1d->{nz}{$tag1});
     $pair_fp += $pair_fp1->{$tag1} = $npairs1-$tp;
     $pair_tp += $tp;
     $pair_pr1->{$tag1} = $npairs1 ? ($tp / $npairs1) : 0;
   }
   while (($tag2,$tp)=each(%$pair_tp2)) {
-    $npairs2 = npairs($t2f->{$tag2});
+    $npairs2 = npairs($tag2d->{nz}{$tag2});
     $pair_fn += $pair_fn2->{$tag2} = $npairs2-$tp;
     $pair_rc2->{$tag2} = $npairs2 ? ($tp / $npairs2) : 0;
   }
@@ -349,25 +456,25 @@ sub finish {
   my $npairs_total = npairs($ftotal);
   while (($tag1,$tp)=each(%$pair_tp1)) {
     ##-- weight by total number of pairs belonging to this tag1
-    #$npairs1 = npairs($t1f->{$tag1});
+    #$npairs1 = npairs($tag1d->{nz}{$tag1});
     #$wpair_pr += $npairs1/$npairs_total * $tp/$npairs1;
     ##    ^-- equiv ------v
     #$wpair_pr += $tp/$npairs_total;
     ##    ^-- NOT equiv --v
     ##-- weight by relative tag1 frequency
-    $npairs1 = npairs($t1f->{$tag1});
-    $wpair_pr += $t1f->{$tag1}/$ftotal * $tp/$npairs1 if ($npairs1);
+    $npairs1 = npairs($tag1d->{nz}{$tag1});
+    $wpair_pr += $tag1d->{nz}{$tag1}/$ftotal * $tp/$npairs1 if ($npairs1);
   }
   while (($tag2,$tp)=each(%$pair_tp2)) {
     ##-- weight by total number of pairs belonging to this tag2
-    #$npairs2 = npairs($t2f->{$tag2});
+    #$npairs2 = npairs($tag2d->{nz}{$tag2});
     #$wpair_pr += $npairs2/$npairs_total * $tp/$npairs2;
     ##    ^-- equiv ------v
     #$wpair_rc += $tp/$npairs_total;
     ##    ^-- NOT equiv --v
     ##-- weight by relative tag2 frequency
-    $npairs2 = npairs($t2f->{$tag2});
-    $wpair_rc += $t2f->{$tag2}/$ftotal * $tp/$npairs2 if ($npairs2);
+    $npairs2 = npairs($tag2d->{nz}{$tag2});
+    $wpair_rc += $tag2d->{nz}{$tag2}/$ftotal * $tp/$npairs2 if ($npairs2);
   }
   @$eval{qw(wpair_precision wpair_recall wpair_F)} = ($wpair_pr, $wpair_rc, pr2F($wpair_pr,$wpair_rc));
 
@@ -379,13 +486,13 @@ sub finish {
   my $log2 = log(2.0);
   while (($tag12,$f12)=each(%{$eval->{jdist}{nz}})) {
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12,2);
-    #next if ($tag1 eq '@UNKNOWN'); ##-- UNKNOWN tag1 is always bad
+    #next if ($tag1 eq $eval->{unknown1}); ##-- UNKNOWN tag1 is always bad
     $p12 = $f12/$ftotal;
-    $p1  = $t1f->{$tag1} / $ftotal;
-    $p2  = $t2f->{$tag2} / $ftotal;
+    $p1  = $tag1d->{nz}{$tag1} / $ftotal;
+    $p2  = $tag2d->{nz}{$tag2} / $ftotal;
     $p1  = 2**-64 if ($p12 != 0 && $p1==0); ##-- avoid singularities (should never happen)
     $p2  = 2**-64 if ($p12 != 0 && $p2==0); ##-- avoid singularities (should never happen)
-    if ($tag1 eq '@UNKNOWN') {
+    if ($tag1 eq $eval->{unknown1}) {
       ##-- hack: subtract MI for unknown $tag1
       $mi -= $p12 * log($p12 / ($p1 *$p2)) / $log2;
     } else {
@@ -393,6 +500,49 @@ sub finish {
     }
   }
   $eval->{mi} = $mi;
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## entropy
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my $fu      = $tag1d->{$eval->{unknown1}};
+  my $Hu12    = 0;
+  while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+    next if ($f12 <= 0);
+    ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
+    if ($tag1 eq $eval->{unknown1}) {
+      $Hu12 -= $f12/$ftotal * log($f12/$ftotal)/log(2);
+    }
+  }
+  ##-- get entropy contributions
+  my $pu  = $fu ? ($fu / $ftotal) : 0;
+  my $Hu1 = $pu ? (-$pu * log($pu)/log(2)) : 0;
+
+  ##-- get entropies
+  my $H1  = $tag1d->entropy();    ##-- H(1)
+  my $H2  = $tag2d->entropy();    ##-- H(2)
+  my $H12 = $jdist->entropy();    ##-- H(1,2)
+
+  my $H1g2 = $H12 - $H2;       ##-- ~ H(1|2)
+  my $H2g1 = $H12 - $H1;       ##-- ~ H(2|1)
+  my $I12  = $H1 + $H2 - $H12; ##-- ~ I(1;2)
+
+  ##-- pseudo-precision,recall
+  my ($prH,$rcH,$IH);
+
+  ##-- (considering *all* unknown-contributions)
+  $prH = 1-($H2g1+($Hu12-$Hu1)) / $H2;
+  $rcH = 1-($H1g2+($Hu12-0   )) / $H1;
+  #$IH  = ($I12 - ($Hu1 + 0 - $Hu12)) / $H12;
+  ##
+  ##-- (considering only unknown-contrib to H(2|1))
+  #$prH = 1-($H2g1+($Hu12-$Hu1)) / $H2;
+  #$rcH = 1-($H1g2             ) / $H1;
+  #$IH  = ($I12 - ($Hu1 + 0 - $Hu12)) / $H12;
+
+  ##-- (using F instead of I)
+  #$IH = 2/($prH**-1 + $rcH**-1);
+  #$IH = pr2F($prH,$rcH);
+  @$eval{qw(H_precision H_recall H_F)} = ($prH,$rcH,pr2F($prH,$rcH));
 
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -405,6 +555,8 @@ sub finish {
 
     ##-- store ambiguity data
     @$eval{qw(ntypes nanals1 nanals2)} = ($ntypes,$nanals1,$nanals2);
+    $eval->{arate1} = frac($nanals1, $ntypes);
+    $eval->{arate2} = frac($nanals2, $ntypes);
   }
 
   ##-- reset file reader
@@ -416,14 +568,22 @@ sub finish {
 ##======================================================================
 ## Utilities
 
+## $frac = frac($numerator,$denominator)
+##  + compute fraction $numerator/$denominator
+##  + returns 0 if $denominator==0
+sub frac { return $_[1] ? ($_[0]/$_[1]) : 0; }
+
 ## $F = pr2F($precision,$recall)
 ##  + compute harmonic average of precision and recall
+##  + returns 0 if either $precision or $recall is zero
 sub pr2F {
   my ($pr,$rc) = @_;
   return
-    2/($pr**-1 + $rc**-1) ##-- Schütze
-    #(2*$pr*$rc)/($pr+$rc)  ##-- Schulte im Walde (equivalent to Schütze)
-    ;
+    ($pr && $rc
+     ?  2/($pr**-1 + $rc**-1) ##-- Schütze
+     #? (2*$pr*$rc)/($pr+$rc)  ##-- Schulte im Walde (equivalent to Schütze)
+     ##--
+     : 0);
 }
 
 ## $npairs = npairs($n)
@@ -502,55 +662,20 @@ sub fromEval {
   ##-- duplicate some keys
   my @dup = (
 	     qw(label1 label2),
-	     qw(precision recall F),
-	     qw(avg_precision avg_recall avg_F),
-	     qw(wavg_precision wavg_recall wavg_F),
-	     qw(pair_precision pair_recall pair_F),
-	     qw(wpair_precision wpair_recall wpair_F),
-	     qw(mi),
-	     qw(total_precision total_recall total_F),
-	     qw(ntoks ntypes nanals1 nanals2),
-
-	     #'tag12m', ##-- $tag1=>$best_tag2_for_tag1,
-	     #'tag21m', ##-- $tag2=>$best_tag1_for_tag2,
-
-	     #'g2i',   ##-- $tag2=> [ $tag1 : bestmatch($tag1) == $tag2 ]
-	     #'t2f',   ##-- $tag2=>$freq{$tag2}
-	     #'t2nc',  ##-- $tag2=>$nclasses{$tag2}
-	     #'t2cor', ##-- $tag2=>$ncorrect{$tag2}
-	     #'t2inc', ##-- $tag2=>$nincorrect{$tag2},
-	     #'t2pr',  ##-- $tag2=>$precision{$tag2},
-	     #'t2rc',  ##-- $tag2=>$recall{$tag2},
-	     #'t2F',   ##-- $tag2=>$F{$tag2} == 1/( .5*1/$pr + .5*1/$rc ) == 2/($pr**-1 + $rc**-1)
+	     qw(tag1i tag2i),
+	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2),
+	     (map { "meta_$_" } qw(precision recall F)),
+	     (map { "avg_$_" } qw(precision recall F)),
+	     (map { "wavg_$_" } qw(precision recall F)),
+	     (map { "pair_$_" } qw(precision recall F)),
+	     (map { "wpair_$_" } qw(precision recall F)),
+	     ('mi', map { "H_$_" } qw(precision recall F)),
 	    );
   @$esum{@dup} = @$eval{@dup};
 
-  ##-- generate new keys: ambiguity info
-  my ($tag2);
-  $esum->{tag2info} = {
-		       map {
-			 $_=>{
-			      (
-			       freq=>$eval->{t2f}{$_},
-			       nclasses=>$eval->{t2nc}{$_},
-			       correct=>$eval->{t2cor}{$_},
-			       incorrect=>$eval->{t2inc}{$_},
-			       pr=>$eval->{t2pr}{$_},
-			       rc=>$eval->{t2rc}{$_},
-			       F=>$eval->{t2F}{$_},
-			       ##--
-			       pair_rc=>$eval->{pair_rc2}{$_},
-			      )
-			     }
-		       } keys(%{$eval->{t2f}})
-		      };
-
-  ##-- generate new keys: meta-F
-  #$esum->{F} = 2.0/($eval->{precision}**-1 + $eval->{recall}**-1);
-
-  ##-- generate new keys: ambiguity rates
-  $esum->{arate1} = $eval->{nanals1}/$eval->{ntypes} if ($eval->{ntypes});
-  $esum->{arate2} = $eval->{nanals2}/$eval->{ntypes} if ($eval->{ntypes});
+  ##-- compatibility
+  @$esum{qw(precision recall F)}                   = @$esum{qw(meta_precision meta_recall meta_F)};
+  @$esum{qw(total_precision total_recall total_F)} = @$esum{qw(meta_precision meta_recall meta_F)};
 
   return $esum;
 }
@@ -581,30 +706,13 @@ sub saveNativeFh {
      "\$wpair_recall=$esum->{wpair_recall};\n",
      "",
      "\$mi=$esum->{mi};\n",
-     #"",
-     #"\$total_precision=$esum->{total_precision};\n",
-     #"\$total_recall=$esum->{total_recall};\n",
+     "\$H_precision=$esum->{H_precision};\n",
+     "\$H_recall=$esum->{H_recall};\n",
 
      (defined($esum->{ntypes})  ? "\$ntypes=$esum->{ntypes};\n" : qw()),
      (defined($esum->{nanals1}) ? "\$nanals1=$esum->{nanals1};\n" : qw()),
      (defined($esum->{nanals2}) ? "\$nanals2=$esum->{nanals2};\n" : qw()),
 
-     "\$tag2info={\n",
-     (map {
-       (sprintf(" %8s=>{", "\'$_\'"),
-	join(', ',
-	     sprintf("freq=>%5d", $esum->{tag2info}{$_}{freq}),
-	     sprintf("nclasses=>%3d", $esum->{tag2info}{$_}{nclasses}),
-	     sprintf("correct=>%5d", $esum->{tag2info}{$_}{correct}),
-	     sprintf("incorrect=>%5d", $esum->{tag2info}{$_}{incorrect}),
-	     sprintf("pr=>%0.4f", $esum->{tag2info}{$_}{pr}),
-	     sprintf("rc=>%0.4f", $esum->{tag2info}{$_}{rc}),
-	     sprintf("F =>%0.4f", $esum->{tag2info}{$_}{F}),
-	     sprintf("pair_rc =>%0.4f", $esum->{tag2info}{$_}{pair_rc}),
-	    ),
-	"},\n")
-     } sort(keys(%{$esum->{tag2info}}))),
-     "  };\n",
      "##", ("-" x 78), "\n",
      "## ", ref($esum), " Summary\n",
      "## Identifiers:\n",
@@ -627,9 +735,9 @@ sub saveNativeFh {
 
      "##\n",
 
-     "## Meta-Precision           : ", sprintf("%6.2f %%", 100*$esum->{precision}), "\n",
-     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*$esum->{recall}), "\n",
-     "## Meta F                   : ", sprintf("%6.2f %%", 100*$esum->{F}), "\n",
+     "## Meta-Precision           : ", sprintf("%6.2f %%", 100*$esum->{meta_precision}), "\n",
+     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*$esum->{meta_recall}), "\n",
+     "## Meta F                   : ", sprintf("%6.2f %%", 100*$esum->{meta_F}), "\n",
      "##\n",
      "## Avg tag2-Precision       : ", sprintf("%6.2f %%", 100*$esum->{avg_precision}), "\n",
      "## Avg tag2-Recall          : ", sprintf("%6.2f %%", 100*$esum->{avg_recall}), "\n",
@@ -647,10 +755,9 @@ sub saveNativeFh {
      "## WPair Recall             : ", sprintf("%6.2f %%", 100*$esum->{wpair_recall}), "\n",
      "## WPair F                  : ", sprintf("%6.2f %%", 100*$esum->{wpair_F}), "\n",
      "##\n",
-     "## Total Precision          : ", sprintf("%6.2f %%", 100*$esum->{total_precision}), "\n",
-     "## Total Recall             : ", sprintf("%6.2f %%", 100*$esum->{total_recall}), "\n",
-     "## Total F                  : ", sprintf("%6.2f %%", 100*$esum->{total_F}), "\n",
-     "##\n",
+     "## H Precision              : ", sprintf("%6.2f %%", 100*$esum->{H_precision}), "\n",
+     "## H Recall                 : ", sprintf("%6.2f %%", 100*$esum->{H_recall}), "\n",
+     "## H F                      : ", sprintf("%6.2f %%", 100*$esum->{H_F}), "\n",
      "## Mutual Information       : ", sprintf("%6.2f", $esum->{mi}), "\n",
      "##", ("-" x 78), "\n",
      "1;\n",
