@@ -74,10 +74,11 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##
 ##     ##-- summary data: information-theoretic
 ##     ##    + where H_u(X) = entropy contribution of '@UNKNOWN' tag1 to H(X)
-##     mi=>$mi_bits,     ##-- I(tag1;tag2) [HACKED]
-##     H_precision=>$pr,        ##-- 1 - H(tag2|tag1)/H(tag2) - H_u(tag2|tag1)/H(tag2)
-##     H_recall=>$rc,        ##-- 1-(H(tag1|tag2)+H_u(tag1|tag2))/H(tag1)
-##     H_F=>$F,
+##     mi=>$mi_bits,       ##-- I(tag1;tag2) [HACKED modulo unknowns]
+##     H_precision=>$pr,   ##-- 1 - (H(tag2|tag1) + H_u(tag2|tag1))/H(tag2)
+##     H_recall=>$rc,      ##-- 1 - (H(tag1|tag2) + H_u(tag1|tag2))/H(tag1)
+##     H_I=>$I,            ##-- 1 - (I(X;Y) + I_u(X;Y))/H(X,Y)
+##     H_F=>$F,            ##-- F(H_pr,H_rc)
 ##
 sub new {
   my ($that,%args) = @_;
@@ -479,7 +480,7 @@ sub finish {
   @$eval{qw(wpair_precision wpair_recall wpair_F)} = ($wpair_pr, $wpair_rc, pr2F($wpair_pr,$wpair_rc));
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ## mutual informaion
+  ## mutual information (bits)
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   my ($p1,$p2,$p12);
   my $mi=0;
@@ -504,45 +505,47 @@ sub finish {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## entropy
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  my $fu      = $tag1d->{$eval->{unknown1}};
-  my $Hu12    = 0;
+  my $fu      = $tag1d->{nz}{$eval->{unknown1}};
+  my $pu  = $fu ? ($fu / $ftotal) : 0;
+  my $Hu1 = $pu ? (-$pu * log($pu)/log(2)) : 0;
+  my $Hu2 = 0;
+  my $Hu12 = 0;
+  my $Iu12 = 0;
   while (($tag12,$f12)=each(%{$jdist->{nz}})) {
     next if ($f12 <= 0);
     ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
     if ($tag1 eq $eval->{unknown1}) {
-      $Hu12 -= $f12/$ftotal * log($f12/$ftotal)/log(2);
+      $p12   = $f12/$ftotal;
+      $Hu12 -= $p12 * log($p12)/$log2;
+      $Iu12 += $p12 * log( $p12 / (($fu/$ftotal)*($tag2d->{nz}{$tag2}/$ftotal)) )/$log2;
     }
   }
-  ##-- get entropy contributions
-  my $pu  = $fu ? ($fu / $ftotal) : 0;
-  my $Hu1 = $pu ? (-$pu * log($pu)/log(2)) : 0;
 
   ##-- get entropies
   my $H1  = $tag1d->entropy();    ##-- H(1)
   my $H2  = $tag2d->entropy();    ##-- H(2)
   my $H12 = $jdist->entropy();    ##-- H(1,2)
 
-  my $H1g2 = $H12 - $H2;       ##-- ~ H(1|2)
-  my $H2g1 = $H12 - $H1;       ##-- ~ H(2|1)
-  my $I12  = $H1 + $H2 - $H12; ##-- ~ I(1;2)
+  ##-- get conditional entropies
+  my $H1g2 = $H12 - $H2;          ##-- ~ H(1|2)
+  my $H2g1 = $H12 - $H1;          ##-- ~ H(2|1)
+  my $I12  = $H1 + $H2 - $H12;    ##-- ~ I(1;2)
+
+  ##-- get unknown contributions to conditional entropies
+  my $Hu1g2 = $Hu12 - $Hu2;        ##-- ~ H_u(1|2)
+  my $Hu2g1 = $Hu12 - $Hu1;        ##-- ~ H_u(2|1)
+  my $Iu12a  = $Hu1 + $Hu2 - $Hu12; ##-- ~ I_u(1;2) ###-- NO!
 
   ##-- pseudo-precision,recall
   my ($prH,$rcH,$IH);
 
   ##-- (considering *all* unknown-contributions)
-  $prH = 1-($H2g1+($Hu12-$Hu1)) / $H2;
-  $rcH = 1-($H1g2+($Hu12-0   )) / $H1;
-  #$IH  = ($I12 - ($Hu1 + 0 - $Hu12)) / $H12;
-  ##
-  ##-- (considering only unknown-contrib to H(2|1))
-  #$prH = 1-($H2g1+($Hu12-$Hu1)) / $H2;
-  #$rcH = 1-($H1g2             ) / $H1;
-  #$IH  = ($I12 - ($Hu1 + 0 - $Hu12)) / $H12;
+  $prH = 1 - frac($H2g1 + $Hu2g1, $H2);
+  $rcH = 1 - frac($H1g2 + $Hu1g2, $H1);
+  $IH  =     frac($I12 - $Iu12,  $H12);
 
-  ##-- (using F instead of I)
-  #$IH = 2/($prH**-1 + $rcH**-1);
-  #$IH = pr2F($prH,$rcH);
-  @$eval{qw(H_precision H_recall H_F)} = ($prH,$rcH,pr2F($prH,$rcH));
+  @$eval{qw(H_precision H_recall H_F H_I)} = ($prH,$rcH,pr2F($prH,$rcH), $IH);
+
 
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -669,11 +672,11 @@ sub fromEval {
 	     (map { "wavg_$_" } qw(precision recall F)),
 	     (map { "pair_$_" } qw(precision recall F)),
 	     (map { "wpair_$_" } qw(precision recall F)),
-	     ('mi', map { "H_$_" } qw(precision recall F)),
+	     ('mi', map { "H_$_" } qw(precision recall I F)),
 	    );
   @$esum{@dup} = @$eval{@dup};
 
-  ##-- compatibility
+  ##-- compatibility hacks
   @$esum{qw(precision recall F)}                   = @$esum{qw(meta_precision meta_recall meta_F)};
   @$esum{qw(total_precision total_recall total_F)} = @$esum{qw(meta_precision meta_recall meta_F)};
 
@@ -708,6 +711,7 @@ sub saveNativeFh {
      "\$mi=$esum->{mi};\n",
      "\$H_precision=$esum->{H_precision};\n",
      "\$H_recall=$esum->{H_recall};\n",
+     "\$H_I=$esum->{H_I};\n",
 
      (defined($esum->{ntypes})  ? "\$ntypes=$esum->{ntypes};\n" : qw()),
      (defined($esum->{nanals1}) ? "\$nanals1=$esum->{nanals1};\n" : qw()),
@@ -758,7 +762,7 @@ sub saveNativeFh {
      "## H Precision              : ", sprintf("%6.2f %%", 100*$esum->{H_precision}), "\n",
      "## H Recall                 : ", sprintf("%6.2f %%", 100*$esum->{H_recall}), "\n",
      "## H F                      : ", sprintf("%6.2f %%", 100*$esum->{H_F}), "\n",
-     "## Mutual Information       : ", sprintf("%6.2f", $esum->{mi}), "\n",
+     "## H I                      : ", sprintf("%6.2f %%", 100*$esum->{H_I}), "\n",
      "##", ("-" x 78), "\n",
      "1;\n",
     );

@@ -30,8 +30,8 @@ our @_eval_base_fields =
 
    ##-- MI,H (token-wise)
    qw(mi:g mi:t),
-   qw(Hpr:g Hrc:g HF:g),
-   qw(Hpr:t Hrc:t HF:t),
+   qw(Hpr:g Hrc:g HF:g HI:g),
+   qw(Hpr:t Hrc:t HF:t HI:t),
 
    ##-- Average tag2 (Schütze-style)
    qw(apr:g arc:g aF:g),
@@ -119,14 +119,14 @@ our %FIELDS =
 		    ],
    'summarizeResults'=>[
 			qw(*:pr:g pr:g),
-			qw(*:rc:g rc:g),
-			qw(*:F:g  F:g),
-			#qw(*:apr:g apr:g   *:arc:g arc:g  *:aF:g aF:g),
+			qw(+:rc:g rc:g),
+			qw(~:F:g  F:g),
+			#qw(*:apr:g apr:g   *:arc:g arc:g  ~:aF:g aF:g),
 			#qw(ar:g),
 			'|',
 			qw(*:pr:t pr:t),
-			qw(*:rc:t rc:t),
-			qw(*:F:t  F:t),
+			qw(+:rc:t rc:t),
+			qw(~:F:t  F:t),
 			#qw(ar:t),
 		       ],
 
@@ -144,38 +144,40 @@ our %FIELDS =
 
    ##-- Results: MetaProfile: meta-(pr,rc,F)
    'mpresults' => [
-		   qw(*:pr:g pr:g *:rc:g rc:g *:F:g F:g), '|',
-		   qw(*:pr:t pr:t *:rc:t rc:t *:F:t F:t),
+		   qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g), '|',
+		   qw(*:pr:t pr:t +:rc:t rc:t ~:F:t F:t),
 		  ],
 
    ##-- Results: MetaProfile: H-(pr,rc,F)
    'mpresults:H' => [
-		     qw(*:Hpr:g Hpr:g *:Hrc:g Hrc:g *:HF:g HF:g), '|',
-		     qw(*:Hpr:t Hpr:t *:Hrc:t Hrc:t *:HF:t HF:t),
+		     #qw(*:Hpr:g Hpr:g *:Hrc:g Hrc:g *:HI:g HI:g ~:HF:g HF:g), '|',
+		     #qw(*:Hpr:t Hpr:t *:Hrc:t Hrc:t *:HI:t HI:t ~:HF:t HF:t),
+		     qw(*:Hpr:g Hpr:g +:Hrc:g Hrc:g ~:HF:g HF:g), '|',
+		     qw(*:Hpr:t Hpr:t +:Hrc:t Hrc:t ~:HF:t HF:t),
 		    ],
 
    ##-- Results: MetaProfile: avg-(pr,rc,F)
    'mpresults:a' => [
-		     qw(*:apr:g apr:g *:arc:g arc:g *:aF:g aF:g), '|',
-		     qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
+		     qw(*:apr:g apr:g +:arc:g arc:g ~:aF:g aF:g), '|',
+		     qw(*:apr:t apr:t +:arc:t arc:t ~:aF:t aF:t),
 		    ],
 
    ##-- Results: MetaProfile: weighted avg-(pr,rc,F)
    'mpresults:wa' => [
-		      qw(*:wapr:g wapr:g *:warc:g warc:g *:waF:g waF:g), '|',
-		      qw(*:wapr:t wapr:t *:warc:t warc:t *:waF:t waF:t),
+		      qw(*:wapr:g wapr:g +:warc:g warc:g ~:waF:g waF:g), '|',
+		      qw(*:wapr:t wapr:t +:warc:t warc:t ~:waF:t waF:t),
 		     ],
 
    ##-- Results: MetaProfile: weighted pair-(pr,rc,F)
    'mpresults:p' => [
-		     qw(*:ppr:g ppr:g *:prc:g prc:g *:pF:g pF:g), '|',
-		     qw(*:ppr:t ppr:t *:prc:t prc:t *:pF:t pF:t),
+		     qw(*:ppr:g ppr:g +:prc:g prc:g ~:pF:g pF:g), '|',
+		     qw(*:ppr:t ppr:t +:prc:t prc:t ~:pF:t pF:t),
 		    ],
 
    ##-- Results: MetaProfile: weighted weighted-pair-(pr,rc,F)
    'mpresults:wp' => [
-		      qw(*:wppr:g wppr:g *:wprc:g wprc:g *:wpF:g wpF:g), '|',
-		      qw(*:wppr:t wppr:t *:wprc:t wprc:t *:wpF:t wpF:t),
+		      qw(*:wppr:g wppr:g +:wprc:g wprc:g ~:wpF:g wpF:g), '|',
+		      qw(*:wppr:t wppr:t +:wprc:t wprc:t ~:wpF:t wpF:t),
 		     ],
 
    ##-- Results: MetaProfile: meta-(pr,rc,F): vs. previous stage
@@ -187,9 +189,9 @@ our %FIELDS =
    ##-- Results: MetaProfile: meta-(pr,rc,F): vs. max(stage)
    'mpresults:e-' => [
 		       qw(*:pr:g pr:g e-max:pr:g:stg(title=e-max)), '|',
-		       qw(*:rc:g rc:g e-max:rc:g:stg(title=e-max)), '/',
+		       qw(+:rc:g rc:g e-max:rc:g:stg(title=e-max)), '/',
 		       qw(*:pr:t pr:t e-max:pr:t:stg(title=e-max)), '|',
-		       qw(*:rc:t rc:t e-max:rc:t:stg(title=e-max)),
+		       qw(+:rc:t rc:t e-max:rc:t:stg(title=e-max)),
 		      ],
 
    ##-- table: variants: EM
@@ -217,13 +219,13 @@ our %FIELDS =
 			  ],
    'emresults:Max'     => [
 			  '*:pr:g',  'pr:g', 'e-max:pr:g:stg(title=e-Max)', '|',
-			  '*:rc:g', 'rc:g', 'e-max:rc:g:stg(title=e-Max)', '|',
-			  '*:F:g', 'F:g', 'e-max:F:g:stg(title=e-Max)',
+			  '+:rc:g', 'rc:g', 'e-max:rc:g:stg(title=e-Max)', '|',
+			  '~:F:g', 'F:g', 'e-max:F:g:stg(title=e-Max)',
 			  ],
    'emresults:MAX'     => [
 			  '*:pr:g',  'pr:g', 'e-max:pr:g:corpus(title=e-MAX)', '|',
-			  '*:rc:g', 'rc:g', 'e-max:rc:g:corpus(title=e-MAX)', '|',
-			  '*:F:g', 'F:g', 'e-max:F:g:corpus(title=e-MAX)',
+			  '+:rc:g', 'rc:g', 'e-max:rc:g:corpus(title=e-MAX)', '|',
+			  '~:F:g', 'F:g', 'e-max:F:g:corpus(title=e-MAX)',
 			  ],
 
    'emresults:emi' => [qw(*:pr:g pr:g e+pemi:pr:g | *:pr:t pr:t e+pemi:pr:t)],
@@ -238,16 +240,16 @@ our %FIELDS =
 			  ],
 
    'emresults:a'   => [
-		       qw(*:apr:g apr:g *:arc:g arc:g *:aF:g aF:g), '|',
-		       qw(*:apr:t apr:t *:arc:t arc:t *:aF:t aF:t),
+		       qw(*:apr:g apr:g +:arc:g arc:g ~:aF:g aF:g), '|',
+		       qw(*:apr:t apr:t +:arc:t arc:t ~:aF:t aF:t),
 		      ],
    'emresults:a:max' => [
 			 qw(*:apr:g apr:g e+pemi:apr:g(title=e+pemi) e-max:apr:g:emi(title=e-max)), '|',
 			 qw(*:apr:t apr:t e+pemi:apr:t(title=e+pemi) e-max:apr:t:emi(title=e-max)),
 			],
    'emresults:wa'   => [
-			qw(*:wapr:g wapr:g *:warc:g warc:g *:waF:g waF:g), '|',
-			qw(*:wapr:t wapr:t *:warc:t warc:t *:waF:t waF:t),
+			qw(*:wapr:g wapr:g +:warc:g warc:g ~:waF:g waF:g), '|',
+			qw(*:wapr:t wapr:t +:warc:t warc:t ~:waF:t waF:t),
 		       ],
    'emresults:wa:max' => [
 			 qw(*:wapr:g wapr:g e+pemi:wapr:g(title=e+pemi) e-max:wapr:g:emi(title=e-max)), '|',
@@ -255,18 +257,18 @@ our %FIELDS =
 			],
    'emresults:wa:Max' => [
 			  '*:wapr:g',  'wapr:g', 'e-max:wapr:g:stg(title=e-Max)', '|',
-			  '*:warc:g', 'warc:g', 'e-max:warc:g:stg(title=e-Max)', '|',
-			  '*:waF:g', 'waF:g', 'e-max:waF:g:stg(title=e-Max)',
+			  '+:warc:g', 'warc:g', 'e-max:warc:g:stg(title=e-Max)', '|',
+			  '~:waF:g', 'waF:g', 'e-max:waF:g:stg(title=e-Max)',
 			],
    'emresults:wa:MAX' => [
 			  '*:wapr:g',  'wapr:g', 'e-max:wapr:g:corpus(title=e-MAX)', '|',
-			  '*:warc:g', 'warc:g', 'e-max:warc:g:corpus(title=e-MAX)', '|',
-			  '*:waF:g', 'waF:g', 'e-max:waF:g:corpus(title=e-MAX)',
+			  '+:warc:g', 'warc:g', 'e-max:warc:g:corpus(title=e-MAX)', '|',
+			  '~:waF:g', 'waF:g', 'e-max:waF:g:corpus(title=e-MAX)',
 			],
 
    'emresults:p'   => [
-		       qw(*:ppr:g ppr:g *:prc:g prc:g *:pF:g pF:g), '|',
-		       qw(*:ppr:t ppr:t *:prc:t prc:t *:pF:t pF:t),
+		       qw(*:ppr:g ppr:g +:prc:g prc:g ~:pF:g pF:g), '|',
+		       qw(*:ppr:t ppr:t +:prc:t prc:t ~:pF:t pF:t),
 		      ],
    'emresults:p:max' => [
 			 '*:ppr:g', 'wppr:g', 'e+pemi:ppr:g(title=e+pemi)', 'e-max:ppr:g:emi(title=e-max)', '|',
@@ -274,19 +276,19 @@ our %FIELDS =
 			],
    'emresults:p:Max' => [
 			  '*:ppr:g', 'wppr:g', 'e-max:ppr:g:stg(title=e-Max)', '|',
-			  '*:prc:g', 'wprc:g', 'e-max:prc:g:stg(title=e-Max)', '|',
-			  '*:pF:g',  'wpF:g',  'e-max:pF:g:stg(title=e-Max)',
+			  '+:prc:g', 'wprc:g', 'e-max:prc:g:stg(title=e-Max)', '|',
+			  '~:pF:g',  'wpF:g',  'e-max:pF:g:stg(title=e-Max)',
 			],
    'emresults:p:MAX' => [
 			  '*:ppr:g', 'wppr:g', 'e-max:ppr:g:corpus(title=e-MAX)', '|',
-			  '*:prc:g', 'wprc:g', 'e-max:prc:g:corpus(title=e-MAX)', '|',
-			  '*:pF:g',  'wpF:g',  'e-max:pF:g:corpus(title=e-MAX)',
+			  '+:prc:g', 'wprc:g', 'e-max:prc:g:corpus(title=e-MAX)', '|',
+			  '~:pF:g',  'wpF:g',  'e-max:pF:g:corpus(title=e-MAX)',
 			],
 
 
    'emresults:wp'   => [
-			'*:wppr:g', 'wppr:g', '*:wprc:g', 'wprc:g', '*:wpF:g', 'wpF:g', '|',
-			'*:wppr:t', 'wppr:t', '*:wprc:t', 'wprc:t', '*:wpF:t', 'wpF:t',
+			'*:wppr:g', 'wppr:g', '+:wprc:g', 'wprc:g', '~:wpF:g', 'wpF:g', '|',
+			'*:wppr:t', 'wppr:t', '+:wprc:t', 'wprc:t', '~:wpF:t', 'wpF:t',
 		       ],
    'emresults:wp:max' => [
 			  '*:wppr:g', 'wppr:g', 'e+pemi:wppr:g(title=e+pemi)', 'e-max:wppr:g:emi(title=e-max)', '|',
@@ -294,13 +296,13 @@ our %FIELDS =
 			],
    'emresults:wp:Max' => [
 			  '*:wppr:g', 'wppr:g', 'e-max:wppr:g:stg(title=e-Max)', '|',
-			  '*:wprc:g', 'wprc:g', 'e-max:wprc:g:stg(title=e-Max)', '|',
-			  '*:wpF:g',  'wpF:g',  'e-max:wpF:g:stg(title=e-Max)',
+			  '+:wprc:g', 'wprc:g', 'e-max:wprc:g:stg(title=e-Max)', '|',
+			  '~:wpF:g',  'wpF:g',  'e-max:wpF:g:stg(title=e-Max)',
 			],
    'emresults:wp:MAX' => [
 			  '*:wppr:g', 'wppr:g', 'e-max:wppr:g:corpus(title=e-MAX)', '|',
-			  '*:wprc:g', 'wprc:g', 'e-max:wprc:g:corpus(title=e-MAX)', '|',
-			  '*:wpF:g',  'wpF:g',  'e-max:wpF:g:corpus(title=e-MAX)',
+			  '+:wprc:g', 'wprc:g', 'e-max:wprc:g:corpus(title=e-MAX)', '|',
+			  '~:wpF:g',  'wpF:g',  'e-max:wpF:g:corpus(title=e-MAX)',
 			],
 
 
@@ -479,11 +481,13 @@ our %FIELDS =
    'Hpr:g'  => { path=>[qw(eval_global H_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hpr:g'},
    'Hrc:g'  => { path=>[qw(eval_global H_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hrc:g'},
    'HF:g'   => { path=>[qw(eval_global H_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HF:g' },
+   'HI:g'   => { path=>[qw(eval_global H_I)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HI:g' },
 
    'mi:t'  => { path=>[qw(eval_targets mi)],       n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' mi:t' },
    'Hpr:t'  => { path=>[qw(eval_targets H_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hpr:t'},
    'Hrc:t'  => { path=>[qw(eval_targets H_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hrc:t'},
    'HF:t'   => { path=>[qw(eval_targets H_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HF:t' },
+   'HI:t'   => { path=>[qw(eval_targets H_I)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HI:t' },
 
 
    ##-------------------------------------------------

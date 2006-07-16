@@ -717,6 +717,41 @@ sub actMake {
 }
 
 ##---------------------------------------------------------------
+## Actions: re-acquire
+
+$ACTIONS{reacquire} =
+  {
+   syntax=>'reacquire',
+   help=>'re-acquire data for selected configurations (may be faster than "acquire")',
+   code=>\&actReacquire,
+  };
+sub actReacquire {
+  my $mak = shift;
+  return 0 if (!$mak->ensureLoaded);
+  my $rc = 1;
+  my ($cfg);
+  my $fspec = 'stage,emi,auto';
+  my %makargs = (dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy});
+  my $mf_ls = $mak->fields($fspec, configs=>$mak->selectedConfigs);
+  my $xfields = $mf_ls->xfields;
+  my @xtitles = map { $_->{title} } @$xfields;
+  my ($fdata,$lskey);
+  foreach $cfg ($mak->sortSelection(sortby=>$fspec)) {
+    ($fdata) = $mf_ls->fieldData($cfg);
+    $lskey = $mak->listKey($fdata, @xtitles);
+    $mak->vmsg('info', ref($mak), "::actReacquire(): $lskey\n");
+    $rc &&= ($cfg->can('reacquire')
+	     ? $cfg->reacquire(%makargs)
+	     : $cfg->make(%makargs));
+    if (!$mak->{dummy}) {
+      $mak->syncCollection() if ($mak->{paranoid});
+    }
+  }
+  return $rc;
+}
+
+
+##---------------------------------------------------------------
 ## Actions: plot
 
 $ACTIONS{plot} =

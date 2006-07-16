@@ -102,6 +102,49 @@ sub acquire {
   return $cfg;
 }
 
+##======================================================================
+## Re-Acquire Data (call finish())
+
+## $bool = $cfg->reacquire(%args)
+##  + may be re-implemented in child classes for data re-acquisition
+sub reacquire {
+  my ($cfg,%args) = @_;
+
+  ##-- do chdir()
+  $cfg->pushd($args{dir});
+
+  ##-- get common data
+  my $mpdir = $cfg->{xvars}{mpdir};
+  my $stage = $cfg->{xvars}{stage};
+  my $tbase = $cfg->{xvars}{tbase};
+
+  ##-- re-acquire: global
+  my ($base,$eval,$esum);
+  $base = "$mpdir/stage${stage}.t-${tbase}.eval";
+  $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
+    or confess(ref($cfg),"::reacquire(): could not load global-eval file '$base.bin': $!");
+  $eval->finish();
+  $esum = $eval->summary();
+  $eval->saveFile("$base.bin");
+  $esum->saveFile("$base.summary.bin");
+  $cfg->{eval_global} = $esum;
+
+  ##-- re-acquire: targets
+  $base   = "$mpdir/stage${stage}.t-${tbase}.tgs.eval";
+  $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
+    or confess(ref($cfg),"::reacquire(): could not load targets-eval file '$base.bin': $!");
+  $eval->finish();
+  $esum = $eval->summary();
+  $eval->saveFile("$base.bin");
+  $esum->saveFile("$base.summary.bin");
+  $cfg->{eval_targets} = $esum;
+
+  ##-- pop chdir()
+  $cfg->popd();
+
+  return $cfg;
+}
+
 
 1;
 
