@@ -26,6 +26,8 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     tag1a => $tag1attr,     ##-- key(s) for 'tag1': used as $tok->attribute($key): default: 'tag'
 ##     tag2a => $tag2attr,     ##-- key(s) for 'tag2': used as $tok->attribute($key): default: '1'
 ##     do_ambig=>$bool,        ##-- whether to track ambiguity data
+##     do_rand=>$bool,         ##-- whether to compute Rand Index (default=no)
+##                             ##   + WARNING: quadratic in number of tokens!
 ##     unknown1=>$unk1,        ##-- unknown tag1 value (default='@UNKNOWN')
 ##
 ##     ##-- runtime data
@@ -35,6 +37,11 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     txts  => \%txt2undef,   ##-- word type pseudo-set
 ##     txttag1 => \%txttag1,   ##-- tok,tag1 pair pseudo-set
 ##     txttag2 => \%txttag2,   ##-- tok,tag2 pair pseudo-set
+##
+##     ##-- Rand Index (optional): runtime data
+##     randidx => {
+##                 objs=>[ $tok1_tag1,$tok1_tag2, ... ], ##-- list of all tokens encountered
+##                },
 ##
 ##     ##-- on finish()
 ##     tag12m => $map12,       ##-- map $tag1=>$tag2, # s.t. $tag2 = arg_{$tag2} max p($tag2|$tag1)
@@ -80,6 +87,9 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     H_I=>$I,            ##-- 1 - (I(X;Y) + I_u(X;Y))/H(X,Y)
 ##     H_F=>$F,            ##-- F(H_pr,H_rc)
 ##
+##     ##-- Summary data: Rand
+##     Rand  => $rand_index,        ##-- if $eval->{do_rand} is true
+##     RandA => $adjust_rand_index
 sub new {
   my ($that,%args) = @_;
   my $self = $that->SUPER::new(cr=>'MUDL::CorpusIO',
@@ -92,7 +102,14 @@ sub new {
 			       enum=>undef,
 			       unknown1=>'@UNKNOWN',
 			       do_ambig=>1,
+			       do_rand=>0,
 			       %args);
+
+  if ($self->{do_rand}) {
+    $self->{randidx}       = {} if (!$self->{randidx});
+    $self->{randidx}{objs} = [] if (!$self->{randidx}{objs});
+  }
+
   return $self;
 }
 
@@ -156,6 +173,11 @@ sub addSentence {
       ++$pr->{txt}{$txt};
       ++$pr->{txttag1}{$txt."\t".$tag1};
       ++$pr->{txttag2}{$txt."\t".$tag2};
+    }
+
+    ##-- Rand index
+    if ($pr->{do_rand}) {
+      push(@{$pr->{randidx}{objs}}, $tag1,$tag2);
     }
   }
 
@@ -371,7 +393,7 @@ sub finish {
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Average precision, recall: breakdown by tag2
-  my ($ftag2);
+  my ($ftag1,$ftag2);
   while (($tag2,$tagi)=each(%$tag2i)) {
     $ncor  = $tagi->{avg_ncor};
     $ninc  = $tagi->{avg_ninc};
@@ -538,15 +560,68 @@ sub finish {
 
   ##-- pseudo-precision,recall
   my ($prH,$rcH,$IH);
-
-  ##-- (considering *all* unknown-contributions)
-  $prH = 1 - frac($H2g1 + $Hu2g1, $H2);
-  $rcH = 1 - frac($H1g2 + $Hu1g2, $H1);
+  ##-- 1: (considering *all* unknown-contributions)
+  #$prH = 1 - frac($H2g1 + $Hu2g1, $H2);
+  #$rcH = 1 - frac($H1g2 + $Hu1g2, $H1);
+  #$IH  =     frac($I12 - $Iu12,  $H12);
+  ##
+  ##-- 2: ...adding unknowns to 'false (neg|pos)'
+  #$prH = frac(($H2 - $H2g1), ($H2 + $Hu2g1));
+  #$rcH = frac(($H1 - $H1g2), ($H1 + $Hu1g2));
+  #$IH  =     frac($I12 - $Iu12,  $H12);
+  ##
+  ##-- 3: ...subtracting unknowns from 'true pos' (as #1, above)
+  $prH = frac(($H2 - ($H2g1+$Hu2g1)), $H2);
+  $rcH = frac(($H1 - ($H1g2+$Hu1g2)), $H1);
   $IH  =     frac($I12 - $Iu12,  $H12);
 
   @$eval{qw(H_precision H_recall H_F H_I)} = ($prH,$rcH,pr2F($prH,$rcH), $IH);
 
+  ##-- save intermediate information
+  @$eval{qw(H1 H2 H12 H1g2 H2g1 Hu1 Hu2 Hu12 Hu1g2 Hu2g1)}
+    = ($H1,$H2,$H12,$H1g2,$H2g1,$Hu1,$Hu2,$Hu12,$Hu1g2,$Hu2g1);
 
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## Rand Index (optional: quadratic in number of tokens!)
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  if ($eval->{do_rand}) {
+    my $objs = $eval->{randidx}{objs};
+    my $rand = 0;
+    my ($pairi,$pairj, $tag1i,$tag2i, $tag1j,$tag2j);
+    foreach $pairi (1..int($#$objs/2)) {
+      ($tag1i,$tag2i) = @$objs[2*$pairi,2*$pairi+1];
+
+      foreach $pairj (0..($pairi-1)) {
+	($tag1j,$tag2j) = @$objs[2*$pairj,2*$pairj+1];
+	++$rand if (($tag1i eq $tag1j && $tag2i eq $tag2j)
+		    ||
+		    ($tag1i ne $tag1j && $tag2i ne $tag2j));
+      }
+    }
+    $rand /= npairs($ftotal);
+    $eval->{Rand} = $rand;
+  }
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## Adjusted Rand Index
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my $randSum1 = 0; ## == \sum_i npairs(n_{i.})
+  my $randSum2 = 0; ## == \sum_j npairs(n_{.j})
+  while (($tag1,$ftag1) = each(%{$tag1d->{nz}})) {
+    $randSum1 += npairs($ftag1);
+  }
+  while (($tag2,$ftag2) = each(%{$tag2d->{nz}})) {
+    $randSum2 += npairs($ftag2);
+  }
+  my $randMax = 0.5 * ($randSum1 + $randSum2);          ##-- MaximumIndex
+  my $randExp = ($randSum1*$randSum2)/npairs($ftotal);  ##-- ExpectedIndex
+
+  my $randPairs = 0; ##-- \sum_{i,j} npairs(n_{i.j})
+  while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+    $randPairs += npairs($f12);
+  }
+  my $randAdj = ($randPairs-$randExp) / ($randMax-$randExp); ##-- AdjustedIndex
+  $eval->{RandA} = $randAdj;
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Ambiguity rates
@@ -673,6 +748,8 @@ sub fromEval {
 	     (map { "pair_$_" } qw(precision recall F)),
 	     (map { "wpair_$_" } qw(precision recall F)),
 	     ('mi', map { "H_$_" } qw(precision recall I F)),
+	     qw(H1 H2 H12 H1g2 H2g1 Hu1 Hu2 Hu12 Hu1g2 Hu2g1),
+	     qw(Rand RandA), ##-- Rand Index
 	    );
   @$esum{@dup} = @$eval{@dup};
 
