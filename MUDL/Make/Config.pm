@@ -74,6 +74,12 @@ sub clear {
   return $cfg;
 }
 
+## destructor
+sub DESTROY {
+  my $cfg = shift;
+  $cfg->popd() while ($cfg->{dirstack} && @{$cfg->{dirstack}});
+}
+
 ##======================================================================
 ## Constructor: shadow
 

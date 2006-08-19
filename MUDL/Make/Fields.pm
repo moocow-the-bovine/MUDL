@@ -48,6 +48,10 @@ our @_eval_base_fields =
    ##-- Weighted Pairwise (Schulte im Walde-style)
    qw(wppr:g wprc:g wpF:g),
    qw(wppr:t wprc:t wpF:t),
+
+   ##-- Rand Index
+   qw(Rand:g Rand:t),
+   qw(ARand:g ARand:t RandA:g RandA:t),
   );
 
 
@@ -168,17 +172,18 @@ our %FIELDS =
 		      qw(*:wapr:t wapr:t +:warc:t warc:t ~:waF:t waF:t),
 		     ],
 
-   ##-- Results: MetaProfile: weighted pair-(pr,rc,F)
+   ##-- Results: MetaProfile: pair-(pr,rc,F)
    'mpresults:p' => [
 		     qw(*:ppr:g ppr:g +:prc:g prc:g ~:pF:g pF:g), '|',
 		     qw(*:ppr:t ppr:t +:prc:t prc:t ~:pF:t pF:t),
 		    ],
 
-   ##-- Results: MetaProfile: weighted weighted-pair-(pr,rc,F)
+   ##-- Results: MetaProfile: weighted pair-(pr,rc,F)
    'mpresults:wp' => [
 		      qw(*:wppr:g wppr:g +:wprc:g wprc:g ~:wpF:g wpF:g), '|',
 		      qw(*:wppr:t wppr:t +:wprc:t wprc:t ~:wpF:t wpF:t),
 		     ],
+
 
    ##-- Results: MetaProfile: meta-(pr,rc,F): vs. previous stage
    'mpresults:pstg' => [
@@ -550,6 +555,23 @@ our %FIELDS =
    'wprc:t' => { path=>[qw(eval_targets wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:t'},
    'wpF:t'  => { path=>[qw(eval_targets wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wpF:t'},
 
+   ##-------------------------------------
+   ## Eval: Rand Index
+   'Rand:g' => { path=>[qw(eval_global Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Rand:g'},
+   'rand:g' => 'Rand:g',
+   'Rand:t' => { path=>[qw(eval_targets Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Rand:t'},
+   'rand:t' => 'Rand:t',
+
+   ##-------------------------------------
+   ## Eval: Adjusted Rand Index
+   'ARand:g' => { path=>[qw(eval_global RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ARand:g'},
+   'RandA:g' => 'ARand:g',
+   'arand:g' => 'ARand:g',
+   'randa:g' => 'ARand:g',
+   'ARand:t' => { path=>[qw(eval_targets RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ARand:t'},
+   'RandA:t' => 'ARand:t',
+   'arand:t' => 'ARand:t',
+   'randa:t' => 'ARand:t',
 
    ##-------------------------------------------------
    ## Eval: Single-tag (precision,recall,F): Meta
