@@ -82,14 +82,14 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     ##-- summary data: information-theoretic
 ##     ##    + where H_u(X) = entropy contribution of '@UNKNOWN' tag1 to H(X)
 ##     mi=>$mi_bits,       ##-- I(tag1;tag2) [HACKED modulo unknowns]
-##     H_precision=>$pr,   ##-- 1 - (H(tag2|tag1) + H_u(tag2|tag1))/H(tag2)
-##     H_recall=>$rc,      ##-- 1 - (H(tag1|tag2) + H_u(tag1|tag2))/H(tag1)
-##     H_I=>$I,            ##-- 1 - (I(X;Y) + I_u(X;Y))/H(X,Y)
+##     H_precision=>$pr,   ##-- (H(2) - ($H(2|1) + H(2  |1=u))) / H(2)
+##     H_recall=>$rc,      ##-- (H(1) - ($H(1|2) + H(1=u|2  ))) / H(1)
+##     H_I=>$I,            ##-- (I(1;2) - I(1=u;2))             / H(1,2)
 ##     H_F=>$F,            ##-- F(H_pr,H_rc)
 ##
 ##     ##-- Summary data: Rand
 ##     Rand  => $rand_index,        ##-- if $eval->{do_rand} is true
-##     RandA => $adjust_rand_index
+##     RandA => $adjust_rand_index, ##-- Adjusted Rand Index (~ F)
 sub new {
   my ($that,%args) = @_;
   my $self = $that->SUPER::new(cr=>'MUDL::CorpusIO',
@@ -466,8 +466,8 @@ sub finish {
     $pair_fn += $pair_fn2->{$tag2} = $npairs2-$tp;
     $pair_rc2->{$tag2} = $npairs2 ? ($tp / $npairs2) : 0;
   }
-  my $pair_pr = $eval->{pair_precision} = $pair_tp / ($pair_fp + $pair_tp);
-  my $pair_rc = $eval->{pair_recall}    = $pair_tp / ($pair_fn + $pair_tp);
+  my $pair_pr = $eval->{pair_precision} = frac($pair_tp, ($pair_fp + $pair_tp));
+  my $pair_rc = $eval->{pair_recall}    = frac($pair_tp, ($pair_fn + $pair_tp));
   my $pair_F  = $eval->{pair_F}         = pr2F($pair_pr,$pair_rc);
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -476,17 +476,24 @@ sub finish {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   my $wpair_pr = 0;
   my $wpair_rc = 0;
+  #my ($wpair_tp, $wpair_fp, $wpair_fn) = (0,0,0);
   my $npairs_total = npairs($ftotal);
+  my $ntags1 = scalar(keys(%{$tag1d->{nz}}));
   while (($tag1,$tp)=each(%$pair_tp1)) {
     ##-- weight by total number of pairs belonging to this tag1
     #$npairs1 = npairs($tag1d->{nz}{$tag1});
     #$wpair_pr += $npairs1/$npairs_total * $tp/$npairs1;
     ##    ^-- equiv ------v
     #$wpair_pr += $tp/$npairs_total;
-    ##    ^-- NOT equiv --v
+    ##    ^-- NOT equiv (graphed) --v
     ##-- weight by relative tag1 frequency
     $npairs1 = npairs($tag1d->{nz}{$tag1});
     $wpair_pr += $tag1d->{nz}{$tag1}/$ftotal * $tp/$npairs1 if ($npairs1);
+    ##    ^-- NOT equiv ----v
+    ##-- tp,fp,fn weight by tag1 freq
+    #$npairs1 = npairs($tag1d->{nz}{$tag1});
+    #$wpair_tp += $tag1d->{nz}{$tag1} * $tp;
+    #$wpair_fp += $tag1d->{nz}{$tag1} * ($npairs1-$tp);
   }
   while (($tag2,$tp)=each(%$pair_tp2)) {
     ##-- weight by total number of pairs belonging to this tag2
@@ -494,11 +501,18 @@ sub finish {
     #$wpair_pr += $npairs2/$npairs_total * $tp/$npairs2;
     ##    ^-- equiv ------v
     #$wpair_rc += $tp/$npairs_total;
-    ##    ^-- NOT equiv --v
+    ##    ^-- NOT equiv (graphed) --v
     ##-- weight by relative tag2 frequency
     $npairs2 = npairs($tag2d->{nz}{$tag2});
     $wpair_rc += $tag2d->{nz}{$tag2}/$ftotal * $tp/$npairs2 if ($npairs2);
+    ##    ^-- ? equiv ----v
+    ##-- tp,fp,fn weight by tag2 freq
+    #$npairs2 = npairs($tag2d->{nz}{$tag2});
+    #$wpair_fn += $tag2d->{nz}{$tag2} * ($npairs2-$tp) if ($npairs2);
   }
+  ##-- fp,fp,fn
+  #$wpair_pr = frac($wpair_tp, ($wpair_tp + $wpair_fp));
+  #$wpair_rc = frac($wpair_tp, ($wpair_tp + $wpair_fn));
   @$eval{qw(wpair_precision wpair_recall wpair_F)} = ($wpair_pr, $wpair_rc, pr2F($wpair_pr,$wpair_rc));
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -527,7 +541,16 @@ sub finish {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## entropy
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  my $fu      = $tag1d->{nz}{$eval->{unknown1}};
+  my ($entropyMethod);
+  #$entropyMethod = 'unknown-pseudo';
+  #$entropyMethod = 'pwH+MI-H-law';
+  #$entropyMethod = 'Iu12';
+  #$entropyMethod = 'pwH+def';
+  #$entropyMethod = 'weighted-known';
+  $entropyMethod  = 'unknown-singletons';
+
+  ##-- Entropy: General
+  my $fu  = $tag1d->{nz}{$eval->{unknown1}};
   my $pu  = $fu ? ($fu / $ftotal) : 0;
   my $Hu1 = $pu ? (-$pu * log($pu)/log(2)) : 0;
   my $Hu2 = 0;
@@ -539,42 +562,138 @@ sub finish {
     if ($tag1 eq $eval->{unknown1}) {
       $p12   = $f12/$ftotal;
       $Hu12 -= $p12 * log($p12)/$log2;
-      $Iu12 += $p12 * log( $p12 / (($fu/$ftotal)*($tag2d->{nz}{$tag2}/$ftotal)) )/$log2;
+      $Iu12 += $p12 * log( $p12 / ($pu*($tag2d->{nz}{$tag2}/$ftotal)) )/$log2;
     }
   }
 
   ##-- get entropies
-  my $H1  = $tag1d->entropy();    ##-- H(1)
-  my $H2  = $tag2d->entropy();    ##-- H(2)
-  my $H12 = $jdist->entropy();    ##-- H(1,2)
+  my $H1  = $tag1d->entropy();	##-- H(1)   [including unknowns]
+  my $H2  = $tag2d->entropy();	##-- H(2)   [including unknowns]
+  my $H12 = $jdist->entropy();	##-- H(1,2) [including unknowns]
 
   ##-- get conditional entropies
-  my $H1g2 = $H12 - $H2;          ##-- ~ H(1|2)
-  my $H2g1 = $H12 - $H1;          ##-- ~ H(2|1)
-  my $I12  = $H1 + $H2 - $H12;    ##-- ~ I(1;2)
+  my $H1g2 = $H12 - $H2;	##-- ~ H(1|2) [+unknown]
+  my $H2g1 = $H12 - $H1;	##-- ~ H(2|1) [+unknown]
+  my $I12  = $H1 + $H2 - $H12;	##-- ~ I(1;2) [+unknown]
 
   ##-- get unknown contributions to conditional entropies
-  my $Hu1g2 = $Hu12 - $Hu2;        ##-- ~ H_u(1|2)
-  my $Hu2g1 = $Hu12 - $Hu1;        ##-- ~ H_u(2|1)
+  my $Hu1g2 = $Hu12 - $Hu2;	##-- ~ H_u(1|2)
+  my $Hu2g1 = $Hu12 - $Hu1;	##-- ~ H_u(2|1)
   my $Iu12a  = $Hu1 + $Hu2 - $Hu12; ##-- ~ I_u(1;2) ###-- NO!
 
   ##-- pseudo-precision,recall
   my ($prH,$rcH,$IH);
-  ##-- 1: (considering *all* unknown-contributions)
-  #$prH = 1 - frac($H2g1 + $Hu2g1, $H2);
-  #$rcH = 1 - frac($H1g2 + $Hu1g2, $H1);
-  #$IH  =     frac($I12 - $Iu12,  $H12);
-  ##
-  ##-- 2: ...adding unknowns to 'false (neg|pos)'
-  #$prH = frac(($H2 - $H2g1), ($H2 + $Hu2g1));
-  #$rcH = frac(($H1 - $H1g2), ($H1 + $Hu1g2));
-  #$IH  =     frac($I12 - $Iu12,  $H12);
-  ##
-  ##-- 3: ...subtracting unknowns from 'true pos' (as #1, above)
-  $prH = frac(($H2 - ($H2g1+$Hu2g1)), $H2);
-  $rcH = frac(($H1 - ($H1g2+$Hu1g2)), $H1);
-  $IH  =     frac($I12 - $Iu12,  $H12);
 
+  if ($entropyMethod eq 'unknown-pseudo') {
+    ##-- treat unknowns as any other cluster
+    $prH = frac($I12, $H2);
+    $rcH = frac($I12, $H1); ##-- [monotone decreasing w/ stage: not pretty at all!]
+    $IH  = frac($I12, $H12);
+  }
+  if ($entropyMethod eq 'pwH+MI-H-law') {
+    ##-- compute unknown contrib using pointwise-entropies & MI-H relation law
+    ##   + subtract unknowns from 'true pos'
+    ##   + probably unsafe
+    $prH = frac($I12 - $Hu2g1, $H2);
+    $rcH = frac($I12 - $Hu1g2, $H1);
+    $IH  = frac($I12 - $Iu12,  $H12);
+  }
+  elsif ($entropyMethod eq 'Iu12') {
+    ##-- compute unknown contrib using semi-pointwise-MI (partial KL-divergence)
+    ##   + subtract unknowns from 'true pos' I
+    ##   + possibly unsafe
+    ##   + decreasing recall
+    $prH = frac($I12 - $Iu12, $H2);
+    $rcH = frac($I12 - $Iu12, $H1);
+    $IH  = frac($I12 - $Iu12, $H12);
+  }
+  elsif ($entropyMethod eq 'pwH+def') {
+    ##-- compute unknown contrib using semi-pointwise conditional H
+    ##   + subtract unknowns from 'true pos' I
+    ##   + possibly unsafe
+    ##   + decreasing recall
+    my $H2g1u_pw = 0;
+    my $H1g2u_pw = 0;
+    while (($tag12,$f12) = each(%{$jdist->{nz}})) {
+      next if ($f12 <= 0);
+      ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
+      if ($tag1 eq $eval->{unknown1}) {
+	$p2  = $tag2d->{nz}{$tag2} / $ftotal;
+	$p12 = $f12 / $ftotal;
+	$H2g1u_pw -= $p12 * log($p12/$pu)/$log2;
+	$H1g2u_pw -= $p12 * log($p12/$p2)/$log2;
+      }
+    }
+    $prH = frac($I12 - $H2g1u_pw, $H2);
+    $rcH = frac($I12 - $H1g2u_pw, $H1);
+    $IH  = frac($I12 - $Iu12    , $H12);
+  }
+  elsif ($entropyMethod eq 'weighted-known') {
+    ##-- compute entropies and MI using targets only
+    ##   + weight resulting values with p(known)
+    ##   + weighting is somewhat ad-hoc, but the basis is at least sound
+    my $jdistk = ref($jdist)->new();
+    while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+      next if ($f12 <= 0);
+      ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
+      next if ($tag1 eq $eval->{unknown1});
+      $jdistk->{nz}{$tag12} = $f12;
+    }
+    my $tag1dk = $jdistk->project1(0);
+    my $tag2dk = $jdistk->project1(1);
+    ##
+    my $fknown = $fu ? ($ftotal - $fu) : $ftotal;
+    my $H12k  = $jdistk->entropy();
+    my $H1k   = $tag1dk->entropy();
+    my $H2k   = $tag2dk->entropy();
+    ##
+    my $H1g2k = $H12k - $H2k;
+    my $H2g1k = $H12k - $H1k;
+    my $I12k  = $H1k + $H2k - $H12k;
+    ##
+    ##-- now, weight values for knowns with p(known)
+    my $pknown = $fknown / $ftotal;
+    $prH = $pknown * frac($I12k, $H2k);
+    $rcH = $pknown * frac($I12k, $H1k);
+    $IH  = $pknown * frac($I12k, $H12k);
+  }
+  elsif ($entropyMethod eq 'unknown-singletons') {
+    my $H12_us = 0;
+    while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+      next if ($f12 <= 0);
+      ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
+      if ($tag1 eq $eval->{unknown1}) {
+	$H12_us -= $f12 * (1.0/$ftotal) * log(1.0/$ftotal)/$log2;
+      } else {
+	$p12     = $f12 / $ftotal;
+	$H12_us -= $p12 * log($p12)/$log2;
+      }
+    }
+    my $H1_us = 0;
+    while (($tag1,$ftag1)=each(%{$tag1d->{nz}})) {
+      $p1 = $ftag1/$ftotal;
+      if ($tag1 ne $eval->{unknown1}) {
+	$H1_us -= $p1 * log($p1)/$log2;
+      } else {
+	$H1_us -= $ftag1 * (1.0/$ftotal) * log(1.0/$ftotal)/$log2;
+      }
+    }
+    $H2  = $tag2d->entropy();
+
+    ##-- get new mutual information (& conditional entropies)
+    $H1g2 = $H12_us - $H2;
+    $H2g1 = $H12    - $H1;
+    my $I12_us = $H1_us + $H2 - $H12_us;
+    my $I12_uc = $H1    + $H2 - $H12;
+    $I12 = $I12_uc;
+
+    ##-- get entropy precision, recall, I
+    $prH = frac($I12_uc, $H2);
+    $rcH = frac($I12_us, $H1_us);
+    $IH  = frac($I12_us + $I12_uc, $H12 + $H12_us);
+  }
+
+  ##-- Entropy: assign
   @$eval{qw(H_precision H_recall H_F H_I)} = ($prH,$rcH,pr2F($prH,$rcH), $IH);
 
   ##-- save intermediate information
@@ -605,23 +724,81 @@ sub finish {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Adjusted Rand Index
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  my $randSum1 = 0; ## == \sum_i npairs(n_{i.})
-  my $randSum2 = 0; ## == \sum_j npairs(n_{.j})
-  while (($tag1,$ftag1) = each(%{$tag1d->{nz}})) {
-    $randSum1 += npairs($ftag1);
-  }
-  while (($tag2,$ftag2) = each(%{$tag2d->{nz}})) {
-    $randSum2 += npairs($ftag2);
-  }
-  my $randMax = 0.5 * ($randSum1 + $randSum2);          ##-- MaximumIndex
-  my $randExp = ($randSum1*$randSum2)/npairs($ftotal);  ##-- ExpectedIndex
+  my ($ARandMethod);
+  #$ARandMethod = 'unknown-pseudo';
+  #$ARandMethod = 'unknown-singletons';
+  $ARandMethod = 'weighted-known';
 
-  my $randPairs = 0; ##-- \sum_{i,j} npairs(n_{i.j})
-  while (($tag12,$f12)=each(%{$jdist->{nz}})) {
-    $randPairs += npairs($f12);
+  my ($ARand);
+
+  if ($ARandMethod eq 'unknown-pseudo') {
+    ##-- unknown as a pseudo-cluster like any other
+    my $randSum1 = 0; ## == \sum_i npairs(n_{i.})
+    my $randSum2 = 0; ## == \sum_j npairs(n_{.j})
+    while (($tag1,$ftag1) = each(%{$tag1d->{nz}})) {
+      $randSum1 += npairs($ftag1);
+    }
+    while (($tag2,$ftag2) = each(%{$tag2d->{nz}})) {
+      $randSum2 += npairs($ftag2);
+    }
+    my $ARandMax    = 0.5 * ($randSum1 + $randSum2);         ##-- MaximumIndex
+    my $ARandExpect = ($randSum1*$randSum2)/npairs($ftotal); ##-- ExpectedIndex
+    ##
+    my $ARandIndex = 0;	 	                             ##-- \sum_{i,j} npairs(n_{i.j})
+    while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+      $ARandIndex += npairs($f12);
+    }
+    $ARand = ($ARandIndex-$ARandExpect) / ($ARandMax-$ARandExpect);
   }
-  my $randAdj = ($randPairs-$randExp) / ($randMax-$randExp); ##-- AdjustedIndex
-  $eval->{RandA} = $randAdj;
+  elsif ($ARandMethod eq 'unknown-singletons') {
+    ##-- treat each unknown as a singleton cluster (prevent pair association)
+    my $randSum1 = 0; ## == \sum_i npairs(n_{i.})
+    my $randSum2 = 0; ## == \sum_j npairs(n_{.j})
+    while (($tag1,$ftag1) = each(%{$tag1d->{nz}})) {
+      $randSum1 += npairs($ftag1) if ($tag1 ne $eval->{unknown1});
+    }
+    while (($tag2,$ftag2) = each(%{$tag2d->{nz}})) {
+      $randSum2 += npairs($ftag2);
+    }
+    my $ARandMax    = 0.5 * ($randSum1 + $randSum2);         ##-- MaximumIndex
+    my $ARandExpect = ($randSum1*$randSum2)/npairs($ftotal); ##-- ExpectedIndex
+
+    my $ARandIndex = 0; 		                     ##-- \sum_{i,j} npairs(n_{i.j})
+    while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+      ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
+      $ARandIndex += npairs($f12) if ($tag1 ne $eval->{unknown1});
+    }
+    $ARand = ($ARandIndex-$ARandExpect) / ($ARandMax-$ARandExpect);
+  }
+  elsif ($ARandMethod eq 'weighted-known') {
+    ##-- compute ARand Index for knowns only, weight value with p(known)
+    my $randSum1 = 0; ## == \sum_i npairs(n_{i.})
+    my $randSum2 = 0; ## == \sum_j npairs(n_{.j})
+    my $ARandIndex  = 0;
+
+    my $tag2dk = ref($tag2d)->new();
+    while (($tag12,$f12)=each(%{$jdist->{nz}})) {
+      ($tag1,$tag2) = CORE::split(/\t+/,$tag12);
+      next if ($tag1 eq $eval->{unknown1});
+      $tag2dk->{nz}{$tag2} += $f12;
+      $ARandIndex          += npairs($f12);
+    }
+    my $fknown = $tag2dk->total;
+
+    while (($tag1,$ftag1) = each(%{$tag1d->{nz}})) {
+      next if ($tag1 eq $eval->{unknown1});
+      $randSum1 += npairs($ftag1);
+    }
+    while (($tag2,$ftag2) = each(%{$tag2dk->{nz}})) {
+      $randSum2 += npairs($ftag2);
+    }
+    my $ARandMax    = 0.5 * ($randSum1 + $randSum2);         ##-- MaximumIndex
+    my $ARandExpect = ($randSum1*$randSum2)/npairs($fknown); ##-- ExpectedIndex
+
+    $ARand = ($fknown/$ftotal) * ($ARandIndex-$ARandExpect) / ($ARandMax-$ARandExpect);
+  }
+  $eval->{RandA} = $ARand;
+
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Ambiguity rates
