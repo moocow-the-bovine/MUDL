@@ -54,6 +54,21 @@ our @_eval_base_fields =
    qw(ARand:g ARand:t RandA:g RandA:t),
   );
 
+## %_eval_base_families = ($family => \@field_bases)
+##  + other generated fields are created by iterating over these
+our %_eval_base_families =
+  (
+   meta  => [qw(pr rc F)],
+   H     => [qw(Hpr Hrc HF)], ##-- HI
+   avg   => [qw(apr arc aF)],
+   wavg  => [qw(wapr warc waF)],
+   pair  => [qw(ppr prc pF)],
+   wpair => [qw(wppr wprc wpF)],
+   Rand  => [qw(Rand)],
+   ARand => [qw(ARand)],
+  );
+our $_eval_default_family = 'meta';
+
 
 ##---------------------------------------------------------------
 ## Globals: Field Aliases (end = search for 'EOFIELDS')
@@ -104,7 +119,7 @@ our %FIELDS =
    'default'          => 'tabDefault',
    'tabid'            => 'tabId',
    'id'               => 'tabId',
-   'results'          => 'tabResults',
+   #'results'          => 'tabResults',
 
    (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
    (map { ("ltab$_"  => "latex$_") } qw(Default Id Results)),
@@ -112,211 +127,187 @@ our %FIELDS =
 
    ##-- Summarize (ASCII)
    'summarizeDefault' => ['summarizeId', '|', 'summarizeResults'],
-   'summarizeId' => [
-		     #'stage.emi',
-		     'stage', 'emi',
-		     'corpus',
-		     #'lang',
-		     'lrlabel',
-		     #':',
-		     'auto',
-		    ],
-   'summarizeResults'=>[
-			qw(*:pr:g pr:g),
-			qw(+:rc:g rc:g),
-			qw(~:F:g  F:g),
-			#qw(*:apr:g apr:g   *:arc:g arc:g  ~:aF:g aF:g),
-			#qw(ar:g),
-			'|',
-			qw(*:pr:t pr:t),
-			qw(+:rc:t rc:t),
-			qw(~:F:t  F:t),
-			#qw(ar:t),
-		       ],
+   'summarizeId' => [ 'emid' ],
+   'summarizeResults'=>[ qw(results) ],
 
-   ##-- table: variants: MetaProfile
-   'mpId'  => 'mpid',
-   'mpid'  => [ qw(stage corpus lrlabel auto) ],
-   'mptab' => [ qw(mpid | mpresults) ],
-   'mptab:H' => [ qw(mpid | mpresults:H) ],
-   'mptab:a' => [ qw(mpid | mpresults:a) ],
-   'mptab:wa' => [ qw(mpid | mpresults:wa) ],
-   'mptab:p' => [ qw(mpid | mpresults:p) ],
-   'mptab:wp' => [ qw(mpid | mpresults:wp) ],
-   'mptab:pstg' => [ qw(mpid | mpresults:pstg) ],
-   'mptab:e-'   => [ qw(mpid || mpresults:e-) ],
+   ##-- table: Ids
+   'mpId'  => ['mpid'],
+   'mpid'  => [ qw(stg corpus lrlabel auto) ],
 
-   ##-- Results: MetaProfile: meta-(pr,rc,F)
-   'mpresults' => [
-		   qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g), '|',
-		   qw(*:pr:t pr:t +:rc:t rc:t ~:F:t F:t),
-		  ],
-
-   ##-- Results: MetaProfile: H-(pr,rc,F)
-   'mpresults:H' => [
-		     #qw(*:Hpr:g Hpr:g *:Hrc:g Hrc:g *:HI:g HI:g ~:HF:g HF:g), '|',
-		     #qw(*:Hpr:t Hpr:t *:Hrc:t Hrc:t *:HI:t HI:t ~:HF:t HF:t),
-		     qw(*:Hpr:g Hpr:g +:Hrc:g Hrc:g ~:HF:g HF:g), '|',
-		     qw(*:Hpr:t Hpr:t +:Hrc:t Hrc:t ~:HF:t HF:t),
-		    ],
-
-   ##-- Results: MetaProfile: avg-(pr,rc,F)
-   'mpresults:a' => [
-		     qw(*:apr:g apr:g +:arc:g arc:g ~:aF:g aF:g), '|',
-		     qw(*:apr:t apr:t +:arc:t arc:t ~:aF:t aF:t),
-		    ],
-
-   ##-- Results: MetaProfile: weighted avg-(pr,rc,F)
-   'mpresults:wa' => [
-		      qw(*:wapr:g wapr:g +:warc:g warc:g ~:waF:g waF:g), '|',
-		      qw(*:wapr:t wapr:t +:warc:t warc:t ~:waF:t waF:t),
-		     ],
-
-   ##-- Results: MetaProfile: pair-(pr,rc,F)
-   'mpresults:p' => [
-		     qw(*:ppr:g ppr:g +:prc:g prc:g ~:pF:g pF:g), '|',
-		     qw(*:ppr:t ppr:t +:prc:t prc:t ~:pF:t pF:t),
-		    ],
-
-   ##-- Results: MetaProfile: weighted pair-(pr,rc,F)
-   'mpresults:wp' => [
-		      qw(*:wppr:g wppr:g +:wprc:g wprc:g ~:wpF:g wpF:g), '|',
-		      qw(*:wppr:t wppr:t +:wprc:t wprc:t ~:wpF:t wpF:t),
-		     ],
-
-
-   ##-- Results: MetaProfile: meta-(pr,rc,F): vs. previous stage
-   'mpresults:pstg' => [
-			qw(*:pr:g pr:g e+pstage:pr:g(title=e+pstg)), '|',
-			qw(*:pr:t pr:t e+pstage:pr:t(title=e+pstg)),
-		       ],
-
-   ##-- Results: MetaProfile: meta-(pr,rc,F): vs. max(stage)
-   'mpresults:e-' => [
-		       qw(*:pr:g pr:g e-max:pr:g:stg(title=e-max)), '|',
-		       qw(+:rc:g rc:g e-max:rc:g:stg(title=e-max)), '/',
-		       qw(*:pr:t pr:t e-max:pr:t:stg(title=e-max)), '|',
-		       qw(+:rc:t rc:t e-max:rc:t:stg(title=e-max)),
-		      ],
-
-   ##-- table: variants: EM
+   'emId'  => ['emid'],
    'emid'  => [ qw(stg emi corpus lrlabel auto) ],
-   'emtab'  => [ qw(emid | emresults), ],
-   'emtab:max' => [ qw(emid | emresults:max), ],
-   'emtab:H' => [ qw(emid | emresults:H), ],
-   'emtab:H:max' => [ qw(emid | emresults:H:max), ],
-   'emtab:a' => [qw(emid | emresults:a), ],
-   'emtab:a:max' => [qw(emid | emresults:a:max), ],
-   'emtab:wa' => [ 'emid', '|', 'emresults:wa', ],
-   'emtab:wa:max' => [ 'emid', '|', 'emresults:wa:max', ],
-   'emtab:p' => [ qw(emid | emresults:p), ],
-   'emtab:wp' => [ 'emid', '|', 'emresults:wp', ],
-   'emtab:emi' => [ 'emid', '|', 'emresults:emi', ],
-   'emresults:mp'  => [qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) | *:pr:t pr:t e+mp:pr:t(title=e+mp))],
 
-   'emresults'     => [
-		       qw(*:pr:g pr:g e+mp:pr:g(title=e+mp) e+pemi:pr:g(title=e+pemi)), '|',
-		       qw(*:pr:t pr:t e+mp:pr:t(title=e+mp) e+pemi:pr:t(title=e+pemi))
-		      ],
-   'emresults:max'     => [
-			   qw(*:pr:g pr:g e+pemi:pr:g(title=e+pemi) e-max:pr:g:emi(title=e-max)), '|',
-			   qw(*:pr:t pr:t e+pemi:pr:t(title=e+pemi) e-max:pr:t:emi(title=e-max))
-			  ],
-   'emresults:Max'     => [
-			  '*:pr:g',  'pr:g', 'e-max:pr:g:stg(title=e-Max)', '|',
-			  '+:rc:g', 'rc:g', 'e-max:rc:g:stg(title=e-Max)', '|',
-			  '~:F:g', 'F:g', 'e-max:F:g:stg(title=e-Max)',
-			  ],
-   'emresults:MAX'     => [
-			  '*:pr:g',  'pr:g', 'e-max:pr:g:corpus(title=e-MAX)', '|',
-			  '+:rc:g', 'rc:g', 'e-max:rc:g:corpus(title=e-MAX)', '|',
-			  '~:F:g', 'F:g', 'e-max:F:g:corpus(title=e-MAX)',
-			  ],
+   ##-- Results: MetaProfile: general
+   (map {
+     my $family         = $_;
+     my $family_default = $_eval_base_families{$family}->[0];
+     (
+      ##--------------------------------------------------------
+      ## Tables: by family
+      "mptab:${family}" => [ "mpid", "|", "results:${family}" ],
+      "emtab:${family}" => [ "emid", "|", "results:${family}" ],
+      _expand_gt("mptab:${family}:__GT__" => [ "mpid", "|", "results:${family}:__GT__" ],
+		 "emtab:${family}:__GT__" => [ "emid", "|", "results:${family}:__GT__" ],
+		),
 
-   'emresults:emi' => [qw(*:pr:g pr:g e+pemi:pr:g | *:pr:t pr:t e+pemi:pr:t)],
+      ##--------------------------------------------------------
+      ## Results: by family
+      ## + results:meta => [ qw(results:meta:g | results:meta:t) ]
+      "results:${family}" => [ "results:${family}:g", '|', "results:${family}:t" ],
+      ##
+      ## Results: by family: global, targets
+      ## + results:meta:g => [ qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g) ]
+      _expand_gt("results:${family}:__GT__",
+		 _expand_prF([map { ($_.":__GT__") } @{$_eval_base_families{$family}}])),
 
-   'emresults:H'     => [
-		       qw(*:Hpr:g Hpr:g e+mp:Hpr:g(title=e+mp) e+pemi:Hpr:g(title=e+pemi)), '|',
-		       qw(*:Hpr:t Hpr:t e+mp:Hpr:t(title=e+mp) e+pemi:Hpr:t(title=e+pemi))
-		      ],
-   'emresults:H:max'     => [
-			   qw(*:Hpr:g Hpr:g e+pemi:Hpr:g(title=e+pemi) e-max:Hpr:g:emi(title=e-max)), '|',
-			   qw(*:Hpr:t Hpr:t e+pemi:Hpr:t(title=e+pemi) e-max:Hpr:t:emi(title=e-max))
-			  ],
+      ##--------------------------------------------------------
+      ## Results: by family: vs. prev(stage)
+      ## + 'results:meta:e+pstg' => [ qw(results:meta:e+pstg:g | results:meta:e+pstg:t) ]
+      "results:${family}:e+pstg" => [ "results:${family}:e+pstg:g", '|', "results:${family}:e+pstg:t" ],
+      ##
+      ## Results: MetaProfile: by family: vs. prev(stage): global, targets
+      ## + 'results:meta:e+pstg:g' => [ 'results:meta:e+pstg:pr:g ]
+      _expand_gt("results:${family}:e+pstg:__GT__", ["results:${family}:e+pstg:${family_default}:__GT__"]),
+      ##
+      ## Results: MetaProfile: by family: vs. prev(stage): global, targets: by evaluator field
+      ## + 'results:meta:e+pstg:pr:g' => [ qw(*:pr:g pr:g e+pstage:pr:g(title=e+pstg)) ]
+      (map {
+	 my $field = $_;
+	 _expand_gt("results:${family}:e+pstg:${field}:__GT__",
+		    [ @{_expand_prF([ "${_}:__GT__" ])}, "e+pstage:${field}:__GT__(title=e+pstg)" ])
+       } @{$_eval_base_families{$family}}),
 
-   'emresults:a'   => [
-		       qw(*:apr:g apr:g +:arc:g arc:g ~:aF:g aF:g), '|',
-		       qw(*:apr:t apr:t +:arc:t arc:t ~:aF:t aF:t),
-		      ],
-   'emresults:a:max' => [
-			 qw(*:apr:g apr:g e+pemi:apr:g(title=e+pemi) e-max:apr:g:emi(title=e-max)), '|',
-			 qw(*:apr:t apr:t e+pemi:apr:t(title=e+pemi) e-max:apr:t:emi(title=e-max)),
-			],
-   'emresults:wa'   => [
-			qw(*:wapr:g wapr:g +:warc:g warc:g ~:waF:g waF:g), '|',
-			qw(*:wapr:t wapr:t +:warc:t warc:t ~:waF:t waF:t),
-		       ],
-   'emresults:wa:max' => [
-			 qw(*:wapr:g wapr:g e+pemi:wapr:g(title=e+pemi) e-max:wapr:g:emi(title=e-max)), '|',
-			 qw(*:wapr:t wapr:t e+pemi:wapr:t(title=e+pemi) e-max:wapr:t:emi(title=e-max)),
-			],
-   'emresults:wa:Max' => [
-			  '*:wapr:g',  'wapr:g', 'e-max:wapr:g:stg(title=e-Max)', '|',
-			  '+:warc:g', 'warc:g', 'e-max:warc:g:stg(title=e-Max)', '|',
-			  '~:waF:g', 'waF:g', 'e-max:waF:g:stg(title=e-Max)',
-			],
-   'emresults:wa:MAX' => [
-			  '*:wapr:g',  'wapr:g', 'e-max:wapr:g:corpus(title=e-MAX)', '|',
-			  '+:warc:g', 'warc:g', 'e-max:warc:g:corpus(title=e-MAX)', '|',
-			  '~:waF:g', 'waF:g', 'e-max:waF:g:corpus(title=e-MAX)',
-			],
+      ##--------------------------------------------------------
+      ## Results: by family: vs. prev(emi)
+      ## + 'results:meta:e+pemi' => [ qw(results:meta:e+pemi:g | results:meta:e+pemi:t) ]
+      "results:${family}:e+pemi" => [ "results:${family}:e+pemi:g", '|', "results:${family}:e+pemi:t" ],
+      ##
+      ## Results: MetaProfile: by family: vs. prev(emi): global, targets
+      ## + 'results:meta:e+pemi:g' => [ 'results:meta:e+pemi:pr:g ]
+      _expand_gt("results:${family}:e+pemi:__GT__", ["results:${family}:e+pemi:${family_default}:__GT__"]),
+      ##
+      ## Results: MetaProfile: by family: vs. prev(emi): global, targets: by evaluator field
+      ## + 'results:meta:e+pemi:pr:g' => [ qw(*:pr:g pr:g e+pemi:pr:g(title=e+pemi)) ]
+      (map {
+	 my $field = $_;
+	 _expand_gt("results:${family}:e+pemi:${field}:__GT__",
+		    [ @{_expand_prF([ "${field}:__GT__" ])}, "e+pemi:${field}:__GT__(title=e+pemi)" ])
+       } @{$_eval_base_families{$family}}),
 
-   'emresults:p'   => [
-		       qw(*:ppr:g ppr:g +:prc:g prc:g ~:pF:g pF:g), '|',
-		       qw(*:ppr:t ppr:t +:prc:t prc:t ~:pF:t pF:t),
-		      ],
-   'emresults:p:max' => [
-			 '*:ppr:g', 'wppr:g', 'e+pemi:ppr:g(title=e+pemi)', 'e-max:ppr:g:emi(title=e-max)', '|',
-			 '*:ppr:t', 'wppr:t', 'e+pemi:ppr:t(title=e+pemi)', 'e-max:ppr:t:emi(title=e-max)',
-			],
-   'emresults:p:Max' => [
-			  '*:ppr:g', 'wppr:g', 'e-max:ppr:g:stg(title=e-Max)', '|',
-			  '+:prc:g', 'wprc:g', 'e-max:prc:g:stg(title=e-Max)', '|',
-			  '~:pF:g',  'wpF:g',  'e-max:pF:g:stg(title=e-Max)',
-			],
-   'emresults:p:MAX' => [
-			  '*:ppr:g', 'wppr:g', 'e-max:ppr:g:corpus(title=e-MAX)', '|',
-			  '+:prc:g', 'wprc:g', 'e-max:prc:g:corpus(title=e-MAX)', '|',
-			  '~:pF:g',  'wpF:g',  'e-max:pF:g:corpus(title=e-MAX)',
-			],
+      ##--------------------------------------------------------
+      ## Results: by family: vs. prev(*)
+      ## + 'results:meta:e+' => [ qw(results:meta:e+:g | results:meta:e+:t) ]
+      "results:${family}:e+" => [ "results:${family}:e+:g", '|', "results:${family}:e+:t" ],
+      ##
+      ## Results: by family: vs. prev(*): global, targets
+      ## + 'results:meta:e+:g' => [ 'results:meta:e+:pr:g ]
+      _expand_gt("results:${family}:e+:__GT__", ["results:${family}:e+:${family_default}:__GT__"]),
+      ##
+      ## Results: by family: vs. prev(*): global, targets: by evaluator field
+      ## + 'results:meta:e+:pr:g' => [ qw(*:pr:g pr:g),
+      ##                               qw(e+pemi:pr:g(title=e+pemi)),
+      ##                               qw(e+pstage:pr:g:stage(title=e+pstg)),
+      ##                             ]
+      (map {
+	my $field = $_;
+	_expand_gt("results:${family}:e+:${field}:__GT__",
+		   [
+		    @{_expand_prF([ "${field}:__GT__" ])},
+		    "e+pemi:${field}:__GT__(title=e+pemi)",
+		    "e+pstage:${field}:__GT__(title=e+pstg)",
+		   ])
+      } @{$_eval_base_families{$family}}),
 
+      ##--------------------------------------------------------
+      ## Results: by family: vs. max(emi)
+      ## + 'results:meta:max' => [ qw(results:meta:max:g | results:meta:max:t) ]
+      "results:${family}:max" => [ "results:${family}:max:g", '|', "results:${family}:max:t" ],
+      ##
+      ## Results: by family: vs. max(emi): global, targets
+      ## + 'results:meta:max:g' => [ 'results:meta:max:pr:g ]
+      _expand_gt("results:${family}:max:__GT__", ["results:${family}:max:${family_default}:__GT__"]),
+      ##
+      ## Results: by family: vs. max(emi): global, targets: by evaluator field
+      ## + 'results:meta:max:pr:g' => [ qw(*:pr:g pr:g e-max:pr:g:emi(title=e-max)) ]
+      (map {
+	 my $field = $_;
+	 _expand_gt("results:${family}:max:${field}:__GT__",
+		    [ @{_expand_prF([ "${field}:__GT__" ])}, "e-max:${field}:__GT__:emi(title=e-max)" ])
+       } @{$_eval_base_families{$family}}),
 
-   'emresults:wp'   => [
-			'*:wppr:g', 'wppr:g', '+:wprc:g', 'wprc:g', '~:wpF:g', 'wpF:g', '|',
-			'*:wppr:t', 'wppr:t', '+:wprc:t', 'wprc:t', '~:wpF:t', 'wpF:t',
-		       ],
-   'emresults:wp:max' => [
-			  '*:wppr:g', 'wppr:g', 'e+pemi:wppr:g(title=e+pemi)', 'e-max:wppr:g:emi(title=e-max)', '|',
-			  '*:wppr:t', 'wppr:t', 'e+pemi:wppr:t(title=e+pemi)', 'e-max:wppr:t:emi(title=e-max)',
-			],
-   'emresults:wp:Max' => [
-			  '*:wppr:g', 'wppr:g', 'e-max:wppr:g:stg(title=e-Max)', '|',
-			  '+:wprc:g', 'wprc:g', 'e-max:wprc:g:stg(title=e-Max)', '|',
-			  '~:wpF:g',  'wpF:g',  'e-max:wpF:g:stg(title=e-Max)',
-			],
-   'emresults:wp:MAX' => [
-			  '*:wppr:g', 'wppr:g', 'e-max:wppr:g:corpus(title=e-MAX)', '|',
-			  '+:wprc:g', 'wprc:g', 'e-max:wprc:g:corpus(title=e-MAX)', '|',
-			  '~:wpF:g',  'wpF:g',  'e-max:wpF:g:corpus(title=e-MAX)',
-			],
+      ##--------------------------------------------------------
+      ## Results: by family: vs. max(stage)
+      ## + 'results:meta:Max' => [ qw(results:meta:Max:g | results:meta:Max:t) ]
+      "results:${family}:Max" => [ "results:${family}:Max:g", '|', "results:${family}:Max:t" ],
+      ##
+      ## Results: by family: vs. max(stage): global, targets
+      ## + 'results:meta:Max:g' => [ 'results:meta:Max:pr:g ]
+      _expand_gt("results:${family}:Max:__GT__", ["results:${family}:Max:${family_default}:__GT__"]),
+      ##
+      ## Results: by family: vs. max(stage): global, targets: by evaluator field
+      ## + 'results:meta:Max:pr:g' => [ qw(*:pr:g pr:g e-max:pr:g:stage(title=e-Max)) ]
+      (map {
+	 my $field = $_;
+	 _expand_gt("results:${family}:Max:${field}:__GT__",
+		    [ @{_expand_prF([ "${field}:__GT__" ])}, "e-max:${field}:__GT__:stage(title=e-Max)" ])
+       } @{$_eval_base_families{$family}}),
 
+      ##--------------------------------------------------------
+      ## Results: by family: vs. max(corpus)
+      ## + 'results:meta:MAX' => [ qw(results:meta:MAX:g | results:meta:MAX:t) ]
+      "results:${family}:MAX" => [ "results:${family}:MAX:g", '|', "results:${family}:MAX:t" ],
+      ##
+      ## Results: by family: vs. max(corpus): global, targets
+      ## + 'results:meta:MAX:g' => [ 'results:meta:MAX:pr:g ]
+      _expand_gt("results:${family}:MAX:__GT__", ["results:${family}:MAX:${family_default}:__GT__"]),
+      ##
+      ## Results: by family: vs. max(corpus): global, targets: by evaluator field
+      ## + 'results:meta:MAX:pr:g' => [ qw(*:pr:g pr:g e-max:pr:g:corpus(title=e-MAX)) ]
+      (map {
+	 my $field = $_;
+	 _expand_gt("results:${family}:MAX:${field}:__GT__",
+		    [ @{_expand_prF([ "${field}:__GT__" ])}, "e-max:${field}:__GT__:corpus(title=e-MAX)" ])
+       } @{$_eval_base_families{$family}}),
 
+      ##--------------------------------------------------------
+      ## Results: by family: vs. max(*)
+      ## + 'results:meta:e-' => [ qw(results:meta:e-:g | results:meta:e-:t) ]
+      "results:${family}:e-" => [ "results:${family}:e-:g", '|', "results:${family}:e-:t" ],
+      ##
+      ## Results: by family: vs. max(*): global, targets
+      ## + 'results:meta:e-:g' => [ 'results:meta:e-:pr:g ]
+      _expand_gt("results:${family}:e-:__GT__", ["results:${family}:e-:${family_default}:__GT__"]),
+      ##
+      ## Results: by family: vs. max(*): global, targets: by evaluator field
+      ## + 'results:meta:e-:pr:g' => [ qw(*:pr:g pr:g),
+      ##                               qw(e-max:pr:g:emi(title=e-max)),
+      ##                               qw(e-Max:pr:g:stage(title=e-Max)),
+      ##                               qw(e-MAX:pr:g:corpus(title=e-MAX)),
+      ##                             ]
+      (map {
+	my $field = $_;
+	_expand_gt("results:${family}:e-:${field}:__GT__",
+		   [
+		    @{_expand_prF([ "${field}:__GT__" ])},
+		    "e-max:${field}:__GT__:emi(title=e-max)",
+		    "e-max:${field}:__GT__:stage(title=e-Max)",
+		    "e-max:${field}:__GT__:corpus(title=e-MAX)"
+		   ])
+      } @{$_eval_base_families{$family}})
 
-   'res:prF:g' => [qw(*:pr:g pr:g e+mp:pr:g | +:rc:g rc:g e+mp:rc:g | ~:F:g F:g e+mp:F:g)],
-   'res:prF:t' => [qw(*:pr:t pr:t | +:rc:t rc:t | ~:F:t F:t)],
-   'res:aprF:g' => [qw(*:apr:g apr:g | +:arc:g arc:g | ~:aF:g aF:g)],
-   'res:aprF:t' => [qw(*:apr:t apr:t | +:arc:t arc:t | ~:aF:t aF:t)],
+     ) ##-- return list for outer evalutator map
 
+   } keys(%_eval_base_families)), ##-- outer evaluator map
+
+   ##-- tables: default
+   _expand_gt(
+	      "results" => [ "results:${_eval_default_family}" ],
+	      "mptab"   => [ "mptab:${_eval_default_family}" ],
+	      "emtab"   => [ "emtab:${_eval_default_family}" ],
+
+	      "mptab:__GT__" => [ "mptab:${_eval_default_family}:__GT__" ],
+	      "emtab:__GT__" => [ "emtab:${_eval_default_family}:__GT__" ],
+	     ),
 
    ##-- Summarize (LaTeX)
    'latexDefault' => ['|', 'latexId', '||', 'latexResults', '|'],
@@ -353,7 +344,7 @@ our %FIELDS =
    lrlab   => 'lrlabel',
 
    ##-- MetaProfile: lrwhich
-   lrwhich => { path=>[qw(xvars lrwhich)], title=>'lrw', },
+   lrwhich => { path=>[qw(xvars lrwhich)], title=>'lrw', alt => [qw(lrwhich xvars->lrwhich)], },
    tcd    => { path=>[qw(xvars tcd)], title=>'tcd', },
    tcm    => { path=>[qw(xvars tcm)], title=>'tcm', },
    tccd   => { path=>[qw(xvars tccd)], title=>'tccd', },
@@ -449,23 +440,33 @@ our %FIELDS =
    'tck' => { path=>[qw(xvars tck)], n=>1, alt=>[qw(xvars->tck)], },
 
 
+   ##-------------------------------------------------
+   ## Eval: Ambiguity Rates
+   'ar:g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>' ar:g' },
+   'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t' },
 
    ##-------------------------------------------------
    ## Eval: Meta-(precision,recall,F,ambig-rate)
 
    ##-------------------------------------
    ## Eval: Meta-*: Global
-   'pr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:g'},
-   'rc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:g'},
-   'F:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:g' },
-   'ar:g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>' ar:g' },
+   'mpr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:g'},
+   'mrc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:g'},
+   'mF:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:g' },
+
+   'pr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:g'},
+   'rc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:g'},
+   'F:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:g' },
 
    ##-------------------------------------
    ## Eval: Meta-*: Targets
-   'pr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:t'},
-   'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:t'},
-   'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:t' },
-   'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t' },
+   'mpr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:t'},
+   'mrc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:t'},
+   'mF:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:t' },
+
+   'pr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:t'},
+   'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:t'},
+   'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:t' },
 
    ##-------------------------------------
    ## Eval: Total-*: Global
@@ -565,13 +566,9 @@ our %FIELDS =
    ##-------------------------------------
    ## Eval: Adjusted Rand Index
    'ARand:g' => { path=>[qw(eval_global RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ARand:g'},
-   'RandA:g' => 'ARand:g',
-   'arand:g' => 'ARand:g',
-   'randa:g' => 'ARand:g',
+   'RandA:g' => { path=>[qw(eval_global RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'RandA:g'},
    'ARand:t' => { path=>[qw(eval_targets RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ARand:t'},
-   'RandA:t' => 'ARand:t',
-   'arand:t' => 'ARand:t',
-   'randa:t' => 'ARand:t',
+   'RandA:t' => { path=>[qw(eval_targets RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'RandA:t'},
 
    ##-------------------------------------------------
    ## Eval: Single-tag (precision,recall,F): Meta
@@ -838,6 +835,73 @@ our %FIELDS =
    (map { _errdiff_relative_fields('mp',$_) } @_eval_base_fields),
   );
 ##-- EOFIELDS
+
+##---------------------------------------------------------------
+## Fields: family expander: dummy replacement
+
+## $str = _expand_macros($str, %macros)
+sub _expand_macros {
+  my $str = shift;
+  my ($macro,$val);
+  while (@_) {
+    ($macro,$val) = (shift,shift);
+    $str =~ s/\Q$macro\E/$val/g;
+  }
+  return $str;
+}
+
+##---------------------------------------------------------------
+## Fields: family expander: results
+
+## %expanded = _expand_gt(%aliases)
+##   + replace macro '__GT__' with 'g' or 't'
+sub _expand_gt {
+  my %aliases = @_;
+  my %expanded = qw();
+  my ($aname,$avals,$gt);
+  while (($aname,$avals)=each(%aliases)) {
+    foreach $gt (qw(g t)) {
+      $expanded{_expand_macros($aname,'__GT__'=>$gt)} = [map {_expand_macros($_,'__GT__'=>$gt)} @$avals];
+    }
+  }
+  return %expanded;
+}
+
+## \@field_aliases = _expand_prF(\@prFnames)
+##   + no eval()
+sub _expand_prF {
+  my ($prFnames) = @_;
+  my $expanded = [];
+  my ($field,$star);
+  foreach $field (@$prFnames) {
+    $star = '~';
+    if ($field =~ /\b\w{0,2}pr\:/) { $star = '*'; }
+    elsif ($field =~ /\b\w{0,2}rc\:/) { $star = '+'; }
+    elsif ($field =~ /\b\w{0,2}F\:/) { $star = '~'; }
+    push(@$expanded, "${star}:${field}", $field);
+  }
+  return $expanded;
+}
+
+## %field_aliases = _expand_family($family, \@fields, $alias_name_template=>\@alias_value_template, $join_field)
+##  + templates may use variables "$family" (source family), "$field" or "$_" (source field)
+sub _expand_family {
+  my ($family, $fields, $tname, $tfields, $join) = @_;
+  my $aname  = eval($tname);
+  my $avalue = [];
+  my ($tfieldi, $tfield,$field);
+  foreach $tfieldi (0..$#$tfields) {
+    $tfield = $tfields->[$tfieldi];
+    foreach (@$fields) {
+      $field = $_;
+      push(@$avalue, eval($tfield));
+    }
+    push(@$avalue, $join) if ($join && $tfieldi < $#$tfields);
+  }
+  return ($aname => $avalue);
+}
+
+
 
 ##---------------------------------------------------------------
 ## Fields: alias expander: relative fields
