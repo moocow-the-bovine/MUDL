@@ -726,8 +726,8 @@ sub finish {
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   my ($ARandMethod);
   #$ARandMethod = 'unknown-pseudo';
-  #$ARandMethod = 'unknown-singletons';
-  $ARandMethod = 'weighted-known';
+  $ARandMethod = 'unknown-singletons';
+  #$ARandMethod = 'weighted-known';
 
   my ($ARand);
 
