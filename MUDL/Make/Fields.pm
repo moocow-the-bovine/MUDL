@@ -28,6 +28,10 @@ our @_eval_base_fields =
    qw(pr:g rc:g F:g ar:g),
    qw(pr:t rc:t F:t ar:t),
 
+   ##-- Adjusted Meta (token-wise)
+   qw(ampr:g amrc:g amF:g),
+   qw(ampr:t amrc:t amF:t),
+
    ##-- MI,H (token-wise)
    qw(mi:g mi:t),
    qw(Hpr:g Hrc:g HF:g HI:g),
@@ -59,6 +63,7 @@ our @_eval_base_fields =
 our %_eval_base_families =
   (
    meta  => [qw(pr rc F)],
+   ameta => [qw(ampr amrc amF)],
    H     => [qw(Hpr Hrc HF)], ##-- HI
    avg   => [qw(apr arc aF)],
    wavg  => [qw(wapr warc waF)],
@@ -467,6 +472,18 @@ our %FIELDS =
    'pr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:t'},
    'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:t'},
    'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:t' },
+
+   ##-------------------------------------
+   ## Eval: Adjusted Meta-*: Global
+   'ampr:g' => { path=>[qw(eval_global ameta_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ampr:g'},
+   'amrc:g' => { path=>[qw(eval_global ameta_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amrc:g'},
+   'amF:g'  => { path=>[qw(eval_global ameta_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amF:g' },
+
+   ##-------------------------------------
+   ## Eval: Adjusted Meta-*: Targets
+   'ampr:t' => { path=>[qw(eval_targets ameta_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ampr:t'},
+   'amrc:t' => { path=>[qw(eval_targets ameta_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amrc:t'},
+   'amF:t'  => { path=>[qw(eval_targets ameta_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amF:t' },
 
    ##-------------------------------------
    ## Eval: Total-*: Global
