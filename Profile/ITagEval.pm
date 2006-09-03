@@ -54,10 +54,15 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     nanals1 => $n1,         ##-- total number of (type,tag1) pairs
 ##     nanals2 => $n2,         ##-- total number of (type,tag2) pairs
 ##
-##     ##-- summary data: token-wise
-##     precision=>$prec,       ##-- p(best(tag2|tag1)|tag1)
-##     recall=>$recall,        ##-- p(best(tag1|tag2)|tag2)
-##     F=>$F,
+##     ##-- summary data: token-wise (meta-tagging)
+##     meta_precision=>$prec,       ##-- p(best(tag2|tag1)|tag1)
+##     meta_recall=>$recall,        ##-- p(best(tag1|tag2)|tag2)
+##     meta_F=>$F,
+##
+##     ##-- summary data: adjusted (adjusted meta-tagging)
+##     ameta_precision=>$pr,         ##-- adjusted meta-precision
+##     ameta_recall=>$rc,            ##-- adjusted meta-recall
+##     ameta_F=>$F,
 ##
 ##     ##-- summary data: average (Sch"utze-style)
 ##     avg_precision=>$pr,
@@ -231,7 +236,7 @@ sub finish {
   my $tag1i = $eval->{tag1i} = {}; ##-- $tag1 => \%info_tag1
   my $tag2i = $eval->{tag2i} = {}; ##-- $tag2 => \%info_tag2
 
-  ##-- allocate unigram (tag1,tag2) distributions
+  ##-- allocate unigram (tag1,tag2) distributions (including unknowns)
   my $tag1d  = MUDL::Dist::Partial->new();
   my $tag2d  = MUDL::Dist::Partial->new();
   my $ftotal = 0; ##-- total frequency, including unknowns
@@ -342,6 +347,18 @@ sub finish {
   $rc = $eval->{meta_recall} = frac($ncor, $ftotal);
 
   $eval->{meta_F} = pr2F($pr,$rc);
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## adjusted meta-tagging precision, recall
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  my $nC = scalar(keys(%$tag1i));
+  my $nG = scalar(keys(%$tag2i));
+  my $Epr = frac(1,$nG);
+  my $Erc = frac(1,$nC);
+
+  my $ameta_pr = frac(($pr-$Epr), (1.0-$Epr));
+  my $ameta_rc = frac(($rc-$Erc), (1.0-$Erc));
+  @$eval{qw(ameta_precision ameta_recall ameta_F)} = ($ameta_pr, $ameta_rc, pr2F($ameta_pr,$ameta_rc));
 
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -920,6 +937,7 @@ sub fromEval {
 	     qw(tag1i tag2i),
 	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2),
 	     (map { "meta_$_" } qw(precision recall F)),
+	     (map { "ameta_$_" } qw(precision recall F)),
 	     (map { "avg_$_" } qw(precision recall F)),
 	     (map { "wavg_$_" } qw(precision recall F)),
 	     (map { "pair_$_" } qw(precision recall F)),
@@ -949,6 +967,9 @@ sub saveNativeFh {
   $fh->print
     ("\$precision=$esum->{precision};\n",
      "\$recall=$esum->{recall};\n",
+     "",
+     "\$ameta_precision=$esum->{ameta_precision};\n",
+     "\$ameta_recall=$esum->{ameta_recall};\n",
      "",
      "\$avg_precision=$esum->{avg_precision};\n",
      "\$avg_recall=$esum->{avg_recall};\n",
@@ -996,6 +1017,10 @@ sub saveNativeFh {
      "## Meta-Precision           : ", sprintf("%6.2f %%", 100*$esum->{meta_precision}), "\n",
      "## Meta-Recall              : ", sprintf("%6.2f %%", 100*$esum->{meta_recall}), "\n",
      "## Meta F                   : ", sprintf("%6.2f %%", 100*$esum->{meta_F}), "\n",
+     "##\n",
+     "## AMeta-Precision          : ", sprintf("%6.2f %%", 100*$esum->{ameta_precision}), "\n",
+     "## AMeta-Recall             : ", sprintf("%6.2f %%", 100*$esum->{ameta_recall}), "\n",
+     "## AMeta F                  : ", sprintf("%6.2f %%", 100*$esum->{ameta_F}), "\n",
      "##\n",
      "## Avg tag2-Precision       : ", sprintf("%6.2f %%", 100*$esum->{avg_precision}), "\n",
      "## Avg tag2-Recall          : ", sprintf("%6.2f %%", 100*$esum->{avg_recall}), "\n",
