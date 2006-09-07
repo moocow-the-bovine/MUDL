@@ -31,23 +31,32 @@ use Carp;
 ##  + $filename may be prefixed with 'fmt:'
 our %FORMATS =
   (
+   ##-- FileList
+   listed => 'FileList',
+   files  => 'FileList',
+   ##
    ##-- XML
    xml => 'XML',
+   ##
    ##-- TT
    ttt  => 'TT',
    tt  => 'TT',
    t => 'TT',
+   ##
    ##-- Brown
    bt => 'Brown',
    btt => 'Brown',
    bttt => 'Brown',
    brown => 'Brown',
+   ##
    ##-- Lob
    lob => 'LOB',
+   ##
    ##-- aliases
    native => 'TT',
    tnt => 'TT',
-   ##- default
+   ##
+   ##-- default
    #DEFAULT => 'XML',
    DEFAULT => 'TT',
   );
@@ -176,6 +185,7 @@ use MUDL::CorpusIO::Separated;
 #use MUDL::CorpusIO::LOB;
 #use MUDL::CorpusIO::Brown;
 use MUDL::CorpusIO::XML;
+use MUDL::CorpusIO::FileList;
 
 ########################################################################
 ## I/O : Memory
