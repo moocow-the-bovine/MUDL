@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Cluster::Kmeans.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -122,7 +122,7 @@ sub cluster {
        ($km->{error}=null),
        ($km->{nfound}=null),
        (defined($km->{dist})       ? $km->{dist}       : ($km->{dist}='b')),
-       (defined($km->{method})     ? $km->{method}     : ($km->{method}='v')),
+       (defined($km->{method})     ? $km->{method}     : ($km->{method}='a')),
       );
 
   return $km;

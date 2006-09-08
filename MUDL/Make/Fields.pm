@@ -115,7 +115,7 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(stage emi corpus lrlab auto),
+		     qw(stage emi ci corpus xvars->tcclass lrlab auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
    'collectDefault' => [ qw(corpus stage), ],
@@ -137,10 +137,10 @@ our %FIELDS =
 
    ##-- table: Ids
    'mpId'  => ['mpid'],
-   'mpid'  => [ qw(stg corpus lrlabel auto) ],
+   'mpid'  => [ qw(stg ci corpus lrlabel auto) ],
 
    'emId'  => ['emid'],
-   'emid'  => [ qw(stg emi corpus lrlabel auto) ],
+   'emid'  => [ qw(stg emi ci corpus lrlabel auto) ],
 
    ##-- Results: MetaProfile: general
    (map {
@@ -359,17 +359,28 @@ our %FIELDS =
    corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
 	       alt=>[
 		     qw(xvars->icorpus xvars->icbase xvars->tcorpus),
-		     qw(icorpus icbase tcorpus)
+		     qw(icorpus icbase tcorpus),
+		     qw(fcorpus fbase),
 		    ],
+	       eval => '$_ =~ s/\.(?:(?:.?tiny)|(?:train)|(?:i-\d+))//g ? $_ : $_',
 	       hr=>'micro',
 	       condense=>1,
 	     },
    lg=>'lang',
    lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lg',
-	       eval=>'$_ =~ /^[uz]/ ? "de" : "en"',
+	       eval=>'$_ =~ /^(\w\w)\-/ ? $1 : ($_ =~ /^[uz]/ ? "de" : "en")',
 	       hr=>'micro',
 	       condense=>1,
 	     },
+
+   ci=>'cspliti',
+   cspliti => {
+	       path=>[qw(xvars cspliti)], n=>1, fmt=>'auto', title=>'ci',
+	       hr=>'micro',
+	       eval=>'$_ ? $_ : 0',
+	       alt=>[qw(xvars->cspliti cspliti)],
+	       condense=>1,
+	      },
 
    ##-- MetaProfile: numeric indices
    'stg' => 'stage',
@@ -1408,7 +1419,7 @@ sub _expand_tags {
   my %tags2 = qw();
   ##-- gather known tag2 values
   foreach $cfg (@$configs) {
-    $info = pathValue($cfg,$srcfield->{path});
+    $info = $cfg->pathValue($srcfield->{path});
     @tags2{keys(%$info)} = undef;
   }
 
@@ -1510,7 +1521,7 @@ sub fieldValue {
   my ($mf,$cfg,$field) = @_;
 
   ##-- Step 1: get path-value
-  my $val = pathValue($cfg,$field->{path});
+  my $val = $cfg->pathValue($field->{path});
 
   ##-- Step 2: instantiate dynamic value ?!?!?! ---TODO---
 
@@ -1828,23 +1839,6 @@ sub _expand_field_cmp {
 ##======================================================================
 ## FUNCTIONS
 ##======================================================================
-
-##---------------------------------------------------------------
-## Functions: path values
-
-## $pathValue = pathValue($cfg, \@path)
-##  + just follows path; no defaults, eval etc.
-push(@{$EXPORT_TAGS{utils}}, 'pathValue');
-sub pathValue {
-  my ($cfg,$path) = @_;
-  my $val = $cfg;
-  ##-- array-expansion: follow list of keys
-  my ($key);
-  foreach $key (@$path) {
-    return undef if (!defined($val=$val->{$key}));
-  }
-  return $val;
-}
 
 ##---------------------------------------------------------------
 ## Functions: variant conditions

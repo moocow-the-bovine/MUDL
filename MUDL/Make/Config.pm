@@ -227,6 +227,23 @@ sub make {
 ##  + the process is already chdir()d to the $cfg->{dir} when this method is called!
 sub acquire { return 1; }
 
+##======================================================================
+## MUDL::Make::Fields interface
+
+## $val_or_undef = $cfg->pathValue(\@path)
+##  + default version just follows \@path as hash keys
+sub pathValue {
+  my ($cfg,$path) = @_;
+  my $val = $cfg;
+
+  ##-- array-expansion: follow list of keys
+  my ($key);
+  foreach $key (@$path) {
+    return undef if (!defined($val=$val->{$key}));
+  }
+  return $val;
+}
+
 
 1;
 
