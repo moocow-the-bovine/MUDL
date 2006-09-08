@@ -272,14 +272,31 @@ sub finish {
   }
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## meta-tagging precision,recall: get fallbacks
+  my ($f);
+  my $fallback1  = undef;
+  my $fallback1f = -1;
+  while (($tag1,$f)=each(%{$tag1d->{nz}})) {
+    next if ($tag1 eq $eval->{unknown1});
+    $fallback1 = $tag1 if ($f > $fallback1f);
+  }
+  my $fallback2 = undef;
+  my $fallback2f = -1;
+  while (($tag2,$f)=each(%{$tag2d->{nz}})) {
+    $fallback2 = $tag2 if ($f > $fallback2f);
+  }
+
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## meta-tagging precision,recall: get number of matching classes
   my ($tbest);
   while (($tag1,$tagi)=each(%$tag1i)) {
+    $tagi->{tbest}  = $fallback2 if (!defined($tagi->{tbest}));
     $tagi->{nbesti} = 0;
     $tagi->{nunknown} = 0;
     $tag2i->{$tagi->{tbest}}{nbesti}++;
   }
   while (($tag2,$tagi)=each(%$tag2i)) {
+    $tagi->{tbest}  = $fallback1 if (!defined($tagi->{tbest}));
     $tagi->{nbesti} = 0 if (!$tagi->{nbesti});
     $tagi->{nunknown} = 0 if (!$tagi->{nunknown});
     $tag1i->{$tagi->{tbest}}{nbesti}++;
@@ -297,7 +314,7 @@ sub finish {
   my ($ncor,$ninc);
   while (($tag1,$tagi)=each(%$tag1i)) {
     #next if ($tag1 eq $eval->{unknown1}); ##-- ignore unknowns (shouldn't be here anyway)
-    $ncor = $tagi->{meta_ncor12} = $tagi->{fbest};
+    $ncor = $tagi->{meta_ncor12} = $tagi->{fbest} || 0;
     $ninc = $tagi->{meta_ninc12} = ($tag1d->{nz}{$tag1} - $ncor) + $tagi->{nunknown};
     if (defined($tbest=$tagi->{tbest})) {
       $tag2i->{$tbest}{meta_ncor12} += $ncor;
@@ -305,7 +322,7 @@ sub finish {
     }
   }
   while (($tag2,$tagi)=each(%$tag2i)) {
-    $ncor = $tagi->{meta_ncor21} = $tagi->{fbest};
+    $ncor = $tagi->{meta_ncor21} = $tagi->{fbest} || 0;
     $ninc = $tagi->{meta_ninc21} = $tag2d->{nz}{$tag2} - $ncor; ##-- unknowns are already handled here
     if (defined($tbest=$tagi->{tbest})) {
       $tag1i->{$tbest}{meta_ncor21} += $ncor;
