@@ -177,6 +177,59 @@ sub formatRows {
 }
 
 ##----------------------------------------------------------------------
+## Methods: format: csv
+
+## $tab = $tab->csvRows(%args)
+##  + %args:
+##     force=>$bool, ##-- force re-format
+##  + just returns if $tab->{formatted} is true
+##  + otherwise creates formatting keys
+sub csvRows {
+  my ($tab,%args) = @_;
+
+  ##-- Check if we're already formatted (or forcing a re-format)
+  return $tab if (!$args{force} && $tab->{formatted});
+  my $sep = $args{csvSeparator} || $tab->{csvSeparator} || "\t";
+
+  ##-- Format: step 1: get visible fields
+  my $mf             = $tab->{mfields};
+  my $xfields        = $mf->xfields();
+  my $visible_fields = $tab->{visible_fields} = [grep {!$_->{hidden}} @$xfields];
+
+  ##-- Format: step 2: get field lengths (all fields): IGNORED for csv
+  my $rows = $tab->{rows};
+  my ($cf,$field,$fname);
+
+  ##-- Format: step 3: get sprintf() format (visible only)
+  my $fmt        = join("\t", map { "%s" } @$visible_fields)."\n";
+  $tab->{format} = $fmt;
+
+  ##-- Format: step 4: insert 'hr' separators
+  my %hr2prec = ( major=>30, minor=>20, micro=>10, none=>0 );
+  my $crows = $tab->{crows} = [ { %{$rows->[0]} }, ];
+
+  my ($cfprev,$hrhow,$i);
+  foreach $i (1..$#$rows) {
+    ($cf,$cfprev) = @$rows[$i,$i-1];
+    $hrhow        = undef;
+    ##-- separate?
+    foreach $field (grep {defined($_->{hr})} @$xfields) {
+      $fname = $field->{name}.":str";
+      if ($cf->{$fname} ne $cfprev->{$fname}) {
+	##-- check hr precedence
+	$hrhow = $field->{hr} if (!defined($hrhow) || $hr2prec{$hrhow} < $hr2prec{$field->{hr}});
+      }
+    }
+    push(@$crows, ($hrhow ? { __hr__=>$hrhow } : qw()), { %$cf }); ##-- copy rows
+  }
+
+  ##-- Format: step 5: condense field values [IGNORED]
+
+  return $tab;
+}
+
+
+##----------------------------------------------------------------------
 ## Methods: format: LaTeX
 
 ## $tab = $tab->latexRows(%args)

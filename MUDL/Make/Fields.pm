@@ -16,6 +16,7 @@ our @ISA = qw(MUDL::Object Exporter);
 ##======================================================================
 ## Globals
 
+##-------------------
 ## @_eval_base_fields
 ##  + many generated fields are created by iterating over these
 our @_eval_base_fields =
@@ -58,6 +59,7 @@ our @_eval_base_fields =
    qw(ARand:g ARand:t RandA:g RandA:t),
   );
 
+##-------------------
 ## %_eval_base_families = ($family => \@field_bases)
 ##  + other generated fields are created by iterating over these
 our %_eval_base_families =
@@ -74,6 +76,28 @@ our %_eval_base_families =
   );
 our $_eval_default_family = 'meta';
 
+##-------------------
+## %aggregateFuncs = ($func=>\%fieldConfig)
+##  + ???
+our %aggregateFuncs =
+  (
+   min=>{ aggregateName=>'min', aggregate=>'min', },
+   max=>{ aggregateName=>'max', aggregate=>'max', },
+   avg=>{ aggregateName=>'avg', aggregate=>'avg', },
+   sum=>{ aggregateName=>'sum', aggregate=>'sum', },
+   prd=>{ aggregateName=>'prd', aggregate=>'prod', },
+   var=>{ aggregateName=>'Var', aggregate=>'var', },
+   dev=>{ aggregateName=>'dev', aggregate=>'stddev', },
+  );
+##-- aggregate functions: aliases
+our %_aggregateAliases =
+  (
+   'prod'=>'prd', 'product'=>'prod',
+   'Var'=>'var',  'variance'=>'var',
+   'stddev'=>'dev', 'sigma'=>'dev',
+  );
+#$aggregateFuncs{$_} = $aggregateFuncs{$_aggregateAliases{$_}}
+#  foreach (keys(%_aggregateAliases));
 
 ##---------------------------------------------------------------
 ## Globals: Field Aliases (end = search for 'EOFIELDS')
@@ -81,6 +105,7 @@ our $_eval_default_family = 'meta';
 ## %FIELDS: ( $fieldName => \%fieldSpecHash, ..., $aliasName=>$fieldName, )
 ##  + %fieldSpecHash keys:
 ##     path => \@path,       ##-- nested MUDL::Make::Config key-path
+##     aggregate => $func,   ##-- aggregate function (class basename, see MUDL::Make::Config::Group::pathValue)
 ##     n    => $bool,        ##-- true iff numeric
 ##     fmt  => $how,         ##-- sprintf template for tabular formatting (default='auto')
 ##     title => $title,      ##-- field title (for tab)
@@ -142,7 +167,7 @@ our %FIELDS =
    'emId'  => ['emid'],
    'emid'  => [ qw(stg emi ci corpus lrlabel auto) ],
 
-   ##-- Results: MetaProfile: general
+   ##-- Results: general
    (map {
      my $family         = $_;
      my $family_default = $_eval_base_families{$family}->[0];
@@ -156,6 +181,14 @@ our %FIELDS =
 		),
 
       ##--------------------------------------------------------
+      ## Tables: by family: values only
+      "mpvalues:${family}" => [ "mpid", "|", "values:${family}" ],
+      "emvalues:${family}" => [ "emid", "|", "values:${family}" ],
+      _expand_gt("mpvalues:${family}:__GT__" => [ "mpid", "|", "values:${family}:__GT__" ],
+		 "emvalues:${family}:__GT__" => [ "emid", "|", "values:${family}:__GT__" ],
+		),
+
+      ##--------------------------------------------------------
       ## Results: by family
       ## + results:meta => [ qw(results:meta:g | results:meta:t) ]
       "results:${family}" => [ "results:${family}:g", '|', "results:${family}:t" ],
@@ -166,13 +199,26 @@ our %FIELDS =
 		 _expand_prF([map { ($_.":__GT__") } @{$_eval_base_families{$family}}])),
 
       ##--------------------------------------------------------
+      ## Results: by family: values only
+      ## + values:meta => [ qw(values:meta:g | values:meta:t) ]
+      "values:${family}" => [ "values:${family}:g", '|', "values:${family}:t" ],
+      ##
+      ## Results: by family: global, targets
+      ## + values:meta:g => [ qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g) ]
+      _expand_gt("values:${family}:__GT__",
+		 [map { ($_.":__GT__") } @{$_eval_base_families{$family}}]),
+
+      ##--------------------------------------------------------
       ## Results: by family: vs. prev(stage)
       ## + 'results:meta:e+pstg' => [ qw(results:meta:e+pstg:g | results:meta:e+pstg:t) ]
       "results:${family}:e+pstg" => [ "results:${family}:e+pstg:g", '|', "results:${family}:e+pstg:t" ],
+      "values:${family}:e+pstg"  => [ "values:${family}:e+pstg:g", '|', "values:${family}:e+pstg:t" ],
       ##
       ## Results: MetaProfile: by family: vs. prev(stage): global, targets
       ## + 'results:meta:e+pstg:g' => [ 'results:meta:e+pstg:pr:g ]
-      _expand_gt("results:${family}:e+pstg:__GT__", ["results:${family}:e+pstg:${family_default}:__GT__"]),
+      _expand_gt("results:${family}:e+pstg:__GT__", ["results:${family}:e+pstg:${family_default}:__GT__"],
+		 "values:${family}:e+pstg:__GT__",  ["values:${family}:e+pstg:${family_default}:__GT__"],
+		),
       ##
       ## Results: MetaProfile: by family: vs. prev(stage): global, targets: by evaluator field
       ## + 'results:meta:e+pstg:pr:g' => [ qw(*:pr:g pr:g e+pstage:pr:g(title=e+pstg)) ]
@@ -224,7 +270,7 @@ our %FIELDS =
       } @{$_eval_base_families{$family}}),
 
       ##--------------------------------------------------------
-      ## Results: by family: vs. max(emi)
+      ## Results: by family: vs. cmax(emi)
       ## + 'results:meta:max' => [ qw(results:meta:max:g | results:meta:max:t) ]
       "results:${family}:max" => [ "results:${family}:max:g", '|', "results:${family}:max:t" ],
       ##
@@ -454,7 +500,6 @@ our %FIELDS =
    'd2pn' => 'mbest',
 
    'tck' => { path=>[qw(xvars tck)], n=>1, alt=>[qw(xvars->tck)], },
-
 
    ##-------------------------------------------------
    ## Eval: Ambiguity Rates
@@ -706,6 +751,17 @@ our %FIELDS =
    'tags:aF:t'  => { expand_code=>\&_expand_tags, _tag_field=>'tag:aF:t', _tag_var=>'tag', },
 
    ##-------------------------------------------------
+   ## Eval: aggregate functions
+   ##  + 
+   (map {
+     ($_=>{
+	   %{$aggregateFuncs{$_}},
+	   expand_code=>\&_expand_aggregate,
+	   of=>undef, ##-- field name
+	  })
+   } keys(%aggregateFuncs)),
+
+   ##-------------------------------------------------
    ## Eval: log
    ##  + log { of=>$of_field ... }
    'log' => (our $_field_log=
@@ -716,17 +772,16 @@ our %FIELDS =
 	      fmt=>'%.2f',
 	     }),
 
-
    ##-------------------------------------------------
    ## Eval: max-value
    ##  + max { of=>$of_field, for=>$for_fields, ... }
-   'max' => (our $_max_field =
-	     { expand_code =>\&_expand_max,
-	       of          =>'pr:g',               ##-- target field: to be set by user or alias
-	       for         =>'corpus,stage,emi',   ##-- field list: max for every value-tuple of these fields
-	       evalname    =>'"max(of=$field->{of},for=($field->{for}))"',
-	       hidden      =>0,
-	     }),
+   'cmax' => (our $_max_field =
+	      { expand_code =>\&_expand_max,
+		of          =>'pr:g',               ##-- target field: to be set by user or alias
+		for         =>'corpus,stage,emi',   ##-- field list: max for every value-tuple of these fields
+		evalname    =>'"max(of=$field->{of},for=($field->{for}))"',
+		hidden      =>0,
+	      }),
 
    ##-------------------------------------------------
    ## Eval: max-value: aliases
@@ -865,7 +920,7 @@ our %FIELDS =
 ##-- EOFIELDS
 
 ##---------------------------------------------------------------
-## Fields: family expander: dummy replacement
+## Fields: family expander: macro substitution
 
 ## $str = _expand_macros($str, %macros)
 sub _expand_macros {
@@ -910,6 +965,7 @@ sub _expand_prF {
   }
   return $expanded;
 }
+
 
 ## %field_aliases = _expand_family($family, \@fields, $alias_name_template=>\@alias_value_template, $join_field)
 ##  + templates may use variables "$family" (source family), "$field" or "$_" (source field)
@@ -1323,6 +1379,48 @@ sub _max_fields {
 }
 
 ##---------------------------------------------------------------
+## Fields: expanders: aggregate functions
+
+## \@expanded = _expand_aggregate($mf,$aggregate_field,\@xfields)
+sub _expand_aggregate {
+  my ($mf,$afield,$xfields) = @_;
+  my $of_fields = $mf->expand($afield->{of});
+  my $afunc = $afield->{aggregate};
+  my $aname = $afield->{aggregateName} || $afunc;
+  my $expanded = [];
+  my ($src,$dst);
+  foreach $src (@$of_fields) {
+    ##-- sanity check
+    if (!$src->{n}) {
+      push(@$expanded, $src);
+      next;
+    }
+
+    $dst = {
+	    %$src,
+	    aggregate=>$afunc,
+	    aggregateName=>$aname,
+	   };
+
+    ##-- path
+    #$dst->{path} = [$afunc,@{$src->{path}}];
+
+    ##-- name
+    $dst->{name}     = $aname.'_'.$dst->{name} if (defined($dst->{name}));
+    $dst->{evalname} = "'${aname}_'.do { $dst->{evalname} }" if (defined($dst->{evalname}));
+
+    ##-- title
+    $dst->{title}     = $aname.'_'.$dst->{title} if (defined($dst->{title}));
+    $dst->{evaltitle} = "'${aname}_'.do { $dst->{evaltitle} }" if (defined($dst->{evaltitle}));
+
+    ##-- expansion complete
+    push(@$expanded, $dst);
+  }
+
+  return $expanded;
+}
+
+##---------------------------------------------------------------
 ## Fields: expanders: 'max'
 
 ## \@expanded = _expand_max($mf,$max_field,\@xfields)
@@ -1520,8 +1618,13 @@ sub fieldData {
 sub fieldValue {
   my ($mf,$cfg,$field) = @_;
 
+  ##-- Step 0: get path (impose aggregate function $field->{aggregate})
+  my @path = @{$field->{path}};
+  unshift(@path, $field->{aggregate})
+    if ($field->{aggregate} && UNIVERSAL::isa($cfg,'MUDL::Make::Config::Group'));
+
   ##-- Step 1: get path-value
-  my $val = $cfg->pathValue($field->{path});
+  my $val = $cfg->pathValue(\@path);
 
   ##-- Step 2: instantiate dynamic value ?!?!?! ---TODO---
 
@@ -1572,7 +1675,6 @@ sub fieldName {
   }
   return $field->{name} = $mf->fieldTitle($field);
 }
-
 
 ## $fieldTitle = $mf->fieldTitle($field)
 ##  + destructively alters $field (adds 'title' key if not present)
@@ -1734,7 +1836,7 @@ sub expand {
 	  }
 	  ##-- full user-specified field
 	  else {
-	    push(@parsed, {path=>$1,opts=>$2});
+	    push(@parsed, {path=>$pathstr,opts=>$optstr});
 	  }
 	}
 	unshift(@ufields, @parsed);

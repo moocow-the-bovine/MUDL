@@ -7,7 +7,7 @@
 ##======================================================================
 
 package MUDL::Make::Config::Group;
-use MUD::Make::Config;
+use MUDL::Make::Config;
 use MUDL::Make qw(:all);
 use Carp;
 use strict;
@@ -23,15 +23,20 @@ our $DEBUG = 0;
 ##  + hash:
 ##    {
 ##     ##-- Subconfigurations
-##     configs => \@subconfigs, ##-- each is a MUDL::Make::Config
+##     gconfigs => \@subconfigs, ##-- key&val pseudo-set of MUDL::Make::Config objects ("$cfg"=>$cfg)
 ##
+##     ##-- Group-by variables
+##     #gvars    => \%var2undef,  ##-- group-by variables
 ##    }
 sub new {
   my $that = shift;
-  my $self = bless $that->MUDL::Object->new
+  my $self = bless $that->MUDL::Object::new
     (
      ##-- Subconfigurations
-     configs => [],
+     gconfigs => [],
+
+     ##-- Group-by variables:
+     #gvars    => {},
 
      ##-- User args
      @_
@@ -40,11 +45,11 @@ sub new {
   return $self;
 }
 
-## $cfg = $cfg->clear;
+## $grp = $grp->clear;
 sub clear {
-  my $cfg = shift;
-  $_->clear() foreach (@{$cfg->{subconfigs}});
-  return $cfg;
+  my $grp = shift;
+  $_->clear() foreach (@{$grp->{gconfigs}});
+  return $grp;
 }
 
 ## destructor
@@ -53,106 +58,125 @@ sub DESTROY { ; }
 ##======================================================================
 ## Constructor: shadow
 
-## $cfg2 = $cfg->copyBrief(\@user_vars_to_keep)
+## $grp2 = $grp->copyBrief(\@user_vars_to_keep)
 sub copyBrief {
-  my ($cfg,$keepvars) = @_;
-  my $cfg2 = ref($cfg)->new(%$cfg,
-			    subconfigs=>[map { $_->copyBrief($keepvars) } @{$cfg->{subconfigs}}],
+  my ($grp,$keepvars) = @_;
+  my $grp2 = ref($grp)->new(%$grp,
+			    gconfigs=> [map {$_->copyBrief($keepvars)} @{$grp->{gconfigs}}],
 			   );
-  return $cfg2;
+  return $grp2;
 }
-
 
 ##======================================================================
-## Identification: key-generation
+## Manipulation
 
-## $key = $cfg->key(\%var2val)
-##  + uses '|' to join multiple values
-sub key {
-  my $cfg = shift;
-  confess(ref($cfg), "::key(): not implemented!");
-  return undef;
+## $grp = $grp->addConfig($subcfg)
+##  + adds a subconfiguration
+sub addConfig {
+  my ($grp,$cfg) = @_;
+  push(@{$grp->{gconfigs}},$cfg);
+  return $grp;
 }
 
-## $ukey = $cfg->ukey()
-##  + key for user-vars only
-sub ukey {
-  my $cfg = shift;
-  return '('.join(' | ', map { ("(".$_->ukey.")") } @{$cfg->{subconfigs}}).')';
+##======================================================================
+## Compilation
+
+## $grp = $grp->groupCompile()
+##  + compiles $grp->{uvars}, $grp->{xvars}
+sub groupCompile {
+  my $grp = shift;
+  return $grp->groupCompileVars('uvars') && $grp->groupCompileVars('xvars');
 }
 
-## $xkey = $cfg->xkey()
-##  + key for expanded variables
-##  + requires: $_->expand() on subconfigs
-sub xkey {
-  my $cfg = shift;
-  return '('.join(' | ', map { ("(".$_->xkey.")") } @{$cfg->{subconfigs}}).')';
+## $grp = $grp->groupCompileVars($varKey)
+##  + instantiates $grp->{$varKey} with a HASH containing
+##    only those (key,value) pairs shared by all subconfigs' $varKey hashes
+sub groupCompileVars {
+  my ($grp,$which) = @_;
+
+  ##-- get auxilliary map: ($var=>{$val=>$val})
+  my %var2vals = qw();
+  my ($cfg,$var,$val);
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    while (($var,$val)=each(%{$cfg->{$which}})) {
+      $var2vals{$var}{$val||''}=$val;
+    }
+  }
+
+  ##-- compute group variables
+  $grp->{$which} = {
+		    map  { ($_=>((values(%{$var2vals{$_}}))[0])) }
+		    grep { keys(%{$var2vals{$_}})==1 }
+		    keys(%var2vals)
+		   };
+
+  return $grp;
 }
+
 
 ##======================================================================
 ## Expansion: all variables
 
-## $cfg = $cfg->expand($mudl_mak_vars)
-##  + assigns user-variables in $cfg->{vars}
-##  + expands all variables to $cfg->{xvars}
+## $grp = $grp->expand($mudl_mak_vars)
+##  + assigns user-variables in $grp->{vars}
+##  + expands all variables to $grp->{xvars}
 ##  + copies $mudl_mak_vars
 sub expand {
-  my $cfg = shift;
-  foreach (@{$cfg->{subconfigs}}) {
+  my $grp = shift;
+  foreach (@{$grp->{gconfigs}}) {
     if (!$_->expand(@_)) {
-      confess(ref($cfg)."::expand() failed!");
+      confess(ref($grp)."::expand() failed!");
       return undef;
     }
   }
-  return $cfg;
+  return $grp;
 }
 
-## $cfg = $cfg->_expand($mudl_mak_vars)
-##  + assigns user-variables in $cfg->{vars}
-##  + expands all variables to $cfg->{xvars}
+## $grp = $grp->_expand($mudl_mak_vars)
+##  + assigns user-variables in $grp->{vars}
+##  + expands all variables to $grp->{xvars}
 ##  + destructively alters $mudl_mak_vars !
 sub _expand {
-  my $cfg = shift;
-  foreach (@{$cfg->{subconfigs}}) {
+  my $grp = shift;
+  foreach (@{$grp->{gconfigs}}) {
     if (!$_->_expand(@_)) {
-      confess(ref($cfg)."::_expand() failed!");
+      confess(ref($grp)."::_expand() failed!");
       return undef;
     }
   }
-  return $cfg;
+  return $grp;
 }
 
 
 ##======================================================================
 ## Makefile Generation: for user-vars
 
-## $file = $cfg->writeUserMakefile()
-## $file = $cfg->writeUserMakefile($filename_or_fh)
+## $file = $grp->writeUserMakefile()
+## $file = $grp->writeUserMakefile($filename_or_fh)
 ##  + writes variable assignments to a makefile
 sub writeUserMakefile {
-  my $cfg = shift;
-  confess(ref($cfg)."::writeUserMakefile(): not implemented!");
+  my $grp = shift;
+  confess(ref($grp)."::writeUserMakefile(): not implemented!");
   return undef;
 }
 
 ##======================================================================
 ## Make: Directory juggling
 
-## $cwd = $cfg->pushd()
-## $cwd = $cfg->pushd($dir)
-##  + chdir()s to $cfg->{dir} or $dir, updates $cfg->{dirstack}
+## $cwd = $grp->pushd()
+## $cwd = $grp->pushd($dir)
+##  + chdir()s to $grp->{dir} or $dir, updates $grp->{dirstack}
 sub pushd {
-  my ($cfg,$dir) = @_;
-  my $cfg = shift;
-  confess(ref($cfg)."::pushd(): not implemented!");
+  my ($grp,$dir) = @_;
+  confess(ref($grp)."::pushd(): not implemented!");
   return undef;
 }
 
-## $cwd = $cfg->popd()
+## $cwd = $grp->popd()
 ##  + pops the most recent directory from the stack (if any)
 sub popd {
-  my $cfg = shift;
-  confess(ref($cfg)."::popd(): not implemented!");
+  my $grp = shift;
+  confess(ref($grp)."::popd(): not implemented!");
   return undef;
 }
 
@@ -160,13 +184,13 @@ sub popd {
 ##======================================================================
 ## Make: Targets
 
-## $bool = $cfg->make(%args)
+## $bool = $grp->make(%args)
 ##  + calls $_->make() on each subconfig
 sub make {
-  my $cfg = shift;
-  foreach (@{$cfg->{subconfigs}}) {
+  my $grp = shift;
+  foreach (@{$grp->{gconfigs}}) {
     if (!$_->make(@_)) {
-      confess(ref($cfg)."::make() failed!");
+      confess(ref($grp)."::make() failed!");
       return undef;
     }
   }
@@ -177,19 +201,19 @@ sub make {
 ##======================================================================
 ## Make: Acquire Data
 
-## $bool = $cfg->acquire(%args)
-##  + called after successful $cfg->make()
+## $bool = $grp->acquire(%args)
+##  + called after successful $grp->make()
 ##  + may be implemented in child classes for data acquisition
-##  + the process is already chdir()d to the $cfg->{dir} when this method is called!
+##  + the process is already chdir()d to the $grp->{dir} when this method is called!
 sub acquire { return 1; }
 
-## $bool = $cfg->reacquire(%args)
+## $bool = $grp->reacquire(%args)
 ##  + attempts to call reacquire() on each subconfig
 sub reacquire {
-  my $cfg = shift;
-  foreach (@{$cfg->{subconfigs}}) {
+  my $grp = shift;
+  foreach (@{$grp->{gconfigs}}) {
     if (!UNVIERSAL::can($_,'reacquire') || !$_->reacquire(@_)) {
-      confess(ref($cfg)."::reacquire() failed!");
+      confess(ref($grp)."::reacquire() failed!");
       return undef;
     }
   }
@@ -200,31 +224,34 @@ sub reacquire {
 ##======================================================================
 ## MUDL::Make::Fields interface
 
-## $val_or_undef = $cfg->pathValue(\@path)
+## $val_or_undef = $grp->pathValue(\@path)
 ##  + default version just follows \@path as hash keys
 ##  + first element of \@path may be the name of an aggregate function
 sub pathValue {
-  my ($cfg,$path) = @_;
+  my ($grp,$path) = @_;
+
+  ##-- sanity check
+  return $grp if (!@$path);
 
   ##-- apply aggregate functions
-  my $afunc = $cfg->aggregateFunction($path->[0]);
-  return $afunc->pathValue($cfg,[@$path[1..$#$path]]) if (defined($afunc));
+  my $afunc = $grp->aggregateFunction($path->[0]);
+  return $afunc->pathValue($grp,[@$path[1..$#$path]]) if (defined($afunc));
 
   ##-- no explicit aggregate; use default
-  $afunc = $cfg->defaultAggregateFunction();
-  return $afunc->pathValue($cfg,$path);
+  $afunc = $grp->defaultAggregateFunction();
+  return $afunc->pathValue($grp,$path);
 }
 
 ##======================================================================
 ## Aggregate functions: lookup
 ##  + aggregate functions are fully-qualified classnames
 
-## $afunc = $cfg->defaultAggregateFunction()
+## $afunc = $grp->defaultAggregateFunction()
 sub defaultAggregateFunction {
-  return $_[0]->aggregateFunction('min');
+  return $_[0]->aggregateFunction('max');
 }
 
-## $afunc_or_undef = $cfg->aggregateFunction($funcName)
+## $afunc_or_undef = $grp->aggregateFunction($funcName)
 sub aggregateFunction {
   return $_[1]
     if (UNIVERSAL::isa($_[1],
@@ -247,32 +274,32 @@ our @ISA = qw();
 ##------------------------------------------------------
 ## Aggregate Functions: API
 
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 ##  + default calls initialValue(), addValue(), finalValue()
 sub pathValue {
-  my ($af,$group,$path) = @_;
-  my $val = $af->initialValue($group,$path);
-  $val = $af->addValue($val,$group,$path) foreach (@{$group->{subconfigs}});
-  return $af->finalValue($val,$group,$path);
+  my ($af,$grp,$path) = @_;
+  my $val = $af->initialValue($grp,$path);
+  $val = $af->addValue($val,$grp,$path) foreach (@{$grp->{gconfigs}});
+  return $af->finalValue($val,$grp,$path);
 }
 
 ##------------------------------------------------------
 ## Aggregate Functions: default API
 
-## $val = $af->initialValue($groupConfig,\@path)
+## $val = $af->initialValue($grpConfig,\@path)
 sub initialValue { return undef; }
 
-## $val = $af->addValue($val,$groupConfig,\@path)
+## $val = $af->addValue($val,$grpConfig,\@path)
 sub addValue { return $_[1]; }
 
-## $val = $af->finalValue($val,$groupConfig,\@path)
+## $val = $af->finalValue($val,$grpConfig,\@path)
 sub finalValue { return $_[1]; }
 
 ##------------------------------------------------------
 ## Aggregate Functions: utilities: comparator
 
-sub compare {
-  our ($a,$b);
+sub compare($$) {
+  our ($a,$b)=@_;
   return (defined($a)
 	  ? (defined($b)
 	     ? ($a =~ /^[\+\-]?(?:\d*\.)?\d+(?:[Ee][\+\-]?\d+)?/
@@ -294,12 +321,12 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
+  my ($af,$grp,$path) = @_;
   my $min = undef;
   my ($cfg,$val);
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     next if (!defined($val=$cfg->pathValue($path)));
     $min = $val if (!defined($min) || MUDL::Make::Config::GroupFunction::compare($val,$min) < 0);
   }
@@ -313,14 +340,14 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
+  my ($af,$grp,$path) = @_;
   my $max = undef;
   my ($cfg,$val);
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     next if (!defined($val=$cfg->pathValue($path)));
-    $max = $val if (!defined($min) || MUDL::Make::Config::GroupFunction::compare($max,$val) < 0);
+    $max = $val if (!defined($max) || MUDL::Make::Config::GroupFunction::compare($max,$val) < 0);
   }
   return $max;
 }
@@ -332,12 +359,12 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
+  my ($af,$grp,$path) = @_;
   my $sum = 0;
   my ($cfg,$val);
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     next if (!defined($val=$cfg->pathValue($path)));
     $sum += $val;
   }
@@ -351,12 +378,12 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
+  my ($af,$grp,$path) = @_;
   my $prod = 1;
   my ($cfg,$val);
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     next if (!defined($val=$cfg->pathValue($path)));
     $prod *= $val;
   }
@@ -370,10 +397,10 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
-  return scalar(@{$group->{subconfigs}});
+  my ($af,$grp,$path) = @_;
+  return scalar(@{$grp->{gconfigs}});
 }
 
 ##======================================================================
@@ -383,12 +410,12 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
+  my ($af,$grp,$path) = @_;
   my ($cfg,$val);
   my %vals = qw();
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     $val = '' if (!defined($val=$cfg->pathValue($path)));
     $vals{$val} = undef;
   }
@@ -402,16 +429,16 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
+  my ($af,$grp,$path) = @_;
   my $avg = 0;
   my ($cfg,$val);
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     $val  = 0 if (!defined($val=$cfg->pathValue($path)));
     $avg += $val;
   }
-  return $avg ? ($avg/scalar(@{$group->{subconfigs}})) : 0;
+  return $avg ? ($avg/scalar(@{$grp->{gconfigs}})) : 0;
 }
 
 ##======================================================================
@@ -421,17 +448,17 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
-  my $EX = $group->aggregateFunction('avg')->pathValue($group,$path);
+  my ($af,$grp,$path) = @_;
+  my $EX = $grp->aggregateFunction('avg')->pathValue($grp,$path);
   my $VarX = 0;
   my ($cfg,$val);
-  foreach $cfg (@{$group->{subconfigs}}) {
+  foreach $cfg (@{$grp->{gconfigs}}) {
     $val   = 0 if (!defined($val=$cfg->pathValue($path)));
     $VarX += $val**2;
   }
-  $VarX /= scalar(@{$group->{subconfigs}}) if ($VarX);
+  $VarX /= scalar(@{$grp->{gconfigs}}) if ($VarX);
   return $VarX - $EX**2;
 }
 
@@ -442,10 +469,10 @@ use Carp;
 use strict;
 our @ISA = qw(MUDL::Make::Config::GroupFunction);
 ##
-## $val = $afunc->pathValue($groupConfig, \@path)
+## $val = $afunc->pathValue($grpConfig, \@path)
 sub pathValue {
-  my ($af,$group,$path) = @_;
-  return sqrt($group->aggregateFunction('var')->pathValue($group,$path));
+  my ($af,$grp,$path) = @_;
+  return sqrt($grp->aggregateFunction('var')->pathValue($grp,$path));
 }
 
 

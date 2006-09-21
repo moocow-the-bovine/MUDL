@@ -51,6 +51,10 @@ sub new {
 				     dirstack=>[],
 				     targets=>'all',
 
+				     ##-- Key generation (obsolete?)
+				     #rs=>" && ",
+				     #fs=>"=>",
+
 				     ##-- User args
 				     @_
 				    ), ref($that)||$that;
@@ -94,22 +98,24 @@ sub copyBrief {
 
 
 ##======================================================================
-## Identification: key-generation
+## Identification: key-generation: OBSOLETE!
 
 ## $key = $cfg->key(\%var2val)
-sub key {
-  my ($cfg,$vars) = @_;
-  return join($cfg->{rs}, map { $_ . $cfg->{fs} . $vars->{$_} } sort(keys(%$vars)));
+## $key = $cfg->key(\%var2val,\@varkeys)
+sub key0 {
+  my ($cfg,$vars,$keys) = @_;
+  $keys = [keys(%$vars)] if (!$keys);
+  return join($cfg->{rs}, map { $_ . $cfg->{fs} . $vars->{$_} } sort(@$keys));
 }
 
 ## $ukey = $cfg->ukey()
 ##  + key for user-vars only
-sub ukey { return $_[0]->key($_[0]->{uvars}); }
+sub ukey0 { return $_[0]->key($_[0]->{uvars}); }
 
 ## $xkey = $cfg->xkey()
 ##  + key for expanded variables
 ##  + requires: $cfg->expand()
-sub xkey { return $_[0]->key($_[0]->{xvars}); }
+sub xkey0 { return $_[0]->key($_[0]->{xvars}); }
 
 
 ##======================================================================

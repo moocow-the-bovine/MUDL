@@ -11,6 +11,7 @@ use MUDL::Object;
 use MUDL::Make qw(:all);
 use MUDL::Make::Vars;
 use MUDL::Make::Config;
+use MUDL::Make::Config::Group;
 use IO::File;
 use File::Temp qw(tempfile);
 use File::Copy qw(copy);
@@ -158,9 +159,11 @@ sub parse_p {
 ## Key Generation
 
 ## $key = $mcol->key(\%var2val)
+## $key = $mcol->key(\%var2val,\@vars)
 sub key {
-  my ($mcol,$var2val) = @_;
-  return join($mcol->{rs}, map { $_ . $mcol->{fs} . $var2val->{$_} } sort(keys(%$var2val)));
+  my ($mcol,$var2val,$keys) = @_;
+  $keys = [keys(%$var2val)] if (!$keys);
+  return join($mcol->{rs}, map { $_ . $mcol->{fs} . $var2val->{$_} } sort(@$keys));
 }
 
 ## $ukey = $mcol->ukey($cfg)
@@ -369,6 +372,101 @@ sub ucollect { return $_[0]->collectConfigs($_[0]->usearch($_[1])); }
 ## $subcol = $mcol->xcollect($criterion)
 sub xcollect { return $_[0]->collectConfigs($_[0]->xsearch($_[1])); }
 
+##======================================================================
+## Grouping (subcollection)
+
+## $grp = $mcol->newGroup()
+sub newGroup {
+  return MUDL::Make::Config::Group->new();
+}
+
+## \%key2grp = $mcol->vgroupby($varkey,$vars)  ##-- scalar context
+## @groups   = $mcol->vgroupby($varkey,$vars)  ##-- array context
+##  + $vars may be:
+##    - a key pseudo-set HASH ref of variable names
+##    - an ARRAY ref of var-names [internal]
+##    - a (comma+space)-separated list
+sub vgroupby {
+  my ($col,$vkey,$vars) = @_;
+
+  ##-- parse $vars
+  if (!ref($vars)) { $vars = [ grep {defined($_) && $_ ne ''} split(/\,\s*/, $vars) ]; }
+  elsif (ref($vars) eq 'HASH') { $vars = [ keys(%$vars) ]; }
+  #elsif (ref($vars) eq 'ARRAY') { $vars = { map {($_=>undef)} } @$vars; }
+
+  ##-- get map from ($subKey => $group)
+  ##   + also store config-keys for sort (extended)
+  my %key2grp = qw();
+  my ($xkey,$cfg,$cckey, %cfg2xkey);
+  while (($xkey,$cfg)=each(%{$col->{xconfigs}})) {
+    $cckey = $col->key($cfg->{$vkey},$vars);
+    $key2grp{$cckey} = $col->newGroup() if (!$key2grp{$cckey});
+    $key2grp{$cckey}->addConfig($cfg);
+
+    ##-- temporary map
+    $cfg2xkey{$cfg}=$xkey;
+  }
+
+  ##-- finish groups
+  my ($grp);
+  foreach $grp (values(%key2grp)) {
+    ##-- sort group internally by user-key
+    @{$grp->{gconfigs}} = sort { $cfg2xkey{$a} cmp $cfg2xkey{$b} } @{$grp->{gconfigs}};
+    ##-- compile group variables
+    $grp->groupCompile();
+  }
+
+  return wantarray ? values(%key2grp) : \%key2grp;
+}
+
+## \%key2grp = $mcol->vgroupover($varkey,$vars)  ##-- scalar context
+## @groups   = $mcol->vgroupover($varkey,$vars)  ##-- array context
+##  + $vars may be:
+##    - a key pseudo-set HASH ref of variable names [internal]
+##    - an ARRAY ref of var-names
+##    - a (comma+space)-separated list
+sub vgroupover {
+  my ($col,$vkey,$vars) = @_;
+
+  ##-- parse $vars
+  if (!ref($vars)) { $vars = {map {($_=>undef)} grep {defined($_) && $_ ne ''} split(/\,\s*/, $vars)}; }
+  #elsif (ref($vars) eq 'HASH') { $vars = [ keys(%$vars) ]; }
+  elsif (ref($vars) eq 'ARRAY') { $vars = {map {($_=>undef)} @$vars}; }
+
+  ##-- delegate to $col->groupby(): get 'groupby()' variables
+  my %byvars = qw();
+  my ($cfg);
+  foreach $cfg (values(%{$col->{xconfigs}})) {
+    @byvars{grep {!exists($vars->{$_})} keys(%{$cfg->{$vkey}})} = undef;
+  }
+
+  return $col->vgroupby($vkey,[keys(%byvars)]);
+}
+
+## $subcol = $mcol->ugroupby($vars)
+sub ugroupby { return $_[0]->collectConfigs($_[0]->vgroupby('uvars',$_[1])); }
+
+## $subcol = $mcol->xgroupby($vars)
+sub xgroupby { return $_[0]->collectConfigs($_[0]->vgroupby('xvars',$_[1])); }
+
+## $subcol = $mcol->ugroupover($vars)
+sub ugroupover { return $_[0]->collectConfigs($_[0]->vgroupover('uvars',$_[1])); }
+
+## $subcol = $mcol->xgroupover($vars)
+sub xgroupover { return $_[0]->collectConfigs($_[0]->vgroupover('xvars',$_[1])); }
+
+## $subcol = $mcol->ungroup()
+##   + pops one grouping level
+sub ungroup {
+  my $col = shift;
+  return $col->collectConfigs(
+			       map {
+				 (UNIVERSAL::isa($_,'MUDL::Make::Config::Group')
+				  ? @{$_->{gconfigs}}
+				  : $_)
+			       } values(%{$col->{xconfigs}})
+			     );
+}
 
 ##======================================================================
 ## I/O: Native (perl)

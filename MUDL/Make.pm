@@ -171,7 +171,7 @@ sub actHelp {
   foreach $syn (sort(keys(%syn2act))) {
     $act = $syn2act{$syn};
     print STDERR
-      sprintf("  %-18s : %s\n", $syn, ($act->{help} ? $act->{help} : 'no help'));
+      sprintf("  %-24s : %s\n", $syn, ($act->{help} ? $act->{help} : 'no help'));
   }
   return 1;
 }
@@ -282,7 +282,7 @@ sub actSaveSelection {
 ##---------------------------------------------------------------
 ## Actions: select
 
-$ACTIONS{xselect} = 
+$ACTIONS{xselect} = $ACTIONS{selectx} =
   {
    syntax=>'xselect XCRITERIA',
    help  =>'select a subset of the collection configurations',
@@ -294,7 +294,7 @@ sub actSelectExtended {
    && ($mak->{selected} = $mak->{col}->xcollect($crit)));
 }
 
-$ACTIONS{select} = $ACTIONS{uselect} = 
+$ACTIONS{select} = $ACTIONS{uselect} = $ACTIONS{selectu} =
   {
    syntax=>'uselect UCRITERIA',
    help  =>'select a subset of the collection configurations',
@@ -306,7 +306,7 @@ sub actSelectUser {
    && ($mak->{selected} = $mak->{col}->ucollect($crit)));
 }
 
-$ACTIONS{oselect} =
+$ACTIONS{oselect} = $ACTIONS{selecto} =
   {
    syntax=>'oselect OBJCRITERIA',
    help  =>'select a subset of the collection configurations',
@@ -317,6 +317,52 @@ sub actSelectObject {
   ($mak->ensureLoaded()
    && ($mak->{selected} = $mak->{col}->collect($crit)));
 }
+
+##---------------------------------------------------------------
+## Actions: group
+
+##-- groupby
+$ACTIONS{groupby} = $ACTIONS{xgroupby} =
+  {
+   syntax=>'xgroupby VARS',
+   help  =>'group selected collection configurations by shared values for VARS',
+   code  => \&actXGroupBy,
+  };
+sub actXGroupBy {
+  my ($mak,$vars) = @_;
+  ($mak->ensureLoaded()
+   && ($mak->{selected} = $mak->selected()->xgroupby($vars)));
+}
+
+
+##-- groupover
+$ACTIONS{group} = $ACTIONS{groupover} = $ACTIONS{ugroup} = $ACTIONS{ugroupover} =
+  {
+   syntax=>'ugroupover VARS',
+   help  =>'group selected collection configurations over distinct values for VARS',
+   code  => \&actUGroupOver,
+  };
+sub actUGroupOver {
+  my ($mak,$vars) = @_;
+  ($mak->ensureLoaded()
+   && ($mak->{selected} = $mak->selected()->ugroupover($vars)));
+}
+
+
+##-- ungroup
+$ACTIONS{ungroup} = $ACTIONS{nogroup} =
+  {
+   syntax=>'ungroup',
+   help  =>'ungroup selection',
+   code  => \&actUngroup,
+  };
+sub actUngroup {
+  my ($mak) = @_;
+  ($mak->ensureLoaded()
+   && (!$mak->{selected} || ($mak->{selected} = $mak->{selected}->ungroup())));
+}
+
+
 
 ##---------------------------------------------------------------
 ## Actions: expand
@@ -591,6 +637,75 @@ sub actSummary {
   }
 
   print $hr{end};
+
+  return 1;
+}
+
+##---------------------------------------------------------------
+## Actions: Summarize (CSV table format)
+
+$ACTIONS{cvstable} = $ACTIONS{csvtab} = $ACTIONS{csv} = $ACTIONS{dat} =
+  {
+   syntax=>'csvtable [FIELD,...]',
+   help=>'summarize selected configurations (CSV table-format)',
+   code=>\&actCSVTable,
+  };
+
+sub actCSVTable {
+  my ($mak,$ufields) = @_;
+  return 0 if (!$mak->ensureLoaded);
+
+  my $configs = $mak->selectedConfigs;
+  if (!@$configs) {
+    $mak->vmsg('warn', ref($mak),"::actCSVTable(): no configurations selected\n");
+    return 1;
+  }
+
+  $ufields   = 'summarizeDefault' if (!$ufields);
+  my $mf = $mak->fields($ufields,configs=>$configs);
+  my $tab = MUDL::Make::Table->newFull(mfields=>$mf, sortby=>$mak->{sortby});
+
+  ##-- Summarize: indent
+  my $comment = '#';
+  my $format = $tab->{format};
+  my $linewd = 80;
+  my %hr = (
+	    major=>("\n"
+		    .$comment.('=' x $linewd)."\n"),
+	    minor=>($comment.('-' x $linewd)."\n"),
+	    micro=>($comment.('·' x $linewd)."\n"),
+	   );
+
+  ##-- Summarize: print headers
+  my ($title);
+  print
+    (
+     ##-- header
+     $comment,
+     sprintf($format,
+	     map {
+	       $title = $tab->{visible_fields}[$_]{title};
+	       $title =~ s/\s+/_/g;
+	       ($_+1)."($title)";
+	     }
+	     (0..$#{$tab->{visible_fields}})),
+    );
+
+  ##-- Summarize: print table
+  my $crows = $tab->{crows};
+  my ($cf,$i);
+  foreach $i (0..$#$crows) {
+    $cf = $crows->[$i];
+    print
+      (
+       (defined($cf->{__hr__})
+	? $hr{$cf->{__hr__}}    ##-- separator?
+	: sprintf($format,      ##-- data row
+		  #@$cf{map {$_->{name}.":str"} @{$tab->{visible_fields}}}
+		  @$cf{map {$_->{name}} @{$tab->{visible_fields}}}
+		 ))
+      );
+  }
 
   return 1;
 }
