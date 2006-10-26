@@ -250,6 +250,13 @@ sub pathValue {
   return $val;
 }
 
+##======================================================================
+## Value collection / generalization to group
+
+## \@configs = $cfg->configArray()
+##  + default version just returns a list containing this config
+sub configArray { return [$_[0]]; }
+
 
 1;
 

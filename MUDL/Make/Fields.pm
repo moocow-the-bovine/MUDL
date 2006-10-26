@@ -118,6 +118,7 @@ our %_aggregateAliases =
 ##     condense=>$bool,      ##-- summarize(): condense consecutive duplicate values?
 ##     expand_code =>\&code, ##-- dynamic alias: calls (\@expanded=$code->($mf,$pfield,\@xfields)) to expand
 ##                           ##   + code should return expanded fields as ARRAY-ref
+##     expand_priority=>$n,  ##-- expansion priority (lower priority --> expanded earlier; default=0)
 ##     hidden=>$bool,        ##-- if true, field is not displayed
 ##
 ##     ##-- TODO--
@@ -373,6 +374,25 @@ our %FIELDS =
 		    '|',
 		    qw(*l:pr:t ar:t),
 		   ],
+
+   ##-- cross-comparisons (e.g. significance tests)
+   xcomp => {
+	     expand_code=>\&_expand_xcomp,
+	     xc_title=>'$cfg',
+	     #xc_eval=>'?',
+	     xc_sortby=>'auto', ##-- sort-by specification for xc
+	     ##
+	     ##-- prepend or append a column to every generated column
+	     #xc_prepend => ['|'],
+	     #xc_append => ['|'],
+	    },
+   rxcomp => {
+	      ##-- for R tests
+	      expand_code=>\&_expand_rxcomp,
+	      rfunc => 'wilcoxTest',
+	      rargs => undef,
+	      on    => 'pr:g',
+	     },
 
 
    ##-- Filler(s)
@@ -1494,7 +1514,6 @@ sub _expand_all {
 
 ##---------------------------------------------------------------
 ## Fields: expanders: 'auto'
-
 ## \@expanded = _expand_auto($mf,$auto_field,\@xfields)
 sub _expand_auto {
   my ($mf,$auto_field,$xfields) = @_;
@@ -1525,6 +1544,98 @@ sub _expand_tags {
   #splice(@$xfields, $fi,1, map { {%$srcfield, $tagvar=>$_} } sort(keys(%tags2)));
   return [map { {%$srcfield, $tagvar=>$_} } sort(keys(%tags2))];
 }
+
+##---------------------------------------------------------------
+## Fields: expanders: 'xcomp'
+##  + configuration cross-comparison (ordered pairs)
+
+## \@expanded = _expand_xcomp($mf,$xcomp_field,\@xfields)
+##  + %$xcomp_field keys:
+##      xc_sortby=>$sortby_spec,      ##-- vars: none
+##
+##      xc_title=>$eval_str,          ##-- vars: $cfg
+##      xc_evaltitle=>$eval_eval_str, ##-- vars: $cfg
+##      xc_name=>$eval_str,           ##-- vars: $cfg
+##      xc_evalname=>$eval_eval_str,  ##-- vars: $cfg
+##
+##      xc_eval =>$eval_str,          ##-- vars: $cfg1, $cfg2
+##      ...
+##  + $eval_str vars:
+##      $mf   ##-- make fields object
+##      $cfg1 ##-- row config
+##      $cfg2 ##-- column config
+sub _expand_xcomp {
+  my ($mf,$xcfield,$xfields) = @_;
+  my $configs  = $mf->{configs};
+
+  ##-- Step 1: create one field (column) for each config
+  my ($cfg,$field,@expanded,$cfg1,$cfg2);
+  my @no_adopt_xc_keys = qw(title evaltitle name evalname expand_code);
+  foreach $cfg ($mf->sortConfigs($configs,sortby=>$xcfield->{xc_sortby})) {
+    $field = { %$xcfield };
+    delete(@$field{@no_adopt_xc_keys});
+    $field->{title} = eval $xcfield->{xc_title} if (exists($xcfield->{xc_title}));
+    $field->{name}  = eval $xcfield->{xc_name}  if (exists($xcfield->{xc_name}));
+    $field->{evaltitle} = eval $xcfield->{xc_evaltitle} if (exists($xcfield->{xc_evaltitle}));
+    $field->{evalname}  = eval $xcfield->{xc_evalname}  if (exists($xcfield->{xc_evalname}));
+
+    if (exists($xcfield->{xc_eval})) {
+      $cfg2 = $cfg;
+      $field->{xc_values} = {};
+      $field->{eval}      = '$field->{xc_values}{$_}';
+      foreach $cfg1 (@$configs) {
+	$field->{xc_values}{$cfg1} = eval $xcfield->{xc_eval};
+      }
+    }
+
+    push(@expanded,
+	 $xcfield->{xc_prepend} ? @{$mf->expand($xcfield->{xc_prepend})} : qw(),
+	 $field,
+	 $xcfield->{xc_append}  ? @{$mf->expand($xcfield->{xc_append})} : qw(),
+	);
+  }
+
+  return [@expanded];
+}
+
+## \@expanded = _expand_rxcomp($mf,$rxcomp_field,\@xfields)
+##  + for cross-config R tests using MUDL::RSPerl
+##  + new keys for %$rxcomp_field
+##     rfunc => $literal_R_function,
+##     rattr => $literal_R_attr,
+##     rargs => \@additional_rfunc_args,
+##     on    => $fieldToTest,
+##     rxc_fmt => $fmtString,
+##  + calls _expand_xcomp() on a generated xcomp field
+##    - populates generated field's 'xc_eval' key
+sub _expand_rxcomp {
+  my ($mf,$rxcfield,$xfields) = @_;
+  require MUDL::RSPerl;
+
+  ##-- generate xcomp field
+  my $on_field = $mf->expand($rxcfield->{on})->[0];
+  my $xc_eval = ('MUDL::RSPerl->genericTest('
+		 .join(',',
+		       "'$rxcfield->{rfunc}'",
+		       ($rxcfield->{rattr} ? "'$rxcfield->{rattr}'" : 'p.value'),
+		       '[map {$mf->fieldValue($_,$field->{_on})} @{$cfg1->configArray}]',
+		       '[map {$mf->fieldValue($_,$field->{_on})} @{$cfg2->configArray}]',
+		       ($rxcfield->{rargs} ? @{$rxcfield->{rargs}} : qw()),
+		      )
+		 .')');
+  $xc_eval = "sprintf(qq($rxcfield->{rxc_fmt}), $xc_eval)" if ($rxcfield->{rxc_fmt});
+
+  my $xc_field = {
+		  %$rxcfield,
+		  expand_code=> \&_expand_xcomp,
+		  _on        => $on_field,
+		  xc_eval    => $xc_eval,
+		 };
+
+
+  return $mf->_expand_xcomp($xc_field,$xfields);
+}
+
 
 ##---------------------------------------------------------------
 ## Globals: Exporter (see end of perl code, near '__END__' token)

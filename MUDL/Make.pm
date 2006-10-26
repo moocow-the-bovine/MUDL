@@ -580,6 +580,7 @@ $ACTIONS{summarize} = $ACTIONS{summary} = $ACTIONS{table} = $ACTIONS{tab} =
    code=>\&actSummary,
   };
 
+*actTable = \&actSummary;
 sub actSummary {
   my ($mak,$ufields) = @_;
   return 0 if (!$mak->ensureLoaded);
@@ -644,7 +645,7 @@ sub actSummary {
 ##---------------------------------------------------------------
 ## Actions: Summarize (CSV table format)
 
-$ACTIONS{cvstable} = $ACTIONS{csvtab} = $ACTIONS{csv} = $ACTIONS{dat} =
+$ACTIONS{csvtable} = $ACTIONS{csvtab} = $ACTIONS{csv} = $ACTIONS{dat} =
   {
    syntax=>'csvtable [FIELD,...]',
    help=>'summarize selected configurations (CSV table-format)',
@@ -674,6 +675,7 @@ sub actCSVTable {
 		    .$comment.('=' x $linewd)."\n"),
 	    minor=>($comment.('-' x $linewd)."\n"),
 	    micro=>($comment.('·' x $linewd)."\n"),
+	    none=>'',
 	   );
 
   ##-- Summarize: print headers

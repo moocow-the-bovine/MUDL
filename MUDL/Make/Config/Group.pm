@@ -113,7 +113,6 @@ sub groupCompileVars {
   return $grp;
 }
 
-
 ##======================================================================
 ## Expansion: all variables
 
@@ -241,6 +240,48 @@ sub pathValue {
   $afunc = $grp->defaultAggregateFunction();
   return $afunc->pathValue($grp,$path);
 }
+
+##======================================================================
+## Value collection
+
+## \@subconfigs = $grp->configArray()
+##   + returns all subconfigs as a (flat) array
+sub configArray {
+  my $grp = shift;
+  return [ map { @{$_->configArray()} } @{$grp->{gconfigs}} ];
+}
+
+
+## \@pathArray = $grp->pathArray(\@path)
+##  + gets a perl arrays of $cfg->pathValue(\@path) values
+##  + OBSOLETE?
+sub pathArray {
+  my ($grp,$path) = @_;
+  return [@{$grp->{gconfigs}}] if (!@$path);
+  return [map {$_->pathValue($path)} @{$grp->{gconfigs}}];
+}
+
+## $pathPDL = $grp->pathPdl(\@path)
+## $pathPDL = $grp->pathPdl(\@path,$pdl_type)
+##  + OBSOLETE?
+*pathPDL = \&pathPdl;
+sub pathPdl {
+  my ($grp,$path,$pdl_type) = @_;
+  $pdl_type = PDL::double() if (!defined($pdl_type));
+  return zeroes($pdl_type, scalar(@{$grp->{gconfigs}})) if (!@$path);
+  return pdl($pdl_type, [map {$_->pathValue($path)} @{$grp->{gconfigs}}]);
+}
+
+## $r_vector_string = $grp->RVector(\@path)
+##  + gets an R-vector of $cfg->pathValue(\@path) values
+##  + OBSOLETE?
+sub pathRVector {
+  my ($grp,$path) = @_;
+  require MUDL::RSPerl;
+  return MUDL::RSPerl->_rvector($grp->pathArray($path));
+}
+
+
 
 ##======================================================================
 ## Aggregate functions: lookup
