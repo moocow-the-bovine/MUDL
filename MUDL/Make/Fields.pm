@@ -99,6 +99,29 @@ our %_aggregateAliases =
 #$aggregateFuncs{$_} = $aggregateFuncs{$_aggregateAliases{$_}}
 #  foreach (keys(%_aggregateAliases));
 
+##-------------------
+## @_eval_rxcomps
+##  + generated evaluator cross-comparison field aliases iterate over these
+our %_rxcomp_base =
+  (
+   expand_code=>\&_expand_rxcomp,
+   rfunc=>undef,
+   rargs=>undef,
+   xc_prepend=> '|',
+   xc_sortby => 'xvars->xlabel',
+   xc_title  => '"vs_".$cfg->{xvars}{xlabel}',
+   rxc_fmt   => '%.2g',
+   n         => 1,
+  );
+our %_eval_rxcomps =
+  (
+   #'wilcox-test:p' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
+   #'t-test:p'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
+   ##--
+   'wilcox-test' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
+   't-test'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
+  );
+
 ##---------------------------------------------------------------
 ## Globals: Field Aliases (end = search for 'EOFIELDS')
 
@@ -345,11 +368,26 @@ our %FIELDS =
 		    "e-max:${field}:__GT__:stage(title=e-Max)",
 		    "e-max:${field}:__GT__:corpus(title=e-MAX)"
 		   ])
-      } @{$_eval_base_families{$family}})
+      } @{$_eval_base_families{$family}}),
 
      ) ##-- return list for outer evalutator map
 
    } keys(%_eval_base_families)), ##-- outer evaluator map
+
+   ##--------------------------------------------------------
+   ## Cross-comparison
+   ## + 'rx:wilcox-test:mpr:g', ...
+   ## ###+ 'rx:wilcox-test:meta:pr:g', ...
+   (map {
+     my $field = $_;
+     (map {
+       my $rxc_name = $_;
+       my $rxc_src  = $_eval_rxcomps{$rxc_name};
+       ##--
+       ("rx:${rxc_name}:${field}" => {%$rxc_src, on=>$field})
+     } keys(%_eval_rxcomps)),
+   } @_eval_base_fields),
+
 
    ##-- tables: default
    _expand_gt(
@@ -389,7 +427,7 @@ our %FIELDS =
    rxcomp => {
 	      ##-- for R tests
 	      expand_code=>\&_expand_rxcomp,
-	      rfunc => 'wilcoxTest',
+	      rfunc => 'wilcox.test',
 	      rargs => undef,
 	      on    => 'pr:g',
 	     },

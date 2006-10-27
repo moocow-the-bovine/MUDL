@@ -73,7 +73,7 @@ sub sortby {
 
   $sortby = $tab->{sortby} = MUDL::Make::Fields->new(fields=>$sortby,
 						     configs=>$tab->{mfields}{configs})
-    if (!ref($sortby));
+    if (!UNIVERSAL::isa($sortby,'MUDL::Make::Fields'));
 
   return $tab->{sortby};
 }
