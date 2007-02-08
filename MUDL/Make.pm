@@ -112,7 +112,11 @@ sub new {
 sub vmsg {
   my ($mak,$level,@msg) = @_;
   $level = $VLEVELS{$level} while (exists($VLEVELS{$level}));
-  print STDERR @msg if ($mak->{verbose} >= $level);
+  print STDERR @msg if (
+			(ref($mak) && $mak->{verbose} >= $level)
+			||
+			(!ref($mak) && $VLEVELS{DEFAULT} >= $level)
+		       );
 }
 
 

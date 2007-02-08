@@ -67,6 +67,7 @@ our %_eval_base_families =
    meta  => [qw(pr rc F)],
    ameta => [qw(ampr amrc amF)],
    H     => [qw(Hpr Hrc HF)], ##-- HI
+   HI    => [qw(Hpr Hrc HI)],
    avg   => [qw(apr arc aF)],
    wavg  => [qw(wapr warc waF)],
    pair  => [qw(ppr prc pF)],
@@ -96,8 +97,17 @@ our %_aggregateAliases =
    'Var'=>'var',  'variance'=>'var',
    'stddev'=>'dev', 'sigma'=>'dev',
   );
-#$aggregateFuncs{$_} = $aggregateFuncs{$_aggregateAliases{$_}}
-#  foreach (keys(%_aggregateAliases));
+##-- add some aggregate families to @_eval_base_fields, %_eval_base_families
+#our @_aggr_apply_families = keys(%_eval_base_families);
+#foreach my $family (@_aggr_apply_families) {
+#  foreach my $aggr (qw(avg dev)) {
+#    $_eval_base_families{"${aggr}:${family}"} = [map { "${aggr}(of=$_)" } @{$_eval_base_families{$family}}];
+#  }
+#}
+
+
+
+
 
 ##-------------------
 ## @_eval_rxcomps
@@ -107,9 +117,9 @@ our %_rxcomp_base =
    expand_code=>\&_expand_rxcomp,
    rfunc=>undef,
    rargs=>undef,
-   xc_prepend=> '|',
+   #xc_prepend=> '|',
    xc_sortby => 'xvars->xlabel',
-   xc_title  => '"vs_".$cfg->{xvars}{xlabel}',
+   xc_title  => '"~".($cfg->{xvars}{lang}||"")."/".($cfg->{xvars}{xlabel}||"")',
    rxc_fmt   => '%.2g',
    n         => 1,
   );
@@ -118,7 +128,9 @@ our %_eval_rxcomps =
    #'wilcox-test:p' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
    #'t-test:p'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
    ##--
-   'wilcox-test' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
+   #'wilcox-test' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
+   'wilcox-test' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value',
+		      rargs=>[qw('exact=TRUE' 'paired=FALSE')] },
    't-test'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
   );
 
@@ -174,6 +186,7 @@ our %FIELDS =
    'tabid'            => 'tabId',
    'id'               => 'tabId',
    #'results'          => 'tabResults',
+   'N'                => 'count(title=N)',
 
    (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
    (map { ("ltab$_"  => "latex$_") } qw(Default Id Results)),
@@ -231,6 +244,39 @@ our %FIELDS =
       ## + values:meta:g => [ qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g) ]
       _expand_gt("values:${family}:__GT__",
 		 [map { ($_.":__GT__") } @{$_eval_base_families{$family}}]),
+
+      ##--------------------------------------------------------
+      ## Results: by family: aggregates
+      map {
+	my $aggr=$_;
+	(
+	 ##
+	 ## Results: aggregates: single fields
+	 ## + avg:pr:g => [ 'avg(of=pr:g)' ]
+	 (map {
+	   _expand_gt("${aggr}:${_}:__GT__", ["${aggr}(of=${_}:__GT__)"])
+	 } @{$_eval_base_families{$family}}),
+	 ##
+	 ## Results: aggregates: by family: values only: global|targets
+	 ## + values:avg:meta:g => [ qw(avg:pr:g avg:rc:g avg:F:g) ]
+	 _expand_gt("values:${aggr}:${family}:__GT__",
+		    [map { ("${aggr}:${_}:__GT__") } @{$_eval_base_families{$family}}]),
+	 ##
+	 ## Results: aggregates: by family: values only
+	 ## + values:avg:meta => [ qw(values:avg:meta:g | values:avg:meta:t ]
+	 "values:${aggr}:${family}" => [ "values:${aggr}:${family}:g", '|', "values:${aggr}:${family}:t" ],
+	 ##
+	 ## Results: aggregates: by family: values+stars: global|targets
+	 ## + results:avg:meta:g => [ qw(*:avg:pr:g avg:pr:g +:avg:rc:g avg:rc:g ~:avg:F:g avg:F:g) ]
+	 _expand_gt("results:${aggr}:${family}:__GT__",
+		    _expand_prF([map { ("${aggr}:${_}:__GT__") } @{$_eval_base_families{$family}}])),
+	 ##
+	 ## Results: aggregates: by family: values only
+	 ## + results:avg:meta => [ qw(results:avg:meta:g | results:avg:meta:t ]
+	 "results:${aggr}:${family}" => [ "results:${aggr}:${family}:g", '|', "results:${aggr}:${family}:t" ],
+	)
+      } keys(%aggregateFuncs),
+
 
       ##--------------------------------------------------------
       ## Results: by family: vs. prev(stage)
@@ -377,7 +423,6 @@ our %FIELDS =
    ##--------------------------------------------------------
    ## Cross-comparison
    ## + 'rx:wilcox-test:mpr:g', ...
-   ## ###+ 'rx:wilcox-test:meta:pr:g', ...
    (map {
      my $field = $_;
      (map {
@@ -810,7 +855,9 @@ our %FIELDS =
 
    ##-------------------------------------------------
    ## Eval: aggregate functions
-   ##  + 
+   ##  + avg { of=>$of_field, ... }
+   ##  + dev { of=>$of_field, ... }
+   ##  + ... etc.
    (map {
      ($_=>{
 	   %{$aggregateFuncs{$_}},
@@ -895,9 +942,17 @@ our %FIELDS =
    ##'***:pr:g'      => [ '*:pr:g:corpus', '*:pr:g:stage', '*:pr:g:emi' ]
    ##'*:pr:g'        => '***:pr:g',
    (map { _markmax_fields($_) } @_eval_base_fields),
+   (map {
+     my $aggr=$_;
+     map { _markmax_fields("${aggr}:$_") } @_eval_base_fields
+   } keys(%aggregateFuncs)),
 
    ##-- mark max: latex
    (map { _markmax_fields_latex($_) } @_eval_base_fields),
+   (map {
+     my $aggr=$_;
+     map { _markmax_fields("${aggr}:$_") } @_eval_base_fields
+   } keys(%aggregateFuncs)),
 
    ##-------------------------------------
    ## Error difference (vs. best): errdiff
@@ -1018,7 +1073,7 @@ sub _expand_prF {
     $star = '~';
     if ($field =~ /\b\w{0,2}pr\:/) { $star = '*'; }
     elsif ($field =~ /\b\w{0,2}rc\:/) { $star = '+'; }
-    elsif ($field =~ /\b\w{0,2}F\:/) { $star = '~'; }
+    elsif ($field =~ /\b\w{0,2}[FI]\:/) { $star = '~'; }
     push(@$expanded, "${star}:${field}", $field);
   }
   return $expanded;
@@ -1464,12 +1519,12 @@ sub _expand_aggregate {
     #$dst->{path} = [$afunc,@{$src->{path}}];
 
     ##-- name
-    $dst->{name}     = $aname.'_'.$dst->{name} if (defined($dst->{name}));
-    $dst->{evalname} = "'${aname}_'.do { $dst->{evalname} }" if (defined($dst->{evalname}));
+    $dst->{name}     = $aname.':'.$dst->{name} if (defined($dst->{name}));
+    $dst->{evalname} = "'${aname}:'.do { $dst->{evalname} }" if (defined($dst->{evalname}));
 
     ##-- title
-    $dst->{title}     = $aname.'_'.$dst->{title} if (defined($dst->{title}));
-    $dst->{evaltitle} = "'${aname}_'.do { $dst->{evaltitle} }" if (defined($dst->{evaltitle}));
+    $dst->{title}     = $aname.':'.$dst->{title} if (defined($dst->{title}));
+    $dst->{evaltitle} = "'${aname}:'.do { $dst->{evaltitle} }" if (defined($dst->{evaltitle}));
 
     ##-- expansion complete
     push(@$expanded, $dst);

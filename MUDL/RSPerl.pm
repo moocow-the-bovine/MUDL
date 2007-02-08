@@ -63,7 +63,7 @@ sub _rvectors {
 ## $p_value = $class->genericTest($testName,$testAttribute,$x,$y,@testArgs)
 ##   + $x and $y are R-vector-safe objects
 sub genericTest {
-  my ($that,$testName,$testAttr,$x,$y,@args) = @_;
+  my ($that,$testName,$testAttr,$x,$y,@rargs) = @_;
 
   my $rstr = ($testName
 	      .'('
