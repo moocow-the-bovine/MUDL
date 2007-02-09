@@ -84,11 +84,18 @@ our %aggregateFuncs =
   (
    min=>{ aggregateName=>'min', aggregate=>'min', },
    max=>{ aggregateName=>'max', aggregate=>'max', },
-   avg=>{ aggregateName=>'avg', aggregate=>'avg', },
    sum=>{ aggregateName=>'sum', aggregate=>'sum', },
    prd=>{ aggregateName=>'prd', aggregate=>'prod', },
+
+   avg=>{ aggregateName=>'avg', aggregate=>'avg', },
    var=>{ aggregateName=>'Var', aggregate=>'var', },
    dev=>{ aggregateName=>'dev', aggregate=>'stddev', },
+   adev=>{ aggregateName=>'adev', aggregate=>'avgdev', },
+
+   med=>{ aggregateName=>'med', aggregate=>'med', }, ##-- median
+   mvar=>{ aggregateName=>'mVar', aggregate=>'mvar', },
+   mdev=>{ aggregateName=>'mdev', aggregate=>'mdev', },
+   amdev=>{ aggregateName=>'amdev', aggregate=>'amdev', },
   );
 ##-- aggregate functions: aliases
 our %_aggregateAliases =
@@ -96,6 +103,7 @@ our %_aggregateAliases =
    'prod'=>'prd', 'product'=>'prod',
    'Var'=>'var',  'variance'=>'var',
    'stddev'=>'dev', 'sigma'=>'dev',
+   'median'=>'med',
   );
 ##-- add some aggregate families to @_eval_base_fields, %_eval_base_families
 #our @_aggr_apply_families = keys(%_eval_base_families);
@@ -118,8 +126,10 @@ our %_rxcomp_base =
    rfunc=>undef,
    rargs=>undef,
    #xc_prepend=> '|',
-   xc_sortby => 'xvars->xlabel',
-   xc_title  => '"~".($cfg->{xvars}{lang}||"")."/".($cfg->{xvars}{xlabel}||"")',
+   xc_prepend=>undef,
+   #xc_sortby => 'xvars->xlabel',
+   xc_sortby => undef, ##-- default=xc_title
+   xc_title  => '($cfg->{xvars}{lang}||"*")."/".($cfg->{xvars}{xlabel}||"*")',
    rxc_fmt   => '%.2g',
    n         => 1,
   );
@@ -186,7 +196,7 @@ our %FIELDS =
    'tabid'            => 'tabId',
    'id'               => 'tabId',
    #'results'          => 'tabResults',
-   'N'                => 'count(title=N)',
+   'N'                => [ 'count(title=N)' ],
 
    (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
    (map { ("ltab$_"  => "latex$_") } qw(Default Id Results)),
@@ -203,6 +213,23 @@ our %FIELDS =
 
    'emId'  => ['emid'],
    'emid'  => [ qw(stg emi ci corpus lrlabel auto) ],
+
+   ##-- Field-joining
+   'join' => {
+	      of=>'auto', ##-- field-spec
+	      with=>'/',  ##-- join character
+	      expand_code=>\&_expand_join,
+	     },
+
+   ##-- Enumeration
+   ##   + enum(of=$FIELDSPEC) : maps each $FIELDSPEC to a natural number
+   'enum' => {
+	      expand_code=>\&_expand_enum,
+	      of=>'auto',    ##-- field-spec
+	      from=>1,       ##-- first enum value
+	      mult=>1,       ##-- coefficient
+	      sortby=>undef, ##-- field-spec for sortby: default='$enum_field->{of}'
+	     },
 
    ##-- Results: general
    (map {
@@ -463,7 +490,8 @@ our %FIELDS =
 	     expand_code=>\&_expand_xcomp,
 	     xc_title=>'$cfg',
 	     #xc_eval=>'?',
-	     xc_sortby=>'auto', ##-- sort-by specification for xc
+	     #xc_sortby=>'auto', ##-- sort-by specification for xc
+	     xc_sortby=>undef, 
 	     ##
 	     ##-- prepend or append a column to every generated column
 	     #xc_prepend => ['|'],
@@ -1646,7 +1674,7 @@ sub _expand_tags {
 ##  + %$xcomp_field keys:
 ##      xc_sortby=>$sortby_spec,      ##-- vars: none
 ##
-##      xc_title=>$eval_str,          ##-- vars: $cfg
+##      xc_title=>$eval_str,          ##-- vars: $cfg  : REQUIRED
 ##      xc_evaltitle=>$eval_eval_str, ##-- vars: $cfg
 ##      xc_name=>$eval_str,           ##-- vars: $cfg
 ##      xc_evalname=>$eval_eval_str,  ##-- vars: $cfg
@@ -1661,9 +1689,36 @@ sub _expand_xcomp {
   my ($mf,$xcfield,$xfields) = @_;
   my $configs  = $mf->{configs};
 
-  ##-- Step 1: create one field (column) for each config
-  my ($cfg,$field,@expanded,$cfg1,$cfg2);
+  ##-- Step 1: create 'xc_title' field
+  my $cfg2xc      = $xcfield->{cfg2xc} = {};
+  my $title_field = {
+		     name=>"xc_title_${xcfield}",
+		     title=>'',
+		     cfg2xc=>$cfg2xc,
+		     eval=>'$field->{cfg2xc}{$cfg}',
+		    };
+  my ($cfg);
+  foreach $cfg (@$configs) {
+    if    (defined($xcfield->{xc_title})) { $cfg2xc->{$cfg} = eval $xcfield->{xc_title}; }
+    elsif (defined($xcfield->{xc_name}))  { $cfg2xc->{$cfg} = eval $xcfield->{xc_name};  }
+  }
+
+  ##-- Step 2: ensure 'xc_sortby', *prepend* it to $mf->{sortby}
+  $xcfield->{xc_sortby} = $title_field if (!defined($xcfield->{xc_sortby}));
+  if (defined($mf->{sortby})) {
+    $mf->{sortby} = $mf->expand([$title_field,$mf->{sortby}]);
+  } else {
+    $mf->{sortby} = [$title_field];
+  }
+
+  ##-- Step 3: create one field (column) for each config
+  my ($field,$cfg1,$cfg2);
   my @no_adopt_xc_keys = qw(title evaltitle name evalname expand_code);
+  my @expanded = (
+		  $xcfield->{xc_prepend} ? @{$mf->expand($xcfield->{xc_prepend})} : qw(),
+		  $title_field,
+		  $xcfield->{xc_append}  ? @{$mf->expand($xcfield->{xc_append})} : qw(),
+		 );
   foreach $cfg ($mf->sortConfigs($configs,sortby=>$xcfield->{xc_sortby})) {
     $field = { %$xcfield };
     delete(@$field{@no_adopt_xc_keys});
@@ -1690,6 +1745,10 @@ sub _expand_xcomp {
 
   return [@expanded];
 }
+
+##---------------------------------------------------------------
+## Fields: expanders: 'rxcomp'
+##  + configuration cross-comparison using R
 
 ## \@expanded = _expand_rxcomp($mf,$rxcomp_field,\@xfields)
 ##  + for cross-config R tests using MUDL::RSPerl
@@ -1725,9 +1784,60 @@ sub _expand_rxcomp {
 		  xc_eval    => $xc_eval,
 		 };
 
-
   return $mf->_expand_xcomp($xc_field,$xfields);
 }
+
+##---------------------------------------------------------------
+## Fields: expanders: 'enum'
+##  + configuration enumeration
+sub _expand_enum {
+  my ($mf,$efield,$xfields) = @_;
+  my $xfield = {from=>0,mult=>1,%$efield,cfg2i=>{},eval=>'$field->{cfg2i}{$cfg}',n=>1};
+  delete($xfield->{expand_code});
+
+  my $val2i    = {};
+  my $i        = $xfield->{from}||0;
+  my $mult     = $xfield->{mult}||1;
+  my ($cfg,$val);
+  $xfield->{sortby} = $xfield->{of} if (!defined($xfield->{sortby}));
+  my $of_field = $mf->expand($xfield->{of})->[0];
+  foreach $cfg ($mf->sortConfigs($mf->{configs}, sortby=>$xfield->{sortby})) {
+    $val = $mf->fieldValue($cfg,$of_field);
+    $val2i->{$val} = ($mult*$i++) if (!defined($val2i->{$val}));
+    $xfield->{cfg2i}{$cfg} = $val2i->{$val};
+  }
+  ##-- setup title, name
+  $xfield->{name} = "enum(of=".$mf->fieldName($of_field).",from=$xfield->{from})"
+    if (!defined($xfield->{name}));
+  $xfield->{title} = "enum(".$mf->fieldTitle($of_field).")"
+    if (!defined($xfield->{title}));
+
+  return [$xfield];
+}
+
+##---------------------------------------------------------------
+## Fields: expanders: 'join'
+##  + join multiple values
+sub _expand_join {
+  my ($mf,$jfield,$xfields) = @_;
+  my $xfield = {%$jfield};
+  delete($xfield->{expand_code});
+
+  ##-- expand subfields
+  my $of_fields = $xfield->{of} = $mf->expand($xfield->{of});
+
+  ##-- properties
+  $xfield->{title} = join($xfield->{with}, map {$mf->fieldTitle($_)} @$of_fields)
+    if (!defined($xfield->{title}));
+
+  $xfield->{name} = join($xfield->{with}, map {$mf->fieldName($_)} @$of_fields)
+    if (!defined($xfield->{name}));
+
+  $xfield->{eval} = 'join($field->{with}, map {$mf->fieldValue($cfg,$_)} @{$field->{of}})';
+
+  return [$xfield];
+}
+
 
 
 ##---------------------------------------------------------------
@@ -1764,6 +1874,26 @@ sub new {
 
   #$mf->fields($mf->{fields}); ##-- parse & expand fields
 
+  return $mf;
+}
+
+##---------------------------------------------------------------
+## Field addition
+
+## $mf = $mf->prepend(\@field_hashes_or_strings,...)
+## $mf = $mf->prepend($mf2,...)
+sub prependFields {
+  my $mf = shift;
+  $mf->{fields} = [$mf->{fields}] if (!ref($mf->{fields}));
+  unshift(@{$mf->{fields}}, @{$mf->expand(@_)});
+  return $mf;
+}
+## $mf = $mf->prepend(\@field_hashes_or_strings,...)
+## $mf = $mf->prepend($mf2,...)
+sub appendFields {
+  my $mf = shift;
+  $mf->{fields} = [$mf->{fields}] if (!ref($mf->{fields}));
+  push(@{$mf->{fields}}, @{$mf->expand(@_)});
   return $mf;
 }
 
@@ -1823,7 +1953,7 @@ sub fieldValue {
   my ($mf,$cfg,$field) = @_;
 
   ##-- Step 0: get path (impose aggregate function $field->{aggregate})
-  my @path = @{$field->{path}};
+  my @path = defined($field->{path}) ? @{$field->{path}} : qw();
   unshift(@path, $field->{aggregate})
     if ($field->{aggregate} && UNIVERSAL::isa($cfg,'MUDL::Make::Config::Group'));
 
@@ -1994,6 +2124,12 @@ sub expand {
   my $xfields = $args{to} ? $args{to} : [];
 
   while (defined($ufield=shift(@ufields))) {
+    ##-- expand MUDL::Make::Field objects as themselves
+    if (ref($ufield) && UNIVERSAL::isa($ufield,'MUDL::Make::Fields')) {
+      unshift(@ufields, @{$ufield->{fields}});
+      next;
+    }
+
     ##-- expand aliases
     $ufield = $alias->{$ufield} while (defined($alias->{$ufield}));
 
@@ -2207,7 +2343,6 @@ sub userVariables {
 
   return keys(%uvars);
 }
-
 
 
 

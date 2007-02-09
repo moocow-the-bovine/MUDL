@@ -75,6 +75,9 @@ sub sortby {
 						     configs=>$tab->{mfields}{configs})
     if (!UNIVERSAL::isa($sortby,'MUDL::Make::Fields'));
 
+  ##-- hack for rxcomp: prepend $tab->{mfields}{sortby}
+  $sortby->prependFields($tab->{mfields}{sortby}) if (defined($tab->{mfields}{sortby}));
+
   return $tab->{sortby};
 }
 

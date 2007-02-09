@@ -474,16 +474,20 @@ our @ISA = qw(MUDL::Make::Config::GroupFunction);
 sub pathValue {
   my ($af,$grp,$path) = @_;
   my $avg = 0;
+  my $n   = 0;
   my ($cfg,$val);
   foreach $cfg (@{$grp->{gconfigs}}) {
-    $val  = 0 if (!defined($val=$cfg->pathValue($path)));
-    $avg += $val;
+    if (defined($val=$cfg->pathValue($path))) {
+      $avg += $val;
+      ++$n;
+    }
   }
-  return $avg ? ($avg/scalar(@{$grp->{gconfigs}})) : 0;
+  return $n ? $avg/$n : 0;
 }
 
+
 ##======================================================================
-## Aggregate functions: variance
+## Aggregate functions: variance (avg squared error wrt mean)
 package MUDL::Make::Config::GroupFunction::var;
 use Carp;
 use strict;
@@ -494,17 +498,20 @@ sub pathValue {
   my ($af,$grp,$path) = @_;
   my $EX = $grp->aggregateFunction('avg')->pathValue($grp,$path);
   my $VarX = 0;
+  my $n    = 0;
   my ($cfg,$val);
   foreach $cfg (@{$grp->{gconfigs}}) {
-    $val   = 0 if (!defined($val=$cfg->pathValue($path)));
-    $VarX += $val**2;
+    if (defined($val=$cfg->pathValue($path))) {
+      $VarX += $val**2;
+      ++$n;
+    }
   }
-  $VarX /= scalar(@{$grp->{gconfigs}}) if ($VarX);
+  $VarX /= $n if ($VarX && $n);
   return $VarX - $EX**2;
 }
 
 ##======================================================================
-## Aggregate functions: standard deviation
+## Aggregate functions: standard deviation (sqrt of mean-variance)
 package MUDL::Make::Config::GroupFunction::stddev;
 use Carp;
 use strict;
@@ -516,7 +523,111 @@ sub pathValue {
   return sqrt($grp->aggregateFunction('var')->pathValue($grp,$path));
 }
 
+##======================================================================
+## Aggregate functions: average absolute deviation from mean
+package MUDL::Make::Config::GroupFunction::avgdev;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  my $EX = $grp->aggregateFunction('avg')->pathValue($grp,$path);
+  my $adev = 0;
+  my $n    = 0;
+  my ($cfg,$val);
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    if (defined($val=$cfg->pathValue($path))) {
+      $adev += abs($val-$EX);
+      ++$n;
+    }
+  }
+  return $n ? $adev/$n : 0;
+}
 
+##======================================================================
+## Aggregate functions: med (median)
+package MUDL::Make::Config::GroupFunction::med;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  my ($cfg,$val);
+  my @vals = qw();
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    if (defined($val=$cfg->pathValue($path))) {
+      push(@vals,$val);
+    }
+  }
+  @vals = sort {$a<=>$b} @vals;
+  return 0 if (!@vals);
+  return $vals[$#vals/2] if (scalar(@vals)%2==1);
+  return ($vals[($#vals+1)/2] + $vals[($#vals-1)/2])/2;
+}
+
+##======================================================================
+## Aggregate functions: median-variance (avg squared error wrt median)
+package MUDL::Make::Config::GroupFunction::mvar;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  my $mX = $grp->aggregateFunction('med')->pathValue($grp,$path);
+  my $n  = 0;
+  my $VarX = 0;
+  my ($cfg,$val);
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    if (defined($val=$cfg->pathValue($path))) {
+      $VarX += $val**2;
+      ++$n;
+    }
+  }
+  $VarX /= $n if ($n);
+  return abs($VarX - $mX**2);
+}
+
+##======================================================================
+## Aggregate functions: standard deviation (sqrt of mean-variance)
+package MUDL::Make::Config::GroupFunction::mdev;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  return sqrt($grp->aggregateFunction('mvar')->pathValue($grp,$path));
+}
+
+##======================================================================
+## Aggregate functions: average absolute deviation from median
+package MUDL::Make::Config::GroupFunction::amdev;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  my $mX = $grp->aggregateFunction('med')->pathValue($grp,$path);
+  my $adev = 0;
+  my $n    = 0;
+  my ($cfg,$val);
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    if (defined($val=$cfg->pathValue($path))) {
+      $adev += abs($val-$mX);
+      ++$n;
+    }
+  }
+  return $n ? $adev/$n : 0;
+}
 
 
 1;
