@@ -8,6 +8,8 @@
 
 package MUDL::Make::Table;
 use MUDL::Make::Fields;
+use MUDL::CSVTable;
+use IO::File;
 use strict;
 use Carp;
 our @ISA = qw(MUDL::Object);
@@ -25,7 +27,9 @@ our @ISA = qw(MUDL::Object);
 ##  + Basic data:
 ##      rows    => \@fdata,             ##-- rows of the table (MUDL::Make::FieldData objects)
 ##  + Extended data:
-##      formatted      => $bool,        ##-- true if table has been extended
+##      formatted      => $bool,        ##-- true if table has been text-formatted
+##      formatted_csv  => $bool,        ##-- true if table has been csv-formatted
+##      formatted_latex=> $bool,        ##-- true if table has been latex-formatted
 ##      name2len       => \%fieldName2maxLen,
 ##      linewd         => $row_line_width,
 ##      format         => $row_sprintf_format,
@@ -176,6 +180,8 @@ sub formatRows {
     $$fieldref = '';
   }
 
+  $tab->{formatted} = 1;
+
   return $tab;
 }
 
@@ -184,14 +190,15 @@ sub formatRows {
 
 ## $tab = $tab->csvRows(%args)
 ##  + %args:
-##     force=>$bool, ##-- force re-format
+##     force=>$bool,    ##-- force re-format
+##     csvSeparator=>$sep_str, ##-- separator string (defualt="\t")
 ##  + just returns if $tab->{formatted} is true
 ##  + otherwise creates formatting keys
 sub csvRows {
   my ($tab,%args) = @_;
 
   ##-- Check if we're already formatted (or forcing a re-format)
-  return $tab if (!$args{force} && $tab->{formatted});
+  return $tab if (!$args{force} && $tab->{formatted_csv});
   my $sep = $args{csvSeparator} || $tab->{csvSeparator} || "\t";
 
   ##-- Format: step 1: get visible fields
@@ -226,7 +233,7 @@ sub csvRows {
     push(@$crows, ($hrhow ? { __hr__=>$hrhow } : qw()), { %$cf }); ##-- copy rows
   }
 
-  ##-- Format: step 5: condense field values [IGNORED]
+  $tab->{formatted_csv} = 1;
 
   return $tab;
 }
@@ -239,13 +246,13 @@ sub csvRows {
 ##  + %args:
 ##     force=>$bool,      ##-- force re-format
 ##     env  =>$latexEnv,  ##-- tabular environment (default='tabular')
-##  + just returns if $tab->{latexed} is true
+##  + just returns if $tab->{formatted_latex} is true
 ##  + otherwise creates LaTeX-formatting keys
 sub latexRows {
   my ($tab,%args) = @_;
 
   ##-- Check if we're already formatted (or forcing a re-format)
-  return $tab if (!$args{force} && $tab->{latexed});
+  return $tab if (!$args{force} && $tab->{formatted_latex});
 
   ##-- Latex: Step 0: string-format
   $tab->formatRows() || return undef;
@@ -333,11 +340,246 @@ sub latexRows {
     push(@$lrows, {row=>$row, latex=>$lrow});
   }
 
-  ##-- Set 'latexed' flag
-  $tab->{latexed} = 1;
+  ##-- Set 'formatted_latex' flag
+  $tab->{formatted_latex} = 1;
 
   return $tab;
 }
+
+##======================================================================
+## Methods: Conversion
+##======================================================================
+
+## $csvTable = $tab->csvTable();
+sub csvTable {
+  my $tab = shift;
+  return MUDL::CSVTable->loadNativeString(join('',@{$tab->csvStrings()}));
+}
+
+##======================================================================
+## Methods: I/O
+##======================================================================
+
+##----------------------------------------------------------------------
+## Methods: I/O: generic
+
+## $tab = $tab->printGeneric($filename_or_fh,\@strings)
+sub printGeneric {
+  my ($tab,$file,$strings) = @_;
+  $file = \*STDOUT if (!defined($file));
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  die(ref($tab)."::printGeneric(): open failed for file '$file': $!")
+    if (!defined($fh));
+  $fh->print(@$strings);
+  $fh->close() if (!ref($file));
+  return $tab;
+}
+
+##----------------------------------------------------------------------
+## Methods: I/O: Text
+
+## \@strs = $tab->textStrings(%args)
+## $tab   = $tab->printText($filename_or_fh,%args)
+## + %args:
+##     indent => $indent_str
+sub printText {
+  my ($tab,$file,%args) = @_;
+  return $tab->printGeneric($file,$tab->textStrings(%args));
+}
+sub textStrings {
+  my ($tab,%args) = @_;
+  my @strings = qw();
+
+  ##-- printText: format
+  $tab->formatRows();
+
+  ##-- printText: indent
+  my $indent = defined($args{indent}) ? $args{indent} : ' ';
+
+  my $format = $indent.$tab->{format};
+  my $linewd = $tab->{linewd};
+  my %hr = (
+	    begin=>($indent.('-' x $linewd)."\n"),
+	    end  =>($indent.('-' x $linewd)."\n"),
+	    head =>($indent.('=' x $linewd)."\n"),
+
+	    major=>($indent.('=' x $linewd)."\n"),
+	    minor=>($indent.('-' x $linewd)."\n"),
+	    micro=>($indent.('·' x $linewd)."\n"),
+	    none=>'',
+	   );
+
+  ##-- printText: headers
+  push(@strings,
+       ##-- hrule
+       $hr{begin},
+
+       ##-- header
+       sprintf($format, map { $_->{title} } @{$tab->{visible_fields}}),
+
+       ##-- hrule
+       $hr{head},
+      );
+
+  ##-- Summarize: step 5: print table
+  my $crows = $tab->{crows};
+  my ($cf,$i);
+  foreach $i (0..$#$crows) {
+    $cf = $crows->[$i];
+    push(@strings,
+	 (defined($cf->{__hr__})
+	  ? $hr{$cf->{__hr__}}    ##-- separator?
+	  : sprintf($format,      ##-- data row
+		    @$cf{map {$_->{name}.":str"} @{$tab->{visible_fields}}}))
+	);
+  }
+  push(@strings, $hr{end});
+
+  return \@strings;
+}
+
+
+##----------------------------------------------------------------------
+## Methods: I/O: CSV
+
+## \@strs = $tab->csvStrings(%args)
+## $tab   = $tab->printCSV($filename_or_fh,%args)
+## + %args:
+##     comment => $comment_str, ##-- defualt='#'
+##     sep     => $sep_str,     ##-- default=$tab->{csvSeparator} || "\t"
+sub printCSV {
+  my ($tab,$file,%args) = @_;
+  return $tab->printGeneric($file,$tab->csvStrings(%args));
+}
+sub csvStrings {
+  my ($tab,%args) = @_;
+  my @strings = qw();
+
+  ##-- printCSV: format
+  $tab->csvRows(csvSeparator=>$args{sep});
+
+  ##-- printCSV: options
+  my $comment = defined($args{comment}) ? $args{comment} : '#';
+  my $format = $tab->{format};
+  my $linewd = 80;
+  my %hr = (
+	    major=>("\n"
+		    .$comment.('=' x $linewd)."\n"),
+	    minor=>($comment.('-' x $linewd)."\n"),
+	    micro=>($comment.('·' x $linewd)."\n"),
+	    none=>'',
+	   );
+
+  ##-- printCSV: headers
+  my ($title);
+  push(@strings,
+       ##-- header
+       $comment,
+       sprintf($format,
+	       map {
+		 $title = $tab->{visible_fields}[$_]{title};
+		 $title =~ s/\s+/_/g;
+		 ($_+1)."($title)";
+	       }
+	       (0..$#{$tab->{visible_fields}})),
+      );
+
+  ##-- printCSV: data rows
+  my $crows = $tab->{crows};
+  my ($cf,$i);
+  foreach $i (0..$#$crows) {
+    $cf = $crows->[$i];
+    push(@strings,
+	 (defined($cf->{__hr__})
+	  ? $hr{$cf->{__hr__}}    ##-- separator?
+	  : sprintf($format,      ##-- data row
+		    #@$cf{map {$_->{name}.":str"} @{$tab->{visible_fields}}}
+		    @$cf{map {$_->{name}} @{$tab->{visible_fields}}}
+		   ))
+	);
+  }
+
+  return \@strings;
+}
+
+##----------------------------------------------------------------------
+## Methods: I/O: LaTeX
+
+## \@strs = $tab->latexStrings(%args)
+## $tab   = $tab->printLatex($filename_or_fh,%args)
+## + %args:
+##     indent => $indent_str
+sub printLatex {
+  my ($tab,$file,%args) = @_;
+  return $tab->printGeneric($file,$tab->latexStrings(%args));
+}
+sub latexStrings {
+  my ($tab,%args) = @_;
+  my @strings = qw();
+
+  ##-- printLatex: format
+  $tab->latexRows();
+
+  ##-- printLatex: options
+  my $indent = defined($args{indent}) ? $args{indent} : ' ';
+  my %hr = (
+	    begin=>($indent."\\hline \%\n"),
+	    end  =>($indent."\\hline \%\n"),
+	    head =>($indent."\\hline \\hline \%\n"),
+
+	    major=>($indent."\\hline \\hline \%\n"),
+	    minor=>($indent."\\hline \%\n"),
+	    micro=>($indent."%%-- (hr:micro)\n"),
+	    none=>'',
+	   );
+
+  ##-- printLatex: table format
+  my @latex_fields = @{$tab->{latex_fields}};
+
+  my $tabenv = $tab->{latexEnv}; ##-- TODO: make this available to user!
+
+  ##-- printLatex: headers
+  push(@strings,
+       ##-- Header
+       "%% File auto-generated by ", ref($tab), "::printLatex(): EDIT AT YOUR OWN RISK!\n",
+
+       ##-- Environment & column alignment
+       "\\begin{$tabenv}{", @{$tab->{latexAlign}}, "}\n",
+
+       ##-- hrule
+       $hr{begin},
+
+       ##-- header
+       $indent,
+       join(' & ', map { $_->{latexTitle} } @latex_fields),
+       "\\\\ \n",
+
+       ##-- hrule
+       $hr{head},
+      );
+
+  ##-- printLatex: print table
+  my $lrows = $tab->{latex_rows};
+  my ($lrow,$i);
+  foreach $i (0..$#$lrows) {
+    $lrow = $lrows->[$i];
+    push(@strings,
+	 (defined($lrow->{row}{__hr__})
+	  ? $hr{$lrow->{row}{__hr__}}          ##-- separator
+	  : ($indent,                          ##-- data row
+	     join(' & ', @{$lrow->{latex}}),
+	     "\\\\ \n",
+	    ))
+	);
+  }
+  push(@strings,
+       $hr{end},
+       "\\end{${tabenv}}\n",
+      );
+
+  return \@strings;
+}
+
 
 
 1;

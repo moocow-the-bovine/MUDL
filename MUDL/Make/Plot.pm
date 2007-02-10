@@ -36,6 +36,7 @@ our @ISA = qw(MUDL::Object);
 ##
 ##     view=>$string,          ##-- GNUplot 'set view ...' (default=undef [not set])
 ##
+##     using=>$which,          ##-- default: undef (none ~ 1:2)
 ##     with=>$how,             ##-- default: 'lp'
 ##     title=>$window_title,   ##-- global plot title
 ##     smooth=>$how,           ##-- default: undef (none)
@@ -87,6 +88,7 @@ sub new {
 				with=>'lp',
 				title=>undef,  ##-- not set
 				smooth=>undef,
+				using=>undef,
 
 				##-- Low-level data
 				mfields=>MUDL::Make::Fields->new(),
@@ -174,8 +176,10 @@ sub compile {
       $_->{__point__} = [@$_{@dimnames}];
 
       ##-- sort this field-hash into the dataset for its title
-      $plots->{$ptitle} = MUDL::Make::PlotData->new(ndims=>2,
+      $plots->{$ptitle} = MUDL::Make::PlotData->new(
+						    ndims=>2,
 						    title=>$ptitle,
+						    using=>$plot->{using},
 						    notitle=>$plot->{notitle},
 						    smooth=>$plot->{smooth},
 						    with=>$plot->{with},

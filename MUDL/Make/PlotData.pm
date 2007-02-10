@@ -37,7 +37,8 @@ sub new {
 				 'datasuffix'=>'.dat',
 
 				 ##-- Display Options
-				 'with'  =>'lp',
+				 'using' => undef,  ##-- 'using' spec; default=undef (~1:2)
+				 'with'  => 'lp',
 				 'smooth'=> undef,
 
 				 ##-- User arguments
@@ -135,6 +136,7 @@ sub plotCommand {
   @$pdata{keys(%args)} = values(%args);
   return (''
 	  .'"'.$pdata->datafile().'"'
+	  .(defined($pdata->{using}) ? " using $pdata->{using}" : '')
 	  .(defined($pdata->{smooth}) ? " smooth $pdata->{smooth}" : '')
 	  .(defined($pdata->{with})  ? " with $pdata->{with}" : '')
 	  .(defined($pdata->{title}) && !$pdata->{notitle} ? " title \"$pdata->{title}\"" : ' notitle')

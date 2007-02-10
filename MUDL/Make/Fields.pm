@@ -196,7 +196,7 @@ our %FIELDS =
    'tabid'            => 'tabId',
    'id'               => 'tabId',
    #'results'          => 'tabResults',
-   'N'                => [ 'count(title=N)' ],
+   'N'                => [ 'count(title=N,eval=($_||1))' ],
 
    (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
    (map { ("ltab$_"  => "latex$_") } qw(Default Id Results)),
@@ -225,10 +225,10 @@ our %FIELDS =
    ##   + enum(of=$FIELDSPEC) : maps each $FIELDSPEC to a natural number
    'enum' => {
 	      expand_code=>\&_expand_enum,
-	      of=>'auto',    ##-- field-spec
-	      from=>1,       ##-- first enum value
-	      mult=>1,       ##-- coefficient
-	      sortby=>undef, ##-- field-spec for sortby: default='$enum_field->{of}'
+	      of=>'auto',       ##-- field-spec
+	      from=>1,          ##-- first enum value
+	      eval=>undef,      ##-- $_ in {eval} gets replaced by enumeration value
+	      sortby=>undef,    ##-- field-spec for sortby: default='$enum_field->{of}'
 	     },
 
    ##-- Results: general
@@ -1792,22 +1792,32 @@ sub _expand_rxcomp {
 ##  + configuration enumeration
 sub _expand_enum {
   my ($mf,$efield,$xfields) = @_;
-  my $xfield = {from=>0,mult=>1,%$efield,cfg2i=>{},eval=>'$field->{cfg2i}{$cfg}',n=>1};
+  my $xfield = {from=>0,cfg2i=>{},n=>1,%$efield};
   delete($xfield->{expand_code});
+  if (!defined($efield->{eval})) {
+    $xfield->{eval}='$field->{cfg2i}{$cfg}';
+  } else {
+    $xfield->{eval} = $efield->{eval};
+    $xfield->{eval} =~ s/\$_/\$field->{cfg2i}{\$cfg}/g;
+  }
 
   my $val2i    = {};
   my $i        = $xfield->{from}||0;
-  my $mult     = $xfield->{mult}||1;
   my ($cfg,$val);
   $xfield->{sortby} = $xfield->{of} if (!defined($xfield->{sortby}));
   my $of_field = $mf->expand($xfield->{of})->[0];
   foreach $cfg ($mf->sortConfigs($mf->{configs}, sortby=>$xfield->{sortby})) {
     $val = $mf->fieldValue($cfg,$of_field);
-    $val2i->{$val} = ($mult*$i++) if (!defined($val2i->{$val}));
+    $val2i->{$val} = $i++ if (!defined($val2i->{$val}));
     $xfield->{cfg2i}{$cfg} = $val2i->{$val};
   }
   ##-- setup title, name
-  $xfield->{name} = "enum(of=".$mf->fieldName($of_field).",from=$xfield->{from})"
+  $xfield->{name} = ("enum("
+		     ."of=".$mf->fieldName($of_field)
+		     .",from=$xfield->{from}"
+		     .",sortby=$xfield->{sortby}"
+		     .",eval=(".(defined($xfield->{eval}) ? $xfield->{eval} : '$_').")"
+		     .")")
     if (!defined($xfield->{name}));
   $xfield->{title} = "enum(".$mf->fieldTitle($of_field).")"
     if (!defined($xfield->{title}));
