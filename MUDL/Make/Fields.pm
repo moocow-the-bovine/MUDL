@@ -138,9 +138,9 @@ our %_eval_rxcomps =
    #'wilcox-test:p' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
    #'t-test:p'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
    ##--
-   #'wilcox-test' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value' },
    'wilcox-test' => { %_rxcomp_base, rfunc => 'wilcox.test', rattr=>'p.value',
-		      rargs=>[qw('exact=TRUE' 'paired=FALSE')] },
+		      rargs=>[qw('paired=FALSE')],
+		    },
    't-test'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
   );
 
