@@ -105,6 +105,11 @@ our %_aggregateAliases =
    'stddev'=>'dev', 'sigma'=>'dev',
    'median'=>'med',
   );
+##-- @aggregateAvgs : average-like aggregates (keys of %aggregateFuncs)
+our @aggregateAvgs = qw(avg med min max);
+##-- @aggregateDevs : deviation-like aggregates (keys of %aggregateFuncs)
+our @aggregateDevs = qw(dev adev mdev amdev);
+
 ##-- add some aggregate families to @_eval_base_fields, %_eval_base_families
 #our @_aggr_apply_families = keys(%_eval_base_families);
 #foreach my $family (@_aggr_apply_families) {
@@ -143,6 +148,47 @@ our %_eval_rxcomps =
 		    },
    't-test'      => { %_rxcomp_base, rfunc => 't.test',      rattr=>'p.value' },
   );
+
+##-------------------
+## %_eval_xcomps
+##  + native evaluator cross-comparison field aliases
+our %_xcomp_base =
+  (
+   expand_code=>\&_expand_xcomp,
+   xc_prepend=>undef,
+   xc_sortby => undef, ##-- default=xc_title
+   xc_title  => '($cfg->{xvars}{lang}||"*")."/".($cfg->{xvars}{xlabel}||"*")',
+   n         => 1,
+   #on        => 'pr:g', ##-- optional target field; expanded into $xcfield->{_on} if present
+   #fmt       => '%.2g', ##-- adopted from 'on' if present
+  );
+our %_eval_xcomps =
+  (
+   ##-- native x-comparisons
+   'diff' => {
+	      %_xcomp_base,
+	      xc_eval=>'$mf->fieldValue($cfg1,$field->{_on})-$mf->fieldValue($cfg2,$field->{_on})',
+	     },
+   'errdiff' => {
+		 %_xcomp_base,
+		 errmax=>100,
+		 xc_eval=>('__errdiff('
+			   .' $mf->fieldValue($cfg1,$field->{_on}),'
+			   .' $mf->fieldValue($cfg2,$field->{_on}),'
+			   .' $field->{errmax}'
+			   .')'),
+		},
+  );
+our %_eval_xcomps_dev =
+  (
+   'devdiff' => {
+		 %_xcomp_base,
+		 expand_code=>\&_expand_devdiff,
+		 dev=>'dev:pr:g',   ##-- deviation-like field
+		 on =>'avg:pr:g',   ##-- target field (average-like)
+		},
+  );
+
 
 ##---------------------------------------------------------------
 ## Globals: Field Aliases (end = search for 'EOFIELDS')
@@ -448,7 +494,7 @@ our %FIELDS =
    } keys(%_eval_base_families)), ##-- outer evaluator map
 
    ##--------------------------------------------------------
-   ## Cross-comparison
+   ## Cross-comparison / R
    ## + 'rx:wilcox-test:mpr:g', ...
    (map {
      my $field = $_;
@@ -458,6 +504,45 @@ our %FIELDS =
        ##--
        ("rx:${rxc_name}:${field}" => {%$rxc_src, on=>$field})
      } keys(%_eval_rxcomps)),
+   } @_eval_base_fields),
+
+   ##--------------------------------------------------------
+   ## Cross-comparison / native
+   ## + 'xc:diff:mpr:g', ...
+   (map {
+     my $field = $_;
+     (
+      ##-- Literal cross-comparisons
+      (map {
+	my $xc_name = $_;
+	my $xc_src  = $_eval_xcomps{$xc_name};
+	(
+	 ##-- Literal value comparison: "xc:diff:pr:g"
+	 ("xc:${xc_name}:${field}" => {%$xc_src, on=>$field}),
+	 ##
+	 ##-- Average-comparison: "xc:diff:avg:pr:g"
+	 (map {
+	   my $avg=$_;
+	   ##-- Literal average-comparison: "xc:diff:avg:pr:g"
+	   ("xc:${xc_name}:${avg}:${field}" => {%$xc_src, on=>"${avg}:${field}"}),
+	 } @aggregateAvgs),
+	),
+      } keys(%_eval_xcomps)),
+
+      ##-- (average+deviation)-based cross-comparisons
+      (map {
+	my $xc_name = $_;
+	my $xc_src  = $_eval_xcomps_dev{$xc_name};
+	(map {
+	  my $avg=$_;
+	  (map {
+	    my $dev=$_;
+	    ##--average+deviation-comparison: "xc:devdiff:avg:dev:pr:g"
+	    ("xc:${xc_name}:${avg}+${dev}:${field}" => {%$xc_src, on=>"${avg}:${field}", dev=>"${dev}:${field}"}),
+	  } @aggregateDevs),
+	} @aggregateAvgs),
+      } keys(%_eval_xcomps_dev)),
+     )
    } @_eval_base_fields),
 
 
@@ -989,8 +1074,7 @@ our %FIELDS =
 		{ expand_code =>\&_expand_errdiff,
 		  of          =>'pr:g',        ##-- target field: to be set by user or alias
 		  vs          =>'max:pr:g',
-		  evalname    =>
-		  '"errdiff(of=$field->{of},vs=$field->{vs})"',
+		  evalname    => '"errdiff(of=$field->{of},vs=$field->{vs})"',
 		  evaltitle   =>'"e-($field->{of}|$field->{vs})"',
  		  errmax      => 100.0,        ##-- for error-rate acquisition
 		  fmt         => '%.2f',
@@ -1365,8 +1449,13 @@ sub _error_difference {
   my ($mf,$cfg,$ediff_field) = @_;
   my $of = $mf->fieldValue($cfg,$ediff_field->{_of});
   my $vs = $mf->fieldValue($cfg,$ediff_field->{_vs});
-  my $emax = $ediff_field->{errmax};
+  return __errdiff($of,$vs,$ediff_field->{errmax});
+}
 
+## $error_difference = __errdiff($of,$vs,[$max=1.0])
+sub __errdiff {
+  my ($of,$vs,$emax) = @_;
+  $emax = 1.0 if (!defined($emax));
   return $emax * (($emax-$vs) - ($emax-$of)) / ($emax-$vs);
 }
 
@@ -1689,6 +1778,13 @@ sub _expand_xcomp {
   my ($mf,$xcfield,$xfields) = @_;
   my $configs  = $mf->{configs};
 
+  ##-- Step 0: create '_on' subkey, if 'on' is available and no '_on' key is already defined
+  if (defined($xcfield->{on}) && !defined($xcfield->{_on})) {
+    $xcfield->{_on} = $mf->expand($xcfield->{on})->[0];
+    ##-- adopt 'fmt' if available
+    $xcfield->{fmt} = $xcfield->{_on}{fmt} if (!defined($xcfield->{fmt}));
+  }
+
   ##-- Step 1: create 'xc_title' field
   my $cfg2xc      = $xcfield->{cfg2xc} = {};
   my $title_field = {
@@ -1786,6 +1882,29 @@ sub _expand_rxcomp {
 
   return $mf->_expand_xcomp($xc_field,$xfields);
 }
+
+##---------------------------------------------------------------
+## Fields: expanders: 'devdiff'
+##  + configuration cross-comparison using average + dev
+sub _expand_devdiff {
+  my ($mf,$ddfield,$xfields) = @_;
+  my $xfield = {%$ddfield};
+  delete($xfield->{expand_code});
+
+  ##-- Expand subfields: on,dev to '_on', '_dev'
+  #my $on_field  = $xfield->{_on}  = $mf->expand($xfield->{on})->[0]; ##-- done by '_expand_xcomp'
+  my $dev_field = $xfield->{_dev} = $mf->expand($xfield->{dev})->[0];
+
+  $xfield->{xc_eval} = (''
+			.'my $val1=$mf->fieldValue($cfg1,$field->{_on});'
+			.'my $val2=$mf->fieldValue($cfg2,$field->{_on});'
+			.'my $dev1=$mf->fieldValue($cfg1,$field->{_dev});'
+			.'$dev1 ? (($val1-$val2)/$dev1) : 1e38'
+		       );
+
+  return $mf->_expand_xcomp($xfield,$xfields);
+}
+
 
 ##---------------------------------------------------------------
 ## Fields: expanders: 'enum'
