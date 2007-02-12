@@ -617,6 +617,10 @@ our %FIELDS =
    tccd   => { path=>[qw(xvars tccd)], title=>'tccd', },
    tccm   => { path=>[qw(xvars tccm)], title=>'tccm', },
 
+   ##-- Meta Profile: numeric keys
+   tck          => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
+   'xvars->tck' => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
+
    ##-- Corpus
    corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
 	       alt=>[
@@ -1605,6 +1609,11 @@ sub _max_fields {
 	  "max:${of}:emi"    => { %$_max_field, of=>$of, for=>'corpus,stage,emi', title=>"max($of|emi)" },
 	  ##--
 	  "max:${of}"        => { %$_max_field, of=>$of, for=>'corpus', title=>"max($of)", },
+	  ##--
+	  "max:${of}:k:corpus" => { %$_max_field, of=>$of, for=>'tck,corpus',       title=>"max($of|S)"  },
+	  "max:${of}:k:stage"  => { %$_max_field, of=>$of, for=>'tck,corpus,stage', title=>"max($of|stg)" },
+	  "max:${of}:k:stg"    => "max:${of}:stg",
+	  "max:${of}:k:emi"    => { %$_max_field, of=>$of, for=>'tck,corpus,stage,emi', title=>"max($of|emi)" },
 	 );
 }
 

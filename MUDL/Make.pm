@@ -524,11 +524,7 @@ $ACTIONS{sortby} = $ACTIONS{priority} =
   };
 sub actSortBy {
   my ($mak,@ufields) = @_;
-#  $mak->{sortby} = [
-#		    $mak->fields([grep { defined($_) && $_ ne '' } @ufields],
-#				 #configs=>[values(%{$mak->selected->{uconfigs}})],
-#				)
-#		   ];
+#  $mak->{sortby} = join(',',grep { defined($_) && $_ ne '' } @ufields);
   $mak->{sortby} = [@ufields];
   return 1;
 }
