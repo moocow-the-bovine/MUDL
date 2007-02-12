@@ -617,9 +617,12 @@ our %FIELDS =
    tccd   => { path=>[qw(xvars tccd)], title=>'tccd', },
    tccm   => { path=>[qw(xvars tccm)], title=>'tccm', },
 
-   ##-- Meta Profile: numeric keys
+   ##-- MetaProfile: numeric keys
    tck          => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
    'xvars->tck' => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
+
+   ##-- MetaProfile xvars aliases
+   'xlabel'     => { path=>[qw(xvars xlabel)], title=>'xlabel', },
 
    ##-- Corpus
    corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
