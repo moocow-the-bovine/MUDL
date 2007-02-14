@@ -163,7 +163,14 @@ sub parse_p {
 sub key {
   my ($mcol,$var2val,$keys) = @_;
   $keys = [keys(%$var2val)] if (!$keys);
-  return join($mcol->{rs}, map { $_ . $mcol->{fs} . $var2val->{$_} } sort(@$keys));
+  return join($mcol->{rs},
+	      map {
+		($_
+		 .$mcol->{fs}
+		 .(defined($var2val->{$_})
+		   ? $var2val->{$_}
+		   : ''))
+	      } sort(@$keys));
 }
 
 ## $ukey = $mcol->ukey($cfg)
