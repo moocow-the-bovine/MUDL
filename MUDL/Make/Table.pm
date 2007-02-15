@@ -350,10 +350,11 @@ sub latexRows {
 ## Methods: Conversion
 ##======================================================================
 
-## $csvTable = $tab->csvTable();
+## $csvTable = $tab->csvTable(%csvArgs);
 sub csvTable {
   my $tab = shift;
-  return MUDL::CSVTable->loadNativeString(join('',@{$tab->csvStrings()}));
+  my $csv = MUDL::CSVTable->new(@_);
+  return $csv->loadNativeString(join('',@{$tab->csvStrings()}));
 }
 
 ##======================================================================

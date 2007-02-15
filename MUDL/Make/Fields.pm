@@ -243,6 +243,10 @@ our %FIELDS =
    'id'               => 'tabId',
    #'results'          => 'tabResults',
    'N'                => [ 'count(title=N,eval=($_||1))' ],
+   'rtabDefault'      => [
+			  qw(cspliti stg emi lg xlabel N),
+			  qw(values:meta values:pair values:wpair values:H HI:g HI:t values:ARand),
+			 ],
 
    (map { ("tab$_"  => "summarize$_") } qw(Default Id Results)),
    (map { ("ltab$_"  => "latex$_") } qw(Default Id Results)),
@@ -255,10 +259,10 @@ our %FIELDS =
 
    ##-- table: Ids
    'mpId'  => ['mpid'],
-   'mpid'  => [ qw(stg ci corpus lrlabel auto) ],
+   'mpid'  => [ qw(stg ci lg lrlabel auto) ],
 
    'emId'  => ['emid'],
-   'emid'  => [ qw(stg emi ci corpus lrlabel auto) ],
+   'emid'  => [ qw(stg emi ci lg lrlabel auto) ],
 
    ##-- Field-joining
    'join' => {
@@ -292,10 +296,10 @@ our %FIELDS =
 
       ##--------------------------------------------------------
       ## Tables: by family: values only
-      "mpvalues:${family}" => [ "mpid", "|", "values:${family}" ],
-      "emvalues:${family}" => [ "emid", "|", "values:${family}" ],
-      _expand_gt("mpvalues:${family}:__GT__" => [ "mpid", "|", "values:${family}:__GT__" ],
-		 "emvalues:${family}:__GT__" => [ "emid", "|", "values:${family}:__GT__" ],
+      "mpvalues:${family}" => [ "mpid", "values:${family}" ],
+      "emvalues:${family}" => [ "emid", "values:${family}" ],
+      _expand_gt("mpvalues:${family}:__GT__" => [ "mpid", "values:${family}:__GT__" ],
+		 "emvalues:${family}:__GT__" => [ "emid", "values:${family}:__GT__" ],
 		),
 
       ##--------------------------------------------------------
@@ -311,7 +315,7 @@ our %FIELDS =
       ##--------------------------------------------------------
       ## Results: by family: values only
       ## + values:meta => [ qw(values:meta:g | values:meta:t) ]
-      "values:${family}" => [ "values:${family}:g", '|', "values:${family}:t" ],
+      "values:${family}" => [ "values:${family}:g", "values:${family}:t" ],
       ##
       ## Results: by family: global, targets
       ## + values:meta:g => [ qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g) ]
@@ -337,7 +341,7 @@ our %FIELDS =
 	 ##
 	 ## Results: aggregates: by family: values only
 	 ## + values:avg:meta => [ qw(values:avg:meta:g | values:avg:meta:t ]
-	 "values:${aggr}:${family}" => [ "values:${aggr}:${family}:g", '|', "values:${aggr}:${family}:t" ],
+	 "values:${aggr}:${family}" => [ "values:${aggr}:${family}:g", "values:${aggr}:${family}:t" ],
 	 ##
 	 ## Results: aggregates: by family: values+stars: global|targets
 	 ## + results:avg:meta:g => [ qw(*:avg:pr:g avg:pr:g +:avg:rc:g avg:rc:g ~:avg:F:g avg:F:g) ]

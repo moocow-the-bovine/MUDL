@@ -658,6 +658,39 @@ sub actCSVTable {
 }
 
 ##---------------------------------------------------------------
+## Actions: Summarize (R-dat format)
+
+$ACTIONS{rtab} = $ACTIONS{rdat} =
+  {
+   syntax=>'rdat [FIELD,...]',
+   help=>'summarize selected configurations (R data-table format)',
+   code=>\&actRdat,
+  };
+
+sub actRdat {
+  my ($mak,$ufields) = @_;
+  return 0 if (!$mak->ensureLoaded);
+
+  my $configs = $mak->selectedConfigs;
+  if (!@$configs) {
+    $mak->vmsg('warn', ref($mak),"::actRdat(): no configurations selected\n");
+    return 1;
+  }
+
+  $ufields   = 'rtabDefault' if (!$ufields);
+  my $mf = $mak->fields($ufields,configs=>$configs);
+  my $tab = MUDL::Make::Table->newFull(mfields=>$mf, sortby=>$mak->{sortby});
+
+  my $csv = $tab->csvTable();
+  $csv->{cmtStr} = '';
+  $csv->{saveColumnNumbers} = 0;
+  $csv->{sanitizeColumnTitles} = 1;
+  $csv->saveNativeFh(\*STDOUT);
+
+  return 1;
+}
+
+##---------------------------------------------------------------
 ## Actions: Summarize (LaTeX table format)
 
 $ACTIONS{lsummarize} = $ACTIONS{lsummary} = $ACTIONS{ltable} = $ACTIONS{ltab} =

@@ -30,8 +30,11 @@ our @ISA = qw(MUDL::Object);
 ##      loadColumnNumbers=> $bool,           ##-- attempt to parse away column numbers on load? (default=1)
 ##                                           ##   + if true, col names of the format /^\d+\((.*)\)$/
 ##                                           ##     are parsed as $1
+##                                           ##   + also, col names of the format /^\d*((\D.*)\)_\d*$/
+##                                           ##     are parsed as $1
 ##      saveColumnNames => $bool,            ##-- save column names on save? (default=1)
 ##      saveColumnNumbers=> $bool,           ##-- save column numbers on save? (default=1)
+##      sanitizeColumTitles=>$bool,          ##-- sanitize column titles on save? (default=0)
 ##  + Basic data:
 ##      data            => \@rows,         ##-- data rows (ARRAY of ARRAYs)
 ##      ncols           => $ncols,         ##-- maximum number of columns loaded
@@ -49,6 +52,7 @@ sub new {
 			       loadColumnNumbers=>1,
 			       saveColumnNames=>1,
 			       saveColumnNumbers=>1,
+			       sanitizeColumnTitles=>0,
 
 			       ##-- Basic Data
 			       data=>[],
@@ -240,7 +244,13 @@ sub loadNativeFh {
       if ($first && $csv->{loadColumnNames}) {
 	$line =~ s/^\s*\Q$csv->{cmtStr}\E*\s*//;
 	@values = split(/$csv->{sepRe}/,$line);
-	@values = (map { $_=~s/^\s*\d+\((.*)\)$/$1/; $_ } @values) if ($csv->{loadColumnNumbers});
+	@values = (
+		   map {
+		     $_=~s/^\s*\d+\((.*)\)$/$1/;
+		     $_=~s/^\s*(\S.*)_\d+$/$1/;
+		     $_;
+		   } @values)
+	  if ($csv->{loadColumnNumbers});
 	my ($colName,$colNumber);
 	my %name2n = qw();
 	foreach my $colNumber (0..$#values) {
@@ -253,7 +263,7 @@ sub loadNativeFh {
 	$csv->{ncols} = @values if (@values > $csv->{ncols});
       }
       $first = 0;
-      next;
+      next if ($csv->{cmtStr} ne '');
     }
     $first=0;
     @values = split(/$csv->{sepRe}/,$line);
@@ -261,6 +271,22 @@ sub loadNativeFh {
     $csv->{ncols} = @values if (@values > $csv->{ncols});
   }
   return $csv;
+}
+
+## $title = $csv->saveColumnTitle($colNum,$colName)
+sub saveColumnTitle {
+  my ($csv,$num,$name) = @_;
+  $name = 'unknown' if (!$name);
+  if ($csv->{sanitizeColumnTitles}) {
+    $name =~ s/\W+/_/g;
+    $name =~ s/\_+/_/g;
+    $name =~ s/^\_+//;
+    $name =~ s/\_+$//;
+    return $name . ($csv->{saveColumnNumbers} ? "_$num" : '');
+  }
+  return ($csv->{saveColumnNumbers}
+	  ? "$num($name)"
+	  : $name);
 }
 
 ## $csvTab = $class_or_object->saveNativeFh($fh,%args)
@@ -273,7 +299,7 @@ sub saveNativeFh {
     $fh->print($csv->{cmtStr},
 	       join($csv->{joinStr},
 		    map {
-		      ($_+1).'('.($csv->{col2name}[$_] || 'unknown').')'
+		      $csv->saveColumnTitle($_+1,$csv->{col2name}[$_])
 		    } (0..$#{$csv->{col2name}})),
 	       "\n");
   }
