@@ -243,8 +243,9 @@ our %FIELDS =
    'id'               => 'tabId',
    #'results'          => 'tabResults',
    'N'                => [ 'count(title=N,eval=($_||1))' ],
+   'rtabId'           => [ qw(cspliti stg emi lg xlabel auto N) ],
    'rtabDefault'      => [
-			  qw(cspliti stg emi lg xlabel N),
+			  'rtabId',
 			  qw(values:meta values:pair values:wpair values:H HI:g HI:t values:ARand),
 			 ],
 

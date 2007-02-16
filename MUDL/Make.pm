@@ -663,7 +663,7 @@ sub actCSVTable {
 $ACTIONS{rtab} = $ACTIONS{rdat} =
   {
    syntax=>'rdat [FIELD,...]',
-   help=>'summarize selected configurations (R data-table format)',
+   help=>'summarize selected configurations (R read.delim() format)',
    code=>\&actRdat,
   };
 
