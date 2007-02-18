@@ -34,7 +34,7 @@ sub new {
   my $self = $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
   $self->{tugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{tugs});
   $self->{bugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{bugs});
-  $self->{ftotal} = if (!defined($self->{ftotal}));
+  $self->{ftotal} = 0 if (!defined($self->{ftotal}));
   return $self;
 }
 
@@ -43,7 +43,7 @@ sub reset {
   my $prf = shift;
   $prf->{tugs}->clear();
   $prf->{bugs}->clear();
-  $prof->{ftotal} = 0;
+  $prf->{ftotal} = 0;
   return $prf->SUPER::reset();
 }
 
