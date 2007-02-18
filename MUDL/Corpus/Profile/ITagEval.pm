@@ -1014,9 +1014,9 @@ sub saveNativeFh {
      "## Identifiers:\n",
      "##   Got   : $esum->{label1}\n",
      "##   Wanted: $esum->{label2}\n",
-     "## Num. Tokens              : ", sprintf("%6d", $esum->{ntoks}), "\n",
-     "## Num. Got->Wanted         : ", sprintf("%6d", $esum->{ntoks}*$esum->{precision}), "\n",
-     "## Num. Wanted->Got         : ", sprintf("%6d", $esum->{ntoks}*$esum->{recall}), "\n",
+     "## Num. Tokens              : ", sprintf("%6d", $esum->{ntoks}||0), "\n",
+     "## Num. Got->Wanted         : ", sprintf("%6d", ($esum->{ntoks}||0)*($esum->{precision}||0)), "\n",
+     "## Num. Wanted->Got         : ", sprintf("%6d", ($esum->{ntoks}||0)*($esum->{recall}||0)), "\n",
      "##\n",
 
      (defined($esum->{ntypes})
@@ -1031,9 +1031,9 @@ sub saveNativeFh {
 
      "##\n",
 
-     "## Meta-Precision           : ", sprintf("%6.2f %%", 100*$esum->{meta_precision}), "\n",
-     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*$esum->{meta_recall}), "\n",
-     "## Meta F                   : ", sprintf("%6.2f %%", 100*$esum->{meta_F}), "\n",
+     "## Meta-Precision           : ", sprintf("%6.2f %%", 100*($esum->{meta_precision}||0)), "\n",
+     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*($esum->{meta_recall}|0)), "\n",
+     "## Meta F                   : ", sprintf("%6.2f %%", 100*($esum->{meta_F}||0)), "\n",
      "##\n",
      "## AMeta-Precision          : ", sprintf("%6.2f %%", 100*$esum->{ameta_precision}), "\n",
      "## AMeta-Recall             : ", sprintf("%6.2f %%", 100*$esum->{ameta_recall}), "\n",
