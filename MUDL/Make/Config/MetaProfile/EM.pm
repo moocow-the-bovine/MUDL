@@ -35,9 +35,10 @@ our $DEBUG = 0;
 ##     targets  => $targets_str,    ##-- default: 'all'
 ##
 ##  + re-implemented MUDL::Make::Config::MetaProfile::EM from MUDL::Make::Config::MetaProfile
-##     eval_global  => $global_eval_summary, ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
-##     eval_targets => $target_eval_summary, ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
-##     mpsummary    => \%info,               ##-- as returned by $mp->getSummaryInfo() [base data]
+##     eval_global    => $global_eval_summary,    ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
+##     eval_targets   => $target_eval_summary,    ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
+##     eval_targets_k => $targets_k_eval_summary, ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
+##     mpsummary      => \%info,                  ##-- as returned by $mp->getSummaryInfo() [base data]
 sub new {
   my $that = shift;
   my $self = bless $that->SUPER::new(
@@ -46,9 +47,10 @@ sub new {
 				     userfile => 'user.mak',
 
 				     ##-- acquisition data
-				     eval_global  => undef,
-				     eval_targets => undef,
-				     mpsummary    => undef,
+				     eval_global    => undef,
+				     eval_targets   => undef,
+				     eval_targets_k => undef,
+				     mpsummary      => undef,
 
 				     ##-- User args
 				     @_
@@ -61,9 +63,9 @@ sub clear {
   my $cfg = shift;
   $cfg->SUPER::clear();
 
-  $cfg->{targets} = 'em-global-eval-summary em-tgs-eval-summary';
+  $cfg->{targets} = 'em-global-eval-summary em-tgs-eval-summary em-tgs-k-eval-summary';
   $cfg->{userfile} = 'user.mak';
-  delete(@$cfg{qw(eval_global eval_targets mpsummary)});
+  delete(@$cfg{qw(eval_global eval_targets eval_targets_k mpsummary)});
 
   return $cfg;
 }
@@ -104,6 +106,11 @@ sub acquire {
   $file = "${filebase}.tgs.eval.summary.bin";
   $cfg->{eval_targets} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load target-eval file '$file': $!");
+
+  ##-- load eval (summary): targets_k
+  $file = "${filebase}.tgs-k.eval.summary.bin";
+  $cfg->{eval_targets_k} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
+    or confess(ref($cfg),"::acquire(): could not load targets-k-eval file '$file': $!");
 
   return $cfg;
 }
@@ -152,6 +159,16 @@ sub reacquire {
   $eval->saveFile("$base.bin");
   $esum->saveFile("$base.summary.bin");
   $cfg->{eval_targets} = $esum;
+
+  ##-- re-acquire: targets_k
+  $base   = "${filebase}.tgs-k.eval";
+  $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
+    or confess(ref($cfg),"::reacquire(): could not load targets-k-eval file '$base.bin': $!");
+  $eval->finish();
+  $esum = $eval->summary();
+  $eval->saveFile("$base.bin");
+  $esum->saveFile("$base.summary.bin");
+  $cfg->{eval_targets_k} = $esum;
 
   ##-- pop chdir()
   $cfg->popd();

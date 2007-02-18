@@ -24,39 +24,49 @@ our @_eval_base_fields =
    ##-- Total (token-wise)
    qw(tpr:g trc:g tF:g),
    qw(tpr:t trc:t tF:t),
+   qw(tpr:tk trc:tk tF:tk),
 
    ##-- Meta (token-wise)
    qw(pr:g rc:g F:g ar:g),
    qw(pr:t rc:t F:t ar:t),
+   qw(pr:tk rc:tk F:t ar:tk),
 
    ##-- Adjusted Meta (token-wise)
    qw(ampr:g amrc:g amF:g),
    qw(ampr:t amrc:t amF:t),
+   qw(ampr:tk amrc:tk amF:tk),
 
    ##-- MI,H (token-wise)
-   qw(mi:g mi:t),
+   qw(mi:g mi:t mi:tk),
    qw(Hpr:g Hrc:g HF:g HI:g),
    qw(Hpr:t Hrc:t HF:t HI:t),
+   qw(Hpr:tk Hrc:tk HF:tk HI:tk),
 
    ##-- Average tag2 (Schütze-style)
    qw(apr:g arc:g aF:g),
    qw(apr:t arc:t aF:t),
+   qw(apr:tk arc:tk aF:tk),
 
    ##-- Weighted Average tag2 (Schütze-style, weighted)
    qw(wapr:g warc:g waF:g),
    qw(wapr:t warc:t waF:t),
+   qw(wapr:tk warc:tk waF:tk),
 
    ##-- Pairwise (Schulte im Walde-style)
    qw(ppr:g prc:g pF:g),
    qw(ppr:t prc:t pF:t),
+   qw(ppr:tk prc:tk pF:tk),
 
    ##-- Weighted Pairwise (Schulte im Walde-style)
    qw(wppr:g wprc:g wpF:g),
    qw(wppr:t wprc:t wpF:t),
+   qw(wppr:tk wprc:tk wpF:tk),
 
    ##-- Rand Index
-   qw(Rand:g Rand:t),
-   qw(ARand:g ARand:t RandA:g RandA:t),
+   qw(Rand:g Rand:t Rand:tk),
+   qw(ARand:g RandA:g),
+   qw(ARand:t RandA:t),
+   qw(ARand:tk RandA:tk),
   );
 
 ##-------------------
@@ -306,7 +316,7 @@ our %FIELDS =
       ##--------------------------------------------------------
       ## Results: by family
       ## + results:meta => [ qw(results:meta:g | results:meta:t) ]
-      "results:${family}" => [ "results:${family}:g", '|', "results:${family}:t" ],
+      "results:${family}" => [ "results:${family}:g", '|', "results:${family}:tk" ],
       ##
       ## Results: by family: global, targets
       ## + results:meta:g => [ qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g) ]
@@ -351,7 +361,7 @@ our %FIELDS =
 	 ##
 	 ## Results: aggregates: by family: values only
 	 ## + results:avg:meta => [ qw(results:avg:meta:g | results:avg:meta:t ]
-	 "results:${aggr}:${family}" => [ "results:${aggr}:${family}:g", '|', "results:${aggr}:${family}:t" ],
+	 "results:${aggr}:${family}" => [ "results:${aggr}:${family}:g", '|', "results:${aggr}:${family}:tk" ],
 	)
       } keys(%aggregateFuncs),
 
@@ -729,254 +739,134 @@ our %FIELDS =
 
    'tck' => { path=>[qw(xvars tck)], n=>1, alt=>[qw(xvars->tck)], },
 
-   ##-------------------------------------------------
-   ## Eval: Ambiguity Rates
-   'ar:g'  => { path=>[qw(eval_global arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>' ar:g' },
-   'ar:t'  => { path=>[qw(eval_targets arate1)],    n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' ar:t' },
+   ##----------------------------------------------------------
+   ## Eval: low-level keys
+   (map {
+     my $gt = $_;
+     my %gt2path = ('g'=>'eval_global','t'=>'eval_targets','tk'=>'eval_targets_k');
+     my $p  = $gt2path{$gt};
 
-   ##-------------------------------------------------
-   ## Eval: Meta-(precision,recall,F,ambig-rate)
+     (
+      ##-------------------------------------------------
+      ## Eval: Ambiguity Rates: ar:*
+      "ar:$gt" => { path=>[$p, qw(arate1)],  n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>" ar:$gt" },
 
-   ##-------------------------------------
-   ## Eval: Meta-*: Global
-   'mpr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:g'},
-   'mrc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:g'},
-   'mF:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:g' },
+      ##-------------------------------------
+      ## Eval: Meta-*: m*:*
+      "mpr:$gt" => { path=>[$p, qw(precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"mpr:$gt"},
+      "mrc:$gt" => { path=>[$p, qw(recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"mrc:$gt"},
+      "F:$gt" => { path=>[$p, qw(F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"mF:$gt"},
 
-   'pr:g'  => { path=>[qw(eval_global precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:g'},
-   'rc:g'  => { path=>[qw(eval_global recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:g'},
-   'F:g'   => { path=>[qw(eval_global F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:g' },
+      ##-------------------------------------
+      ## Eval: Meta-*: *:*
+      "pr:$gt" => { path=>[$p, qw(precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"mpr:$gt"},
+      "rc:$gt" => { path=>[$p, qw(recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"mrc:$gt"},
+      "F:$gt" => { path=>[$p, qw(F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"mF:$gt"},
 
-   ##-------------------------------------
-   ## Eval: Meta-*: Targets
-   'mpr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:t'},
-   'mrc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:t'},
-   'mF:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:t' },
+      ##-------------------------------------
+      ## Eval: Adjusted Meta-*: am*:*
+      "ampr:$gt" => { path=>[$p,qw(ameta_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"ampr:$gt"},
+      "amrc:$gt" => { path=>[$p,qw(ameta_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"amrc:$gt"},
+      "amF:$gt"  => { path=>[$p,qw(ameta_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"amF:$gt" },
 
-   'pr:t'  => { path=>[qw(eval_targets precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mpr:t'},
-   'rc:t'  => { path=>[qw(eval_targets recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mrc:t'},
-   'F:t'   => { path=>[qw(eval_targets F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'mF:t' },
+      ##-------------------------------------
+      ## Eval: Total-*: t*:*
+      "tpr:$gt"  => { path=>[$p,qw(total_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"tpr:$gt"},
+      "trc:$gt"  => { path=>[$p,qw(total_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"trc:$gt"},
+      "tF:$gt"   => { path=>[$p,qw(total_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"tF:$gt" },
 
-   ##-------------------------------------
-   ## Eval: Adjusted Meta-*: Global
-   'ampr:g' => { path=>[qw(eval_global ameta_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ampr:g'},
-   'amrc:g' => { path=>[qw(eval_global ameta_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amrc:g'},
-   'amF:g'  => { path=>[qw(eval_global ameta_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amF:g' },
+      ##-------------------------------------
+      ## Eval: MI, H: mi*:*, H*:*
+      "mi:$gt"   => { path=>[$p,qw(mi)],        n=>1, fmt=>'%.3f', eval=>'0+$_', title=>" mi:$gt" },
+      "Hpr:$gt"  => { path=>[$p,qw(H_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"Hpr:$gt"},
+      "Hrc:$gt"  => { path=>[$p,qw(H_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"Hrc:$gt"},
+      "HF:$gt"   => { path=>[$p,qw(H_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"HF:$gt" },
+      "HI:$gt"   => { path=>[$p,qw(H_I)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"HI:$gt" },
 
-   ##-------------------------------------
-   ## Eval: Adjusted Meta-*: Targets
-   'ampr:t' => { path=>[qw(eval_targets ameta_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ampr:t'},
-   'amrc:t' => { path=>[qw(eval_targets ameta_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amrc:t'},
-   'amF:t'  => { path=>[qw(eval_targets ameta_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'amF:t' },
+      ##-------------------------------------
+      ## Eval: Tagwise-average-*: Global
+      "apr:$gt"  => { path=>[$p,qw(avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"apr:$gt"},
+      "arc:$gt"  => { path=>[$p,qw(avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"arc:$gt"},
+      "aF:$gt"   => { path=>[$p,qw(avg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"aF:$gt" },
 
-   ##-------------------------------------
-   ## Eval: Total-*: Global
-   'tpr:g'  => { path=>[qw(eval_global total_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:g'},
-   'trc:g'  => { path=>[qw(eval_global total_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:g'},
-   'tF:g'   => { path=>[qw(eval_global total_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:g' },
+      ##-------------------------------------------------
+      ## Eval: Weighted Tagwise-average (precision,recall,F)
+      "wapr:$gt"  => { path=>[$p,qw(wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"wapr:$gt"},
+      "warc:$gt"  => { path=>[$p,qw(wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"warc:$gt"},
+      "waF:$gt"   => { path=>[$p,qw(wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"waF:$gt"},
 
-   ##-------------------------------------
-   ## Eval: Total-*: Targets
-   'tpr:t'  => { path=>[qw(eval_targets total_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pr:t'},
-   'trc:t'  => { path=>[qw(eval_targets total_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' rc:t'},
-   'tF:t'   => { path=>[qw(eval_targets total_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' F:t' },
+      ##-------------------------------------------------
+      ## Eval: Pairwise (precision,recall,F)
+      "ppr:$gt"  => { path=>[$p,qw(pair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"ppr:$gt"},
+      "prc:$gt"  => { path=>[$p,qw(pair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"prc:$gt"},
+      "pF:$gt"   => { path=>[$p,qw(pair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>" pF:$gt"},
 
+      ##-------------------------------------------------
+      ## Eval: Weighted Pairwise (precision,recall,F)
+      "wppr:$gt" => { path=>[$p,qw(wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"wppr:$gt"},
+      "wprc:$gt" => { path=>[$p,qw(wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"wprc:$gt"},
+      "wpF:$gt"  => { path=>[$p,qw(wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"wpF:$gt"},
 
-   ##-------------------------------------
-   ## Eval: MI, H
-   'mi:g'  => { path=>[qw(eval_global mi)],        n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' mi:g' },
-   'Hpr:g'  => { path=>[qw(eval_global H_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hpr:g'},
-   'Hrc:g'  => { path=>[qw(eval_global H_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hrc:g'},
-   'HF:g'   => { path=>[qw(eval_global H_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HF:g' },
-   'HI:g'   => { path=>[qw(eval_global H_I)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HI:g' },
+      ##-------------------------------------
+      ## Eval: Rand Index
+      "Rand:$gt" => { path=>[$p,qw(Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"Rand:$gt"},
+      "rand:$gt" => ["Rand:$gt"],
 
-   'mi:t'  => { path=>[qw(eval_targets mi)],       n=>1, fmt=>'%.3f', eval=>'0+$_', title=>' mi:t' },
-   'Hpr:t'  => { path=>[qw(eval_targets H_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hpr:t'},
-   'Hrc:t'  => { path=>[qw(eval_targets H_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Hrc:t'},
-   'HF:t'   => { path=>[qw(eval_targets H_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HF:t' },
-   'HI:t'   => { path=>[qw(eval_targets H_I)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'HI:t' },
-
-
-   ##-------------------------------------------------
-   ## Eval: Tagwise-average (precision,recall,F,ambig-rate)
-
-   ##-------------------------------------
-   ## Eval: Tagwise-average-*: Global
-   'apr:g'  => { path=>[qw(eval_global avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'apr:g'},
-   'arc:g'  => { path=>[qw(eval_global avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'arc:g'},
-   'aF:g'   => { path=>[qw(eval_global avg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' aF:g' },
-
-   ##-------------------------------------
-   ## Eval: Tagwise-average-*: Targets
-   'apr:t'  => { path=>[qw(eval_targets avg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'apr:t'},
-   'arc:t'  => { path=>[qw(eval_targets avg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'arc:t'},
-   'aF:t'   => { path=>[qw(eval_targets avg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' aF:t' },
-
-   ##-------------------------------------------------
-   ## Eval: Weighted Tagwise-average (precision,recall,F)
-
-   ##-------------------------------------
-   ## Eval: Weighted Tagwise-average-*: Global
-   'wapr:g'  => { path=>[qw(eval_global wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wapr:g'},
-   'warc:g'  => { path=>[qw(eval_global wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'warc:g'},
-   'waF:g'   => { path=>[qw(eval_global wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'waF:g'},
-
-   ##-------------------------------------
-   ## Eval: Weighted Tagwise-average-*: Targets
-   'wapr:t'  => { path=>[qw(eval_targets wavg_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wapr:t'},
-   'warc:t'  => { path=>[qw(eval_targets wavg_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'warc:t'},
-   'waF:t'   => { path=>[qw(eval_targets wavg_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'waF:t'},
-
-   ##-------------------------------------------------
-   ## Eval: Pairwise (precision,recall,F)
-
-   ##-------------------------------------
-   ## Eval: Pairwise: Global
-   'ppr:g'  => { path=>[qw(eval_global pair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ppr:g'},
-   'prc:g'  => { path=>[qw(eval_global pair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'prc:g'},
-   'pF:g'   => { path=>[qw(eval_global pair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pF:g'},
-
-   ##-------------------------------------
-   ## Eval: Pairwise: Targets
-   'ppr:t'  => { path=>[qw(eval_targets pair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ppr:t'},
-   'prc:t'  => { path=>[qw(eval_targets pair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'prc:t'},
-   'pF:t'   => { path=>[qw(eval_targets pair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>' pF:t'},
-
-   ##-------------------------------------------------
-   ## Eval: Weighted Pairwise (precision,recall,F)
-
-   ##-------------------------------------
-   ## Eval: Weighted Pairwise: Global
-   'wppr:g' => { path=>[qw(eval_global wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wppr:g'},
-   'wprc:g' => { path=>[qw(eval_global wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:g'},
-   'wpF:g'  => { path=>[qw(eval_global wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wpF:g'},
-
-   ##-------------------------------------
-   ## Eval: Weighted Pairwise: Targets
-   'wppr:t' => { path=>[qw(eval_targets wpair_precision)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wppr:t'},
-   'wprc:t' => { path=>[qw(eval_targets wpair_recall)],    n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wprc:t'},
-   'wpF:t'  => { path=>[qw(eval_targets wpair_F)],         n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'wpF:t'},
-
-   ##-------------------------------------
-   ## Eval: Rand Index
-   'Rand:g' => { path=>[qw(eval_global Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Rand:g'},
-   'rand:g' => 'Rand:g',
-   'Rand:t' => { path=>[qw(eval_targets Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'Rand:t'},
-   'rand:t' => 'Rand:t',
-
-   ##-------------------------------------
-   ## Eval: Adjusted Rand Index
-   'ARand:g' => { path=>[qw(eval_global RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ARand:g'},
-   'RandA:g' => { path=>[qw(eval_global RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'RandA:g'},
-   'ARand:t' => { path=>[qw(eval_targets RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'ARand:t'},
-   'RandA:t' => { path=>[qw(eval_targets RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>'RandA:t'},
-
-   ##-------------------------------------------------
-   ## Eval: Single-tag (precision,recall,F): Meta
-
-   ##-------------------------------------
-   ## Eval: Single-tag-*: Meta: Global
-   'tag:pr:g' => { path=>[qw(eval_global tag2i)], n=>1, fmt=>'%.2f',
-		   evalname=>'"$field->{tag}:pr:g"',
-		   evaltitle=>'"$field->{tag}"',
-		   eval=>'100*$_->{$field->{tag}}{meta_precision}',
-		 },
-   'tag:rc:g' => { path=>[qw(eval_global tag2i)], n=>1, fmt=>'%.2f',
-		   evalname=>'"$field->{tag}:rc:g"',
-		   evaltitle=>'"$field->{tag}"',
-		   eval=>'100*$_->{$field->{tag}}{meta_recall}',
-		  },
-   'tag:F:g'  => { path=>[qw(eval_global tag2i)], n=>1, fmt=>'%.2f',
-		   evalname=>'"$field->{tag}:F:g"',
-		   evaltitle=>'"$field->{tag}"',
-		   eval=>'100*$_->{$field->{tag}}{meta_F}',
-		  },
-
-   ##-------------------------------------
-   ## Eval: Single-tag-*: Meta: Targets
-   'tag:pr:t' => { path=>[qw(eval_targets tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:pr:t"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{meta_precision}',
-		  },
-   'tag:rc:t' => { path=>[qw(eval_targets tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:rc:t"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{meta_recall}',
-		  },
-   'tag:F:t'  => { path=>[qw(eval_targets tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:F:t"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{meta_F}',
-		  },
-
-   ##-------------------------------------------------
-   ## Eval: Single-tag (precision,recall,F): Average
-
-   ##-------------------------------------
-   ## Eval: Single-tag-*: Average: Global
-   'tag:apr:g' => { path=>[qw(eval_global tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:apr:g"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{avg_precision}',
-		},
-   'tag:arc:g' => { path=>[qw(eval_global tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:arc:g"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{avg_recall}',
-		  },
-   'tag:aF:g'  => { path=>[qw(eval_global tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:aF:g"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{avg_F}',
-		  },
-
-   ##-------------------------------------
-   ## Eval: Single-tag-*: Average: Targets
-   'tag:apr:t' => { path=>[qw(eval_targets tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:apr:t"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{avg_precision}',
-		  },
-   'tag:arc:t' => { path=>[qw(eval_targets tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:arc:t"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{avg_recall}',
-		  },
-   'tag:aF:t'  => { path=>[qw(eval_targets tag2i)], n=>1, fmt=>'%.2f',
-		    evalname=>'"$field->{tag}:aF:t"',
-		    evaltitle=>'"$field->{tag}"',
-		    eval=>'100*$_->{$field->{tag}}{avg_F}',
-		  },
+      ##-------------------------------------
+      ## Eval: Adjusted Rand Index
+      "ARand:$gt" => { path=>[$p,qw(RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"ARand:$gt"},
+      "RandA:$gt" => ["ARand:$gt"],
 
 
-   ##-------------------------------------------------
-   ## Eval: All single-tags (precision,recall,F,ambig-rate)
+      ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      ## Eval: Single-tag (precision,recall,F): Meta
+      "tag:pr:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			evalname=>qq("\$field->{tag}:pr:$gt"),
+			evaltitle=>q("$field->{tag}"),
+			eval=>q(100*$_->{$field->{tag}}{meta_precision}),
+		      },
+      "tag:rc:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			evalname=>qq("\$field->{tag}:rc:$gt"),
+			evaltitle=>q("$field->{tag}"),
+			eval=>q(100*$_->{$field->{tag}}{meta_recall}),
+		      },
+      "tag:F:$gt"  => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			evalname=>qq("\$field->{tag}:F:$gt"),
+			evaltitle=>q("$field->{tag}"),
+			eval=>q(100*$_->{$field->{tag}}{meta_F}),
+		      },
 
-   ##-------------------------------------
-   ## Eval: All single-tag-*: Meta: Global
-   'tags:pr:g' => { expand_code=>\&_expand_tags, _tag_field=>'tag:pr:g', _tag_var=>'tag', },
-   'tags:rc:g' => { expand_code=>\&_expand_tags, _tag_field=>'tag:rc:g', _tag_var=>'tag', },
-   'tags:F:g'  => { expand_code=>\&_expand_tags, _tag_field=>'tag:F:g', _tag_var=>'tag', },
+      ##-------------------------------------------------
+      ## Eval: Single-tag (precision,recall,F): Average
+      "tag:apr:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			 evalname=>qq("\$field->{tag}:apr:$gt"),
+			 evaltitle=>q("$field->{tag}"),
+			 eval=>q(100*$_->{$field->{tag}}{avg_precision}),
+		       },
+      "tag:arc:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			 evalname=>qq("\$field->{tag}:arc:$gt"),
+			 evaltitle=>q("$field->{tag}"),
+			 eval=>q(100*$_->{$field->{tag}}{avg_recall}),
+		       },
+      "tag:aF:$gt"  => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			 evalname=>qq("\$field->{tag}:aF:$gt"),
+			 evaltitle=>q("$field->{tag}"),
+			 eval=>q(100*$_->{$field->{tag}}{avg_F}),
+		       },
 
-   ##-------------------------------------
-   ## Eval: All single-tag-*: Meta. Targets
-   'tags:pr:t' => { expand_code=>\&_expand_tags, _tag_field=>'tag:pr:t', _tag_var=>'tag', },
-   'tags:rc:t' => { expand_code=>\&_expand_tags, _tag_field=>'tag:rc:t', _tag_var=>'tag', },
-   'tags:F:t'  => { expand_code=>\&_expand_tags, _tag_field=>'tag:F:t', _tag_var=>'tag', },
+      ##-------------------------------------
+      ## Eval: All single-tag-*: Meta
+      "tags:pr:$gt" => { expand_code=>\&_expand_tags, _tag_field=>"tag:pr:$gt", _tag_var=>'tag', },
+      "tags:rc:$gt" => { expand_code=>\&_expand_tags, _tag_field=>"tag:rc:$gt", _tag_var=>'tag', },
+      "tags:F:$gt"  => { expand_code=>\&_expand_tags, _tag_field=>"tag:F:$gt", _tag_var=>'tag', },
 
-
-   ##-------------------------------------
-   ## Eval: All single-tag-*: Average: Global
-   'tags:apr:g' => { expand_code=>\&_expand_tags, _tag_field=>'tag:apr:g', _tag_var=>'tag', },
-   'tags:arc:g' => { expand_code=>\&_expand_tags, _tag_field=>'tag:arc:g', _tag_var=>'tag', },
-   'tags:aF:g'  => { expand_code=>\&_expand_tags, _tag_field=>'tag:aF:g', _tag_var=>'tag', },
-
-   ##-------------------------------------
-   ## Eval: All single-tag-*: Average: Targets
-   'tags:apr:t' => { expand_code=>\&_expand_tags, _tag_field=>'tag:apr:t', _tag_var=>'tag', },
-   'tags:arc:t' => { expand_code=>\&_expand_tags, _tag_field=>'tag:arc:t', _tag_var=>'tag', },
-   'tags:aF:t'  => { expand_code=>\&_expand_tags, _tag_field=>'tag:aF:t', _tag_var=>'tag', },
+      ##-------------------------------------
+      ## Eval: All single-tag-*: Average
+      "tags:apr:$gt" => { expand_code=>\&_expand_tags, _tag_field=>"tag:apr:$gt", _tag_var=>'tag', },
+      "tags:arc:$gt" => { expand_code=>\&_expand_tags, _tag_field=>"tag:arc:$gt", _tag_var=>'tag', },
+      "tags:aF:$gt"  => { expand_code=>\&_expand_tags, _tag_field=>"tag:aF:$gt", _tag_var=>'tag', },
+     ),
+   } ('g', 't', 'tk')),
 
    ##-------------------------------------------------
    ## Eval: aggregate functions
@@ -1174,13 +1064,13 @@ sub _expand_macros {
 ## Fields: family expander: results
 
 ## %expanded = _expand_gt(%aliases)
-##   + replace macro '__GT__' with 'g' or 't'
+##   + replace macro '__GT__' with 'g', 't', or 'tk'
 sub _expand_gt {
   my %aliases = @_;
   my %expanded = qw();
   my ($aname,$avals,$gt);
   while (($aname,$avals)=each(%aliases)) {
-    foreach $gt (qw(g t)) {
+    foreach $gt (qw(g t tk)) {
       $expanded{_expand_macros($aname,'__GT__'=>$gt)} = [map {_expand_macros($_,'__GT__'=>$gt)} @$avals];
     }
   }

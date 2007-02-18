@@ -123,7 +123,7 @@ sub removeIndex {
 }
 
 ##======================================================================
-## Manipulators: addition
+## Manipulators: union, difference
 
 ## $enum1 = $enum1->addEnum($enum2)
 ##  + adds all symbols from $enum2 to $enum1
@@ -135,6 +135,15 @@ sub addEnum {
   return $e1;
 }
 
+## $enum1 = $enum1->removeEnum($enum2)
+##  + removes all symbols in $enum2 from $enum1
+##  + preserves mapping of $enum1
+*difference = \&removeEnum;
+sub removeEnum {
+  my ($e1,$e2) = @_;
+  $e1->removeSymbol($_) foreach (@{$e2->{id2sym}});
+  return $e1;
+}
 
 ##======================================================================
 ## Conversion: Encoding
