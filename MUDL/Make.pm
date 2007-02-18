@@ -728,7 +728,7 @@ sub latexify {
 }
 
 ##---------------------------------------------------------------
-## Actions: make
+## Actions: make (safe)
 
 $ACTIONS{make} = $ACTIONS{acquire} =
   {
@@ -737,6 +737,33 @@ $ACTIONS{make} = $ACTIONS{acquire} =
    code=>\&actMake,
   };
 sub actMake {
+  my $mak = shift;
+  return 0 if (!$mak->ensureLoaded);
+  my $rc = 1;
+  my ($cfg);
+  foreach $cfg ($mak->sortSelection()) {
+    $rc &&= $cfg->make( dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
+    if (!$rc) {
+      warn(ref($mak),"::actMake() failed -- bailing out");
+      exit(1);
+    }
+    if (!$mak->{dummy}) {
+      $mak->syncCollection() if ($mak->{paranoid});
+    }
+  }
+  return $rc;
+}
+
+##---------------------------------------------------------------
+## Actions: make-k (unsafe)
+
+$ACTIONS{'make-k'} = $ACTIONS{'makek'} =
+  {
+   syntax=>'make-k',
+   help=>'greedily call make for selected configurations (don\'t die)',
+   code=>\&actMakeK,
+  };
+sub actMakeK {
   my $mak = shift;
   return 0 if (!$mak->ensureLoaded);
   my $rc = 1;

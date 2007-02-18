@@ -1032,7 +1032,7 @@ sub saveNativeFh {
      "##\n",
 
      "## Meta-Precision           : ", sprintf("%6.2f %%", 100*($esum->{meta_precision}||0)), "\n",
-     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*($esum->{meta_recall}|0)), "\n",
+     "## Meta-Recall              : ", sprintf("%6.2f %%", 100*($esum->{meta_recall}||0)), "\n",
      "## Meta F                   : ", sprintf("%6.2f %%", 100*($esum->{meta_F}||0)), "\n",
      "##\n",
      "## AMeta-Precision          : ", sprintf("%6.2f %%", 100*$esum->{ameta_precision}), "\n",
