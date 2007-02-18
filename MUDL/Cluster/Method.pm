@@ -104,6 +104,8 @@ sub new {
 			    );
   $cm->data($args{data}) if (defined($args{data}));
 
+#  print STDERR "<<DEBUG>> ", __PACKAGE__, "::new() returning nclusters=$cm->{nclusters}\n";
+
   return $cm;
 }
 

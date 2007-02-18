@@ -21,9 +21,9 @@ our @ISA = qw(MUDL::Make::Config);
 our $DEBUG = 0;
 
 our $MAKE_TARGETS = join(' ',
-			 'stage-eval',
-			 'stage-tgs-eval',
-			 'stage-tgs-k-eval',
+			 #'stage-eval',
+			 #'stage-tgs-eval',
+			 #'stage-tgs-k-eval',
 			 'stage-summary-view',
 			);
 

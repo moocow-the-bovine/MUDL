@@ -706,7 +706,8 @@ sub getSummaryInfo {
   $info->{nBounds} = $mp->{benum}->size;
   $info->{nClusters} = $mp->{cbenum}->size;
   $info->{nTargets_k} = (defined($mp->{tenum_k})
-			 ? ($mp->{tenum_k}->size - $info->{nClusters})
+			 #? ($mp->{tenum_k}->size - $info->{nClusters})
+			 ? ($mp->{tenum_k}->size)
 			 : $info->{nTargets});
 
   ##-- unigram freq info

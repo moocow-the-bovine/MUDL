@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Cluster::Tree.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -82,6 +82,14 @@ sub new {
 			    );
 #  }
 
+#  print STDERR "<<DEBUG>> ", __PACKAGE__, "::new() returning nclusters=$tc->{nclusters}\n";
+#  print STDERR
+#    ("<<DEBUG>> ", __PACKAGE__, "::new() got args:\n",
+#     (map {
+#       "\t '$_' => '$args{$_}'\n"
+#     } sort(keys(%args))),
+#    );
+
   return $tc;
 }
 
@@ -158,7 +166,11 @@ sub cut {
   if (!defined($tc->{clusterids}) || $tc->{clusterids}->dim(0) != $tc->{ctree}->dim(1)) {
     $tc->{clusterids} = zeroes(long, $tc->{ctree}->dim(1));
   }
-
+  
+  print STDERR
+      ("<<<DEBUG>>>: ", ref($tc),
+       "::cut(): cutting tree into $tc->{nclusters} clusters\n"
+      );
   PDL::Cluster::cuttree($tc->{ctree},
 			$tc->{nclusters},
 			$tc->{clusterids});
