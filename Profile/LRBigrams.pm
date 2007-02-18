@@ -22,13 +22,55 @@ our @ISA = qw(MUDL::Corpus::Profile::LR);
 ##       bos => $bos_str,
 ##       bounds => $bounds_enum,
 ##       targets => $targets_enum,
-##       left=>$left_bigrams,       ## ($target,$lneighbor)
-##       right=>$right_bigrams,     ## ($target,$rneighbor)
-##       smoothgt=>$which,          ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
+##       smoothgt=>$which,           ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
+##   + data acquired:
+##       left =>$left_bigrams,       ## ($target_id,$lneighbor_id) => $count
+##       right=>$right_bigrams,      ## ($target_id,$rneighbor_id) => $count
+##       tugs =>$target_unigrams,    ## unigram totals for targets (ids)
+##       bugs =>$target_unigrams,    ## unigram totals for bounds (ids)
+##       total=>$ftotal,             ## total number of tokens processed
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
+  my $self = $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
+  $self->{tugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{tugs});
+  $self->{bugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{bugs});
+  $self->{ftotal} = if (!defined($self->{ftotal}));
+  return $self;
 }
+
+## $prof = $prof-reset();
+sub reset {
+  my $prf = shift;
+  $prf->{tugs}->clear();
+  $prf->{bugs}->clear();
+  $prof->{ftotal} = 0;
+  return $prf->SUPER::reset();
+}
+
+## $lr2 = $lr->shadow(%args)
+##  + return new profile of same form
+##    - empty {left},{right} and unigram distributions
+##    - everything else copied
+sub shadow {
+  my $lr = shift;
+
+  ##-- save temps
+  my (%nztmp);
+  foreach (qw(left right tugs bugs)) {
+    $nztmp{$_} = $lr->{$_}{nz};
+    $lr->{$_}{nz} = ref($nztmp{$_})->new();
+  }
+
+  ##-- copy
+  my $lr2 = $lr->copy(@_);
+  $lr2->{ftotal} = 0;
+
+  ##-- restore temps
+  $lr->{$_}{nz} = $nztmp{$_} foreach (qw(left right tugs bugs));
+
+  return $lr2;
+}
+
 
 ##======================================================================
 ## Profiling
@@ -75,6 +117,15 @@ sub addSentence {
     }
   }
 
+  ##-- unigrams
+  my $tugs = $pr->{tugs};
+  my $bugs = $pr->{bugs};
+  ++$tugs->{nz}{$_} foreach (grep {defined($_)} @tids);
+  ++$bugs->{nz}{$_} foreach (grep {defined($_)} @bids);
+
+  ##-- total
+  $pr->{ftotal} += scalar(@$s);
+
   return $pr;
 }
 
@@ -105,6 +156,7 @@ sub addBigrams {
   }
 
   my ($tgs,$bds,$lbg,$rbg) = @$lr{qw(targets bounds left right)};
+  my ($tugs,$bugs)         = @$lr{qw(tugs bugs)};
   my ($w12,$f12,$w1,$w2, $tid,$bid);
   while (($w12,$f12)=each(%{$bg->{nz}})) {
     ##-- split
@@ -119,6 +171,13 @@ sub addBigrams {
     if (defined($tid=$tgs->{sym2id}{$w1}) && defined($bid=$bds->{sym2id}{$w2})) {
       $rbg->{nz}{$tid.$rbg->{sep}.$bid} += $f12;
     }
+
+    ##-- unigrams (on w1)
+    $lr->{tugs}{nz}{$tid} += $f12 if (defined($tid=$tgs->{sym2id}{$w1}));
+    $lr->{bugs}{nz}{$bid} += $f12 if (defined($bid=$bds->{sym2id}{$w1}));
+
+    ##-- total freq
+    $lr->{ftotal} += $f12;
   }
 
   return $lr;
@@ -164,9 +223,16 @@ sub helpString {
 ## $bool = $obj->saveNativeFh($fh,%args)
 sub saveNativeFh {
   my ($obj,$fh) = @_;
+  $fh->print("##-- BIGRAMS: LEFT\n");
   $obj->{left}->toDist->saveNativeFh($fh,@_);
-  $fh->print("\n\n\n");
+  $fh->print("\n\n##-- BIGRAMS: RIGHT\n");
   $obj->{right}->toDist->saveNativeFh($fh,@_);
+  $fh->print("\n\n##-- UNIGRAMS: TARGETS\n");
+  $obj->{tugs}->toDist->saveNativeFh($fh,@_);
+  $fh->print("\n\n##-- UNIGRAMS: BOUNDS\n");
+  $obj->{bugs}->toDist->saveNativeFh($fh,@_);
+  $fh->print("\n\n##-- FTOTAL\n");
+  $fh->print($obj->{ftotal}, "\n");
   return $obj;
 }
 
