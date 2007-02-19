@@ -652,7 +652,7 @@ our %FIELDS =
 			  ],
 		   },
    'dist'=>'dlabel',
-   'flabel'     => { path=>[qw(xvars dlabel)], title=>'feat',
+   'flabel'     => { path=>[qw(xvars flabel)], title=>'feat',
 		     alt=>[qw(lrwhich xvars->lrwhich),
 			   qw(lrlabel xvars->lrlabel), ##-- hack
 			  ],
