@@ -104,7 +104,19 @@ sub subcollection {
 sub DESTROY { $_[0]->clearConfigs(); }
 
 ##======================================================================
-## Manipulation: remove 
+## Manipulation: add
+
+## $mcol = $mcol->addCollection($mcol2)
+##  + $col2 keys clobber $mcol keys
+sub addCollection {
+  my ($mcol,$mcol2) = @_;
+  @{$mcol->{uconfigs}}{keys(%{$mcol2->{uconfigs}})} = values(%{$mcol2->{uconfigs}});
+  @{$mcol->{xconfigs}}{keys(%{$mcol2->{xconfigs}})} = values(%{$mcol2->{xconfigs}});
+  return $mcol;
+}
+
+##======================================================================
+## Manipulation: remove
 
 ## $mcol = $mcol->removeCollection($subCollection)
 sub removeCollection {

@@ -409,6 +409,24 @@ sub actExpandMissing {
 }
 
 ##---------------------------------------------------------------
+## Actions: union
+
+$ACTIONS{union} = $ACTIONS{add} = $ACTIONS{addCollection} =
+  {
+   syntax=>'union FILE',
+   help=>'add configurations from FILE (clobbering any that were already here)',
+   code=>\&actUnion,
+  };
+sub actUnion {
+  my ($mak,$colfile) = @_;
+  return 0 if (!$mak->ensureLoaded());
+  my $col2 = MUDL::Make::Collection->loadFile($colfile)
+    or die(ref($mak),"::actUnion(): load failed for '$colfile': $!");
+  return $mak->{col}->addCollection($col2);
+}
+
+
+##---------------------------------------------------------------
 ## Actions: remove
 
 $ACTIONS{rm} = $ACTIONS{rmSel} = $ACTIONS{rmSelected} =
