@@ -242,7 +242,7 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(stage emi ci corpus xvars->tcclass lrlab auto),
+		     qw(nT stage emi ci corpus xvars->tcclass lrlab auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
    'collectDefault' => [ qw(corpus stage), ],
@@ -253,7 +253,6 @@ our %FIELDS =
    'id'               => 'tabId',
    #'results'          => 'tabResults',
    'N'                => [ 'count(title=N,eval=($_||1))' ],
-   'rtabId'           => [ qw(cspliti stg emi lg xlabel auto N) ],
    'rtabDefault'      => [
 			  'rtabId',
 			  qw(values:meta values:pair values:wpair values:H HI:g HI:t values:ARand),
@@ -270,10 +269,12 @@ our %FIELDS =
 
    ##-- table: Ids
    'mpId'  => ['mpid'],
-   'mpid'  => [ qw(stg ci lg lrlabel auto) ],
+   'mpid'  => [ qw(stgf ci lg lrlabel auto) ],
 
    'emId'  => ['emid'],
-   'emid'  => [ qw(stg emi ci lg lrlabel auto) ],
+   'emid'  => [ qw(stgf emi ci lg lrlabel auto) ],
+
+   'rtabId' => [ qw(cspliti stg nstages emi lg xlabel dlabel auto N) ],
 
    ##-- Field-joining
    'join' => {
@@ -637,7 +638,26 @@ our %FIELDS =
    'xvars->tck' => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
 
    ##-- MetaProfile xvars aliases
-   'xlabel'     => { path=>[qw(xvars xlabel)], title=>'xlabel', },
+   'xlabel'     => { path=>[qw(xvars xlabel)], title=>'method',
+		     alt=>[qw(xvars->tcclass xvars->tcm xvars->tccm),
+			   qw(tcclass tcm tccm),
+			   qw(lrlabel xvars->lrlabel), ##-- hack
+			  ],
+		   },
+   'method'=>'xlabel',
+   'dlabel'     => { path=>[qw(xvars dlabel)], title=>'dist',
+		     alt=>[qw(xvars->tcd xvars->tccd),
+			   qw(tcd tccd),
+			   qw(lrlabel xvars->lrlabel), ##-- hack
+			  ],
+		   },
+   'dist'=>'dlabel',
+   'flabel'     => { path=>[qw(xvars dlabel)], title=>'feat',
+		     alt=>[qw(lrwhich xvars->lrwhich),
+			   qw(lrlabel xvars->lrlabel), ##-- hack
+			  ],
+		   },
+   'feat'=>'flabel',
 
    ##-- Corpus
    corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
@@ -669,11 +689,22 @@ our %FIELDS =
    ##-- MetaProfile: numeric indices
    'stg' => 'stage',
    'stage' => { path=>[qw(xvars stage)], n=>1, fmt=>'%3d', title=>'stg',
-		alt=>[qw(stage xvars->stage)],
+		alt=>[qw(stage xvars->stage stagef nstages)],
 		hr=>'major',
 		condense=>1,
 		part=>'stage',
 	      },
+
+   'stagef' => {
+		path=>[qw(xvars)], n=>1, fmt=>'%3d', title=>'stgf',
+		alt=>[qw(stage stg xvars->stage nstages xvars->nstages)],
+		hr=>'major',
+		condense=>1,
+		part=>'stage',
+		eval=>'sprintf("%2d/%d", $_->{stage}, $_->{nstages})'
+	       },
+   'stgf' => 'stagef',
+
    'emi'   => { path=>[qw(xvars emi)],   n=>1, fmt=>'%3d', title=>'emi',
 		alt=>[qw(emi xvars->emi)],
 		hr=>'minor',
@@ -714,7 +745,9 @@ our %FIELDS =
    'nT_k' => { path=>[qw(mpsummary nTargets_k)], n=>1,  title=>'nT_k', condense=>1, alt=>[qw(stage)],
 	       latexTitle=>'$\mathbf{|T_k|}$',
 	     },
-   'ntgsk' => 'nT_k',
+   'ntgsk'  => 'nT_k',
+   'ntgs_k' => 'nT_k',
+   'ntgsk'  => 'nT_k',
 
    'nB'   => { path=>[qw(mpsummary nBounds)],    n=>1,  title=>'nB',   condense=>1, alt=>[qw(stage)],
 	       latexTitle=>'$\mathbf{|B_k|}$',

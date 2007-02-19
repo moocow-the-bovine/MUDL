@@ -259,13 +259,16 @@ $ACTIONS{ensure} =
 
 $ACTIONS{save} =
   {
-   syntax=>'save FILE',
-   help  =>'save collection to a (new) file FILE',
+   syntax=>'save [FILE]',
+   help  =>'save collection to a (new) file FILE, defaults to current file',
    code  => \&actSave,
   };
 sub actSave {
   my ($mak,$file) = @_;
-  return $mak->ensureLoaded && $mak->{col}->saveFile($file);
+  $file = $mak->{colfile} if (!$file);
+  my $rc = $mak->ensureLoaded && $mak->{col}->saveFile($file);
+  $mak->{changed} = 0 if ($rc && $file eq $mak->{colfile});
+  return $mak;
 }
 
 ##---------------------------------------------------------------
