@@ -696,7 +696,7 @@ our %FIELDS =
 	      },
 
    'stagef' => {
-		path=>[qw(xvars)], n=>1, fmt=>'%3d', title=>'stgf',
+		path=>[qw(xvars)], fmt=>'%s', title=>'stgf',
 		alt=>[qw(stage stg xvars->stage nstages xvars->nstages)],
 		hr=>'major',
 		condense=>1,
