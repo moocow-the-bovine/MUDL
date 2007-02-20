@@ -394,10 +394,13 @@ sub populateProfiles {
   ##-- profiles: step 0: allocate unigram dist
   $mp->{ugs_k} = zeroes(double, $mp->{tenum_k}->size);
 
-  ##-- profiles: step 1: tweak profile distributions
+  ##-- profiles: step 1: tweak profile neighbor-distributions
   $mp->updateProfileDists($prof->{left},  $ctrprof->{left},  $curprof->{left});
   $mp->updateProfileDists($prof->{right}, $ctrprof->{right}, $curprof->{right});
   $mp->{ugs_k}  /= 2; ##-- factor out l,r doubling
+
+  ##-- profiles: step 1b: update unigram dists
+  $mp->updateProfileUnigramDists($prof, $ctrprof, $curprof);
 
   ##-- profiles: step 2a: replace enums: curprof
   foreach (@{$curprof->{enum}{enums}}) {
@@ -416,6 +419,83 @@ sub populateProfiles {
   $ctrprof->{targets} = $mp->{cenum};
 
   return ($ctrprof,$curprof);
+}
+
+
+##--------------------------------------------------------------
+## undef = $mp->updateUnigramDists($rawProfile, $ctrProfile, $curProfile)
+##  + updates 'tugs', 'bugs', and 'ftotal' for each of $ctrProfile, $curProfile
+##  + uses $mp->{tenum_k}, $mp->{cbenum}, $mp->{cenum}
+sub updateProfileUnigramDists {
+  my ($mp,$prf_wv_raw,$prf_cb_new,$prf_wb_new) = @_;
+
+  my $tenum_w_raw = $prf_wv_raw->{targets};
+  my $benum_v_raw = $prf_wv_raw->{bounds};
+  my ($tenum,$tenum_k,$cenum,$cbenum) = @$mp{qw(tenum tenum_k cenum cbenum)};
+  my $cids_ltk = $mp->{clusterids};
+
+  ##-- update: target unigrams
+  my ($id_w_raw,$f,$w,$id_w_k,$id_c);
+  if (defined($prf_wv_raw->{tugs})) {
+    while (($id_w_raw,$f)=each(%{$prf_wv_raw->{tugs}{nz}})) {
+      $w = $tenum_w_raw->symbol($id_w_raw);
+
+      if (defined($id_w_k = $tenum_k->{sym2id}{$w})) {
+	##-- target is new: add data to $prf_wv_raw->{tugs}
+	$prf_wb_new->{tugs}{nz}{$id_w_k} += $f;
+      }
+      else {
+	##-- target is old: add data to $prf_cb->{tugs} (no smearing)
+	$id_c = $cids_ltk->at($tenum->index($w));
+	$prf_cb_new->{tugs}{nz}{$id_c} += $f;
+      }
+    }
+#    ##-- totals
+#    if (defined($prf_wv_raw->{ftotal})) {
+#      $prf_wb_new->{ftotal} = $prf_wv_raw->{ftotal};
+#      $prf_cb_new->{ftotal} = $prf_wv_raw->{ftotal};
+#    }
+  }
+
+  ##-- update: bound unigrams
+  my ($id_v_raw,$v,$id_v_ltk);
+  my ($Ncb,$bugs_pdl,$phat);
+  if (defined($prf_wv_raw->{bugs})) {
+    $Ncb = $cbenum->size();
+    $bugs_pdl = zeroes(double, $Ncb);
+
+    $phat = $mp->{phat} * $mp->{phatm};
+    $phat /= $phat->sumover->slice("*1,");
+    $phat->inplace->setnantobad->inplace->setbadtoval(0); ##-- hack
+
+    while (($id_v_raw,$f)=each(%{$prf_wv_raw->{bugs}{nz}})) {
+
+      ##-- get bound-index ($id_v_ltk)
+      $v        = $benum_v_raw->symbol($id_v_raw);
+      $id_v_ltk = $tenum->index($v);
+
+      if (defined($id_v_ltk)) {
+	##-- bound-word is a previous target
+	$bugs_pdl += $phat->slice(",($id_v_ltk)") * $f;
+      }
+      else {
+	##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
+	$id_v_ltk = $cbenum->index($v);
+	$bugs_pdl->slice("$id_v_ltk") += $f;
+      }
+    }
+    ##-- PDL-to-EDist
+    $prf_cb_new->{bugs}->fromPDLnz($bugs_pdl);
+    %{$prf_wb_new->{bugs}{nz}} = %{$prf_cb_new->{bugs}{nz}};
+  }
+
+  ##-- totals
+  if (defined($prf_wv_raw->{ftotal})) {
+    $prf_wb_new->{ftotal} = $prf_wv_raw->{ftotal};
+    $prf_cb_new->{ftotal} = $prf_wv_raw->{ftotal};
+  }
+
+  return $mp;
 }
 
 ##--------------------------------------------------------------
