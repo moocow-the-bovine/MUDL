@@ -13,7 +13,7 @@ use PDL;
 use Carp;
 
 use strict;
-our @ISA = qw(MUDL::Corpus::Profile::LR);
+our @ISA = qw(MUDL::Corpus::Profile::LR); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -26,14 +26,14 @@ our @ISA = qw(MUDL::Corpus::Profile::LR);
 ##   + data acquired:
 ##       left =>$left_bigrams,       ## ($target_id,$lneighbor_id) => $count
 ##       right=>$right_bigrams,      ## ($target_id,$rneighbor_id) => $count
-##       tugs =>$target_unigrams,    ## unigram totals for targets (ids)
-##       bugs =>$target_unigrams,    ## unigram totals for bounds (ids)
+##       tugs =>$target_unigrams,    ## w1-unigram totals for targets (ids)
+##       bugs =>$target_unigrams,    ## w1-unigram totals for bounds (ids)
 ##       total=>$ftotal,             ## total number of tokens processed
 sub new {
   my ($that,%args) = @_; 
   my $self = $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
   $self->{tugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{tugs});
-  $self->{bugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{bugs});
+  $self->{bugs} = MUDL::EDist->new(enum=>$self->{bounds})  if (!$self->{bugs});
   $self->{ftotal} = 0 if (!defined($self->{ftotal}));
   return $self;
 }
@@ -181,6 +181,21 @@ sub addBigrams {
   }
 
   return $lr;
+}
+
+##======================================================================
+## Conversion: Unigrams: PDL
+
+## $target_unigram_pdl = $lr->targetUgPdl();
+sub targetUgPdl {
+  $_[0]{tugs}{enum} = $_[0]{targets}; ##-- sanity check
+  return $_[0]{tugs}->toPDL();
+}
+
+## $bound_unigram_pdl = $lr->boundUgPdl();
+sub boundUgPdl {
+  $_[0]{bugs}{enum} = $_[0]{bounds}; ##-- sanity check
+  return $_[0]{bugs}->toPDL();
 }
 
 

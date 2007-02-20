@@ -106,6 +106,9 @@ our %aggregateFuncs =
    mvar=>{ aggregateName=>'mVar', aggregate=>'mvar', },
    mdev=>{ aggregateName=>'mdev', aggregate=>'mdev', },
    amdev=>{ aggregateName=>'amdev', aggregate=>'amdev', },
+
+   nnz =>{aggregateName=>'nnz',  aggregate=>'nnz', options=>{eval=>'($_||0)', n=>1, fmt=>'%d'}, },
+   ndef=>{aggregateName=>'ndef', aggregate=>'nnz', options=>{eval=>'($_||0)', n=>1, fmt=>'%d'}, },
   );
 ##-- aggregate functions: aliases
 our %_aggregateAliases =
@@ -116,7 +119,7 @@ our %_aggregateAliases =
    'median'=>'med',
   );
 ##-- @aggregateAvgs : average-like aggregates (keys of %aggregateFuncs)
-our @aggregateAvgs = qw(avg med min max);
+our @aggregateAvgs = qw(avg med min max); ##--ndef nnz
 ##-- @aggregateDevs : deviation-like aggregates (keys of %aggregateFuncs)
 our @aggregateDevs = qw(dev adev mdev amdev);
 
@@ -1568,8 +1571,10 @@ sub _expand_aggregate {
 
     $dst = {
 	    %$src,
+	    #%$afield, ##-- NO!
 	    aggregate=>$afunc,
 	    aggregateName=>$aname,
+	    (defined($afield->{options}) ? %{$afield->{options}} : qw()),
 	   };
 
     ##-- path

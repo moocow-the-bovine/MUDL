@@ -464,6 +464,46 @@ sub pathValue {
 }
 
 ##======================================================================
+## Aggregate functions: count (defined)
+package MUDL::Make::Config::GroupFunction::ndefined;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  my $n   = 0;
+  my ($cfg,$val);
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    if (defined($val=$cfg->pathValue($path))) {
+      ++$n;
+    }
+  }
+  return $n;
+}
+
+##======================================================================
+## Aggregate functions: count (non-zero)
+package MUDL::Make::Config::GroupFunction::nnz;
+use Carp;
+use strict;
+our @ISA = qw(MUDL::Make::Config::GroupFunction);
+##
+## $val = $afunc->pathValue($grpConfig, \@path)
+sub pathValue {
+  my ($af,$grp,$path) = @_;
+  my $n   = 0;
+  my ($cfg,$val);
+  foreach $cfg (@{$grp->{gconfigs}}) {
+    if (defined($val=$cfg->pathValue($path)) && $val != 0) {
+      ++$n;
+    }
+  }
+  return $n;
+}
+
+##======================================================================
 ## Aggregate functions: avg
 package MUDL::Make::Config::GroupFunction::avg;
 use Carp;
