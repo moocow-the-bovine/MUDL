@@ -12,7 +12,7 @@ use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
+our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -26,7 +26,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 sub new {
   my ($that,%args) = @_; 
   return $that->SUPER::new(nfields=>1,
-			   donorm=>1,
+			   donorm=>0,
 			   norm_min=>0,
 			   %args);
 }
