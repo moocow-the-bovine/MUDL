@@ -369,83 +369,89 @@ our %FIELDS =
 	 "results:${aggr}:${family}" => [ "results:${aggr}:${family}:g", '|', "results:${aggr}:${family}:tk" ],
 	 ##
 	 ##
-	 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	 ## Results: aggregates: by family: vs. max(emi): global, targets
-	 ## + 'results:avg:meta:max:g' => [ 'results:avg:meta:max:pr:g ]
-	 _expand_gt("results:${aggr}:${family}:max:__GT__", ["results:${aggr}:${family}:max:${family_default}:__GT__"]),
-	 ##
-	 ## Results: aggregates: by family: vs. max(aggr|emi): global, targets: by evaluator field
-	 ## + 'results:avg:meta:max:pr:g' => [ qw(*:avg_pr:g avg:pr:g e-max:avg:pr:g:emi(title=e-max)) ]
-	 (map {
-	   my $field = $_;
-	   _expand_gt("results:${aggr}:${family}:max:${field}:__GT__",
-		      [ @{_expand_prF([ "${aggr}:${field}:__GT__" ])}, "e-max:${aggr}:${field}:__GT__:emi(title=e-max)" ])
-	 } @{$_eval_base_families{$family}}),
-	 ##
-	 ##
-	 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	 ## Results: by family: vs. max(stage)
-	 ## + 'results:avg:meta:Max' => [ qw(results:avg:meta:Max:g | results:avg:meta:Max:t) ]
-	 "results:${aggr}:${family}:Max" => [ "results:${aggr}:${family}:Max:g", '|', "results:${aggr}:${family}:Max:t" ],
-	 ##
-	 ## Results: by family: vs. max(stage): global, targets
-	 ## + 'results:avg:meta:Max:g' => [ 'results:avg:meta:Max:pr:g ]
-	 _expand_gt("results:${family}:Max:__GT__", ["results:${family}:Max:${family_default}:__GT__"]),
-	 ##
-	 ## Results: by family: vs. max(stage): global, targets: by evaluator field
-	 ## + 'results:avg:meta:Max:pr:g' => [ qw(*:avg:pr:g avg:pr:g e-max:avg:pr:g:stage(title=e-Max)) ]
-	 (map {
-	   my $field = $_;
-	   _expand_gt("results:${aggr}:${family}:Max:${field}:__GT__",
-		      [ @{_expand_prF([ "${aggr}:${field}:__GT__" ])}, "e-max:${aggr}:${field}:__GT__:stage(title=e-Max)" ])
-	 } @{$_eval_base_families{$family}}),
-	 ##
-	 ##
-	 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	 ## Results: by family: vs. max(corpus)
-	 ## + 'results:avg:meta:MAX' => [ qw(results:avg:meta:MAX:g | results:avg:meta:MAX:t) ]
-	 "results:${aggr}:${family}:MAX" => [ "results:${aggr}:${family}:MAX:g", '|', "results:${aggr}:${family}:MAX:t" ],
-	 ##
-	 ## Results: by family: vs. max(corpus): global, targets
-	 ## + 'results:avg:meta:MAX:g' => [ 'results:avg:meta:MAX:pr:g ]
-	 _expand_gt("results:${aggr}:${family}:MAX:__GT__", ["results:${aggr}:${family}:MAX:${family_default}:__GT__"]),
-	 ##
-	 ## Results: by family: vs. max(corpus): global, targets: by evaluator field
-	 ## + 'results:avg:meta:MAX:pr:g' => [ qw(*:avg:pr:g avg:pr:g e-max:avg:pr:g:corpus(title=e-MAX)) ]
-	 (map {
-	   my $field = $_;
-	   _expand_gt("results:${aggr}:${family}:MAX:${field}:__GT__",
-		      [ @{_expand_prF([ "${aggr}:${field}:__GT__" ])}, "e-max:${aggr}:${field}:__GT__:corpus(title=e-MAX)" ])
-	 } @{$_eval_base_families{$family}}),
-	 ##
-	 ##
-	 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	 ## Results: by family: vs. max(*)
-	 ## + 'results:avg:meta:e-' => [ qw(results:avg:meta:e-:g | results:avg:meta:e-:t) ]
-	 "results:${aggr}:${family}:e-" => [ "results:${aggr}:${family}:e-:g", '|', "results:${aggr}:${family}:e-:t" ],
-	 ##
-	 ## Results: by family: vs. max(*): global, targets
-	 ## + 'results:avg:meta:e-:g' => [ 'results:avg:meta:e-:pr:g ]
-	 _expand_gt("results:${aggr}:${family}:e-:__GT__", ["results:${aggr}:${family}:e-:${family_default}:__GT__"]),
-	 ##
-	 ## Results: by family: vs. max(*): global, targets: by evaluator field
-	 ## + 'results:avg:meta:e-:pr:g' => [ qw(*:pr:g pr:g),
-	 ##                               qw(e-max:pr:g:emi(title=e-max)),
-	 ##                               qw(e-Max:pr:g:stage(title=e-Max)),
-	 ##                               qw(e-MAX:pr:g:corpus(title=e-MAX)),
-	 ##                             ]
-	 (map {
-	   my $field = $_;
-	   _expand_gt("results:${aggr}:${family}:e-:${field}:__GT__",
-		      [
-		       @{_expand_prF([ "${aggr}:${field}:__GT__" ])},
-		       "e-max:${aggr}:${field}:__GT__:emi(title=e-max)",
-		       "e-max:${aggr}:${field}:__GT__:stage(title=e-Max)",
-		       "e-max:${aggr}:${field}:__GT__:corpus(title=e-MAX)"
-		      ])
-	 } @{$_eval_base_families{$family}}),
-
-	)
+	 (##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	  ## TOO LONG LOADING: NEEDS A RETHINK!
+	  ##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	  0 ? (## rethink:
+	       ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	       ## Results: aggregates: by family: vs. max(emi): global, targets
+	       ## + 'results:avg:meta:max:g' => [ 'results:avg:meta:max:pr:g ]
+	       _expand_gt("results:${aggr}:${family}:max:__GT__", ["results:${aggr}:${family}:max:${family_default}:__GT__"]),
+	       ##
+	       ## Results: aggregates: by family: vs. max(aggr|emi): global, targets: by evaluator field
+	       ## + 'results:avg:meta:max:pr:g' => [ qw(*:avg_pr:g avg:pr:g e-max:avg:pr:g:emi(title=e-max)) ]
+	       (map {
+		 my $field = $_;
+		 _expand_gt("results:${aggr}:${family}:max:${field}:__GT__",
+			    [ @{_expand_prF([ "${aggr}:${field}:__GT__" ])}, "e-max:${aggr}:${field}:__GT__:emi(title=e-max)" ])
+	       } @{$_eval_base_families{$family}}),
+	       ##
+	       ##
+	       ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	       ## Results: by family: vs. max(stage)
+	       ## + 'results:avg:meta:Max' => [ qw(results:avg:meta:Max:g | results:avg:meta:Max:t) ]
+	       "results:${aggr}:${family}:Max" => [ "results:${aggr}:${family}:Max:g", '|', "results:${aggr}:${family}:Max:t" ],
+	       ##
+	       ## Results: by family: vs. max(stage): global, targets
+	       ## + 'results:avg:meta:Max:g' => [ 'results:avg:meta:Max:pr:g ]
+	       _expand_gt("results:${family}:Max:__GT__", ["results:${family}:Max:${family_default}:__GT__"]),
+	       ##
+	       ## Results: by family: vs. max(stage): global, targets: by evaluator field
+	       ## + 'results:avg:meta:Max:pr:g' => [ qw(*:avg:pr:g avg:pr:g e-max:avg:pr:g:stage(title=e-Max)) ]
+	       (map {
+		 my $field = $_;
+		 _expand_gt("results:${aggr}:${family}:Max:${field}:__GT__",
+			    [ @{_expand_prF([ "${aggr}:${field}:__GT__" ])}, "e-max:${aggr}:${field}:__GT__:stage(title=e-Max)" ])
+	       } @{$_eval_base_families{$family}}),
+	       ##
+	       ##
+	       ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	       ## Results: by family: vs. max(corpus)
+	       ## + 'results:avg:meta:MAX' => [ qw(results:avg:meta:MAX:g | results:avg:meta:MAX:t) ]
+	       "results:${aggr}:${family}:MAX" => [ "results:${aggr}:${family}:MAX:g", '|', "results:${aggr}:${family}:MAX:t" ],
+	       ##
+	       ## Results: by family: vs. max(corpus): global, targets
+	       ## + 'results:avg:meta:MAX:g' => [ 'results:avg:meta:MAX:pr:g ]
+	       _expand_gt("results:${aggr}:${family}:MAX:__GT__", ["results:${aggr}:${family}:MAX:${family_default}:__GT__"]),
+	       ##
+	       ## Results: by family: vs. max(corpus): global, targets: by evaluator field
+	       ## + 'results:avg:meta:MAX:pr:g' => [ qw(*:avg:pr:g avg:pr:g e-max:avg:pr:g:corpus(title=e-MAX)) ]
+	       (map {
+		 my $field = $_;
+		 _expand_gt("results:${aggr}:${family}:MAX:${field}:__GT__",
+			    [ @{_expand_prF([ "${aggr}:${field}:__GT__" ])}, "e-max:${aggr}:${field}:__GT__:corpus(title=e-MAX)" ])
+	       } @{$_eval_base_families{$family}}),
+	       ##
+	       ##
+	       ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	       ## Results: by family: vs. max(*)
+	       ## + 'results:avg:meta:e-' => [ qw(results:avg:meta:e-:g | results:avg:meta:e-:t) ]
+	       "results:${aggr}:${family}:e-" => [ "results:${aggr}:${family}:e-:g", '|', "results:${aggr}:${family}:e-:t" ],
+	       ##
+	       ## Results: by family: vs. max(*): global, targets
+	       ## + 'results:avg:meta:e-:g' => [ 'results:avg:meta:e-:pr:g ]
+	       _expand_gt("results:${aggr}:${family}:e-:__GT__", ["results:${aggr}:${family}:e-:${family_default}:__GT__"]),
+	       ##
+	       ## Results: by family: vs. max(*): global, targets: by evaluator field
+	       ## + 'results:avg:meta:e-:pr:g' => [ qw(*:pr:g pr:g),
+	       ##                               qw(e-max:pr:g:emi(title=e-max)),
+	       ##                               qw(e-Max:pr:g:stage(title=e-Max)),
+	       ##                               qw(e-MAX:pr:g:corpus(title=e-MAX)),
+	       ##                             ]
+	       (map {
+		 my $field = $_;
+		 _expand_gt("results:${aggr}:${family}:e-:${field}:__GT__",
+			    [
+			     @{_expand_prF([ "${aggr}:${field}:__GT__" ])},
+			     "e-max:${aggr}:${field}:__GT__:emi(title=e-max)",
+			     "e-max:${aggr}:${field}:__GT__:stage(title=e-Max)",
+			     "e-max:${aggr}:${field}:__GT__:corpus(title=e-MAX)"
+			    ])
+	       } @{$_eval_base_families{$family}}),
+	      )  ##--/rethink: aggregates
+	  : qw() ##--/retthink: else
+	 )##-- /rethink: ?:
+	)##-- map return list
       } keys(%aggregateFuncs),
 
 
@@ -1031,6 +1037,7 @@ our %FIELDS =
    (map { _max_fields($_) } @_eval_base_fields),
    ##
    ## max-value: aggregates
+   ##  + max:${avg}:${of_field}:${innermost_for_field}
    (map {
      my $ebase = $_;
      (map { _max_fields("${_}:$ebase") } @aggregateAvgs)
@@ -1088,14 +1095,14 @@ our %FIELDS =
    (map {
      my $aggr=$_;
      map { _markmax_fields("${aggr}:$_") } @_eval_base_fields
-   } keys(%aggregateFuncs)),
+   } @aggregateAvgs), ##-- keys(%aggregateFuncs)
 
    ##-- mark max: latex
    (map { _markmax_fields_latex($_) } @_eval_base_fields),
    (map {
      my $aggr=$_;
      map { _markmax_fields("${aggr}:$_") } @_eval_base_fields
-   } keys(%aggregateFuncs)),
+   } @aggregateAvgs), ##--keys(%aggregateFuncs)
 
    ##-------------------------------------
    ## Error difference (vs. best): errdiff
