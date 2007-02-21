@@ -331,7 +331,7 @@ our %FIELDS =
       ##--------------------------------------------------------
       ## Results: by family: values only
       ## + values:meta => [ qw(values:meta:g | values:meta:t) ]
-      "values:${family}" => [ "values:${family}:g", "values:${family}:t" ],
+      "values:${family}" => [ "values:${family}:g", "values:${family}:t", "values:${family}:tk" ],
       ##
       ## Results: by family: global, targets
       ## + values:meta:g => [ qw(*:pr:g pr:g +:rc:g rc:g ~:F:g F:g) ]
