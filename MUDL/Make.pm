@@ -7,6 +7,7 @@
 ##======================================================================
 
 package MUDL::Make;
+BEGIN { print STDERR __PACKAGE__  , " loading...\n"; }
 use Cwd qw(abs_path);
 use Digest::MD5 qw(md5);
 use MUDL::Object;
@@ -1129,7 +1130,10 @@ sub syncCollection {
   return 1;
 }
 
+END { print STDERR __PACKAGE__  , " loaded.\n"; }
 1;
+
+__END__
 
 ##---------------------------------------------------------------
 ## Docs

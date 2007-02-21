@@ -7,6 +7,7 @@
 ##======================================================================
 
 package MUDL::Make::Fields;
+BEGIN { print STDERR __PACKAGE__  , " loading...\n"; }
 use MUDL::Make::FieldData;
 use Text::Balanced qw(extract_bracketed);
 use strict;
@@ -2525,6 +2526,7 @@ sub userVariables {
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK    = @{$EXPORT_TAGS{all}};
 
+END { print STDERR __PACKAGE__  , " loaded.\n"; }
 1;
 
 __END__
