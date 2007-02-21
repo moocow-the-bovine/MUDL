@@ -278,7 +278,7 @@ our %FIELDS =
    'emId'  => ['emid'],
    'emid'  => [ qw(stgf emi ci lg lrlabel auto) ],
 
-   'rtabId' => [ qw(cspliti stg nstages emi lg xlabel dlabel auto N) ],
+   'rtabId' => [ qw(cspliti stg nstages emi lg flabel dlabel xlabel auto N) ],
 
    ##-- Field-joining
    'join' => {

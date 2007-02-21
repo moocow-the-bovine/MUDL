@@ -501,14 +501,24 @@ $ACTIONS{do} = $ACTIONS{require} = $ACTIONS{read} =
 
 sub actDoFile {
   my ($domak,$file) = @_;
-  return 0 if (!$domak->ensureLoaded);
 
   my ($rc);
-  {
-    no strict;
-    local $col = $mak->{col};
-    local $mak = $domak;
-    $rc = do "$file";
+  if (! -e "$file") {
+    $@ = "'$file' does not exist";
+    $rc=0;
+  }
+  elsif (! -r "$file") {
+    $@ = "no read permission for '$file'";
+    $rc=0;
+  }
+  else {
+    return 0 if (!$domak->ensureLoaded);
+    {
+      no strict;
+      local $col = $mak->{col};
+      local $mak = $domak;
+      $rc = do "$file";
+    }
   }
   if ($@) {
     carp(ref($domak)."::do($file): error: $@");
