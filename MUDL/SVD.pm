@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::SVD.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
