@@ -79,6 +79,16 @@ sub toPDL {
   return $pdl;
 }
 
+## $pdlDist = $de->toPdlDist()
+sub toPdlDist {
+  require MUDL::PdlDist;
+  my $de = shift;
+  return MUDL::PdlDist->new(
+			    pdl=>$de->toPDL,
+			    enum=>$de->{enum},
+			   );
+}
+
 ########################################################################
 # MUDL::EDist::Partial
 ########################################################################
@@ -142,6 +152,16 @@ sub toPDL {
   my $pdl = zeroes(double, $de->enum->size);
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
+}
+
+## $pdlDist = $de->toPdlDist()
+sub toPdlDist {
+  require MUDL::PdlDist;
+  my $de = shift;
+  return MUDL::PdlDist->new(
+			    pdl=>$de->toPDL,
+			    enum=>$de->{enum},
+			   );
 }
 
 

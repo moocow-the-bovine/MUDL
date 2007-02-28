@@ -310,8 +310,8 @@ sub toEnum {
 ##   + returns a MUDL::EDist using enumerated events
 sub toEDist {
   my ($d,$enum) = @_;
-  $enum  = MUDL::Enum::Nary->new(sep=>$d->{sep}) if (!$enum);
-  my $ed = MUDL::EDist::Nary->new(sep=>$d->{sep}, enum=>$enum) if (!$edist);
+  $enum  = MUDL::Enum::Nary->new(sep=>$d->{sep}, nfields=>$d->{nfields}) if (!$enum);
+  my $ed = MUDL::EDist::Nary->new(sep=>$d->{sep}, enum=>$enum, nfields=>$d->{nfields}) if (!$edist);
 
   @{$ed->{nz}}{map { $enum->addSymbol($_) } keys(%{$d->{nz}})} = values(%{$d->{nz}});
 

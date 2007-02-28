@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Bigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -247,7 +247,6 @@ sub readerProbability_old {
 
   return {logsum=>$logsum,logprod=>$logprod,nsents=>$nsents,ntoks=>$ntoks,entropy=>$entropy};
 }
-
 
 ##======================================================================
 ## Profile: Help
