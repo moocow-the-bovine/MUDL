@@ -24,12 +24,13 @@ our @ISA = qw(MUDL::Object);
 ##    kappa    => $kappa,     ##-- tolerance (default=1e-6)
 ##    endl     => $end_l,     ##-- left interval endpoint for unwanted eigenvalues (-1e-30)
 ##    endr     => $end_r,     ##-- left interval endpoint for unwanted eigenvalues ( 1e-30)
+##
 ##    ##-- input matrix
 ##    #$pdl = $matrix3d       ##-- pdl: $d-by-$n
 ##
 ##    ##-- output values
 ##    u        => $u,         ##-- pdl: $r-by-$n  ##-- $r==$ndims==$lr->{r}
-##    sigma    => $sigma,     ##-- pdl: $r (diagonal of an $r-by-$r matrix, created with stretcher($s))
+##    sigma    => $sigma,     ##-- pdl: $r (diagonal of an $r-by-$r matrix, created with stretcher($sigma))
 ##    v        => $v,         ##-- pdl: $r-by-$d
 sub new {
   my $that = shift;
@@ -86,7 +87,7 @@ sub computeccs {
 
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
-  my $vt = zeroes(double, $d, $d);
+  my $vt = zeroes(double, $d, $r);
 
   svdlas2($ptr,$rowids,$nzvals,$n,
 	  $svd->{maxiters}, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
@@ -94,7 +95,7 @@ sub computeccs {
 
   $svd->{u} = $ut->xchg(0,1);
   $svd->{sigma} = $s;
-  $svd->{v} = $vt->xchg(0,1)->slice("0:".($r-1).",:");
+  $svd->{v} = $vt->xchg(0,1);
 
   return $svd;
 }
@@ -115,7 +116,7 @@ sub compute {
   my ($d,$n) = $a->dims;
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
-  my $vt = zeroes(double, $d, $d);
+  my $vt = zeroes(double, $d, $r);
 
   svdlas2d($a,
 	   $svd->{maxiters}, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
@@ -123,7 +124,7 @@ sub compute {
 
   $svd->{u} = $ut->xchg(0,1);
   $svd->{sigma} = $s;
-  $svd->{v} = $vt->xchg(0,1)->slice("0:".($r-1).",:");
+  $svd->{v} = $vt->xchg(0,1);
 
   return $svd;
 }
