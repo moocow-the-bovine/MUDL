@@ -58,8 +58,25 @@ sub new {
 ##   + also copies pdl
 sub copy {
   my $d = shift;
+  my @pdl_keys = qw(pdl);
+  my @saved    = @$d{@pdl_keys};
+  delete(@$d{@pdl_keys});
   my $d2 = $d->SUPER::copy(@_);
-  $d2->{pdl} = $d->{pdl}->copy;
+  @$d2{@pdl_keys} = map { pdl($_) } @saved;
+  @$d{@pdl_keys} = @saved;
+  return $d2;
+}
+
+## $cpy = $pd->clone()
+##   + also copies pdl
+sub clone {
+  my $d = shift;
+  my @pdl_keys = qw(pdl);
+  my @saved    = @$d{@pdl_keys};
+  delete(@$d{@pdl_keys});
+  my $d2 = $d->SUPER::clone(@_);
+  @$d2{@pdl_keys} = map { pdl($_) } @saved;
+  @$d{@pdl_keys} = @saved;
   return $d2;
 }
 
@@ -79,7 +96,7 @@ sub clear {
 
 ## $nzero = $d->nZero()
 *nzero = \&nZero;
-sub nZero { return where($_[0]{pdl}==0)->nelem; }
+sub nZero { return which($_[0]{pdl}==0)->nelem; }
 
 ## $nzero = $d->nzero()
 *nnonzero = \&nNonZero;

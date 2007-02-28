@@ -238,6 +238,42 @@ sub toPdlDist {
 			   );
 }
 
+## $sparsePdlDist = $de->toSparsePdlDist()
+*toPdlDistSparse = \&toSparsePdlDist;
+sub toSparsePdlDist {
+  require MUDL::PdlDist::Sparse2d;
+  require PDL::CCS;
+  my $de = shift;
+
+  ##-- sanity check
+  die(ref($de), "::toSparsePdlDist(): can't handle nfields=$nfields") if ($de->{nfields} != 2);
+
+  my $enum = $de->{enum};
+  my $pd = MUDL::PdlDist::Sparse2d->new(
+					enum=>$de->{enum},
+					dims=>[map { $_->size } @{$enum->{enums}}],
+				       );
+  ##-- setup colids,rowids
+  my $nnz    = scalar(keys(%{$de->{nz}}));
+  my $xids = zeroes(long,$nnz);
+  my $yids = zeroes(long,$nnz);
+  my $vals = zeroes(double,$nnz);
+
+  my ($xy,$x,$y,$val);
+  my $i=0;
+  while (($xy,$val)=each(%{$de->{nz}})) {
+    ($x,$y) = $de->split($xy);
+    $xids->set($i,$x);
+    $yids->set($i,$y);
+    $vals->set($i,$val);
+    ++$i;
+  }
+
+  ##-- encode
+  @$pd{qw(ptr rowids nzvals)} = PDL::CCS::ccsencode_i2d($xids,$yids,$vals, $pd->{dims}[0]);
+
+  return $pd;
+}
 
 1;
 
