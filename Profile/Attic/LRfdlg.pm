@@ -4,7 +4,7 @@
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profile
-##    : LR_frequency * global_description_length
+##    : LR_frequency * global_description_length(B|T)
 ##======================================================================
 
 package MUDL::Corpus::Profile::LRfdlg;

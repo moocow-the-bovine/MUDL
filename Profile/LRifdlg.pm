@@ -1,19 +1,19 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRfdl.pm
+## File: MUDL::Corpus::Profile::LRifdlg.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile:
-##    : LR_frequency * local_description_length(B|T)
+##  + MUDL unsupervised dependency learner: corpus profile
+##    : LR_frequency * global_description_length(T|B)
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRfdl;
+package MUDL::Corpus::Profile::LRifdlg;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
+our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -53,13 +53,17 @@ sub finishPdl {
   my ($lr,$pdl) = @_;
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
-  my ($fH_bg, $P_bg);
+  my ($fH_bg, $P_tgb);
+  #my $f_tug = $lr->targetUgPdl();
+  my $f_bug = $lr->boundUgPdl();
+
   foreach my $z (0,1) {
     $fH_bg = $pdl->slice("($z),,");
-    $P_bg  = $fH_bg / $fH_bg->sumover->slice("*1,");
 
-    ## $fH_bg = -$fH_bg * log($P_bg)
-    $fH_bg *= log($P_bg);
+    #$P_bg  = $fH_bg / $f_tug->slice("*1,");                         ##-- p(b|t): global
+    $P_tgb = ($fH_bg->xchg(0,1) / $f_bug->slice("*1,"))->xchg(0,1);  ##-- p(t|b): global
+
+    $fH_bg *= log($P_tgb);
     $fH_bg /= pdl(double,2)->log;
     $fH_bg *= -1;
   }
@@ -79,7 +83,7 @@ sub finishPdl {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract (local) left- and right- description-length profile wrt. fixed boundary set.\n)
+    (qq(Extract global left- and right- description-length profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
