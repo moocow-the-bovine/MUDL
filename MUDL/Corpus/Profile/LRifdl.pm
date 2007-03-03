@@ -1,13 +1,13 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRfdl.pm
+## File: MUDL::Corpus::Profile::LRifdl.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profile:
-##    : LR_frequency * local_description_length(B|T)
+##    : LR_frequency * local_description_length(T|B)
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRfdl;
+package MUDL::Corpus::Profile::LRifdl;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
 use MUDL::EDist;
@@ -53,13 +53,13 @@ sub finishPdl {
   my ($lr,$pdl) = @_;
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
-  my ($fH_bg, $P_bg);
+  my ($fH_bg, $P_tgb);
   foreach my $z (0,1) {
     $fH_bg = $pdl->slice("($z),,");
-    $P_bg  = $fH_bg / $fH_bg->sumover->slice("*1,");
+    #$P_bgt = $fH_bg / $fH_bg->sumover->slice("*1,"); ##-- normalized by TARGET: p(b|t)
+    $P_tgb = ($fH_bg->xchg(0,1) / $fH_bg->xchg(0,1)->sumover->slice("*1,"))->xchg(0,1); ##-- p(t|b)
 
-    ## $fH_bg = -$fH_bg * log($P_bg)
-    $fH_bg *= log($P_bg);
+    $fH_bg *= log($P_tgb);
     $fH_bg /= pdl(double,2)->log;
     $fH_bg *= -1;
   }
