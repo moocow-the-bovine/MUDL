@@ -1,12 +1,13 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRFH.pm
+## File: MUDL::Corpus::Profile::LRfdl.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R frequency * entropy
+##  + MUDL unsupervised dependency learner: corpus profile:
+##    : LR_frequency * local_description_length
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRFH;
+package MUDL::Corpus::Profile::LRfdl;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
 use MUDL::EDist;
@@ -78,7 +79,7 @@ sub finishPdl {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract left- and right- description-length profile wrt. fixed boundary set.\n)
+    (qq(Extract (local) left- and right- description-length profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
