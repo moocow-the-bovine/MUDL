@@ -284,7 +284,7 @@ sub toHMM {
   my $bf = zeroes($hmm->{type}, $N, $M);
 
   if ($bmode =~ /^sim/) {
-    ## p(w|c)  = sim(c,w) / \sum_c' sim(c',w)
+    ## p(w|c)  = sim(c,w) / \sum_c' sim(c',w)  ##--> REALLY? ought to be: sim(c,w)/sum_w' sim(c,w') !
     my $bf_o  = $bf->dice_axis(1,$o2o);
     $bf_o    .= $phat->dice($q2c,$o2t);
 

@@ -130,7 +130,7 @@ sub dtranspose {
 ## Accessors
 
 ## $size = $pd->size
-sub size { return pdl(double,$_[0]->{dims})->prodover; }
+sub size { return pdl(double,$_[0]->{dims})->prodover->at(0); }
 
 ## $d = $d->clear()
 sub clear {
@@ -182,13 +182,22 @@ sub conditionalize {
 sub conditionalize_bycol {
   my $d = shift;
   my ($ptr,$rowids,$nzvals) = @$d{qw(ptr rowids nzvals)};
-  ccsdiv_rv($ptr,$rowids, $nzvals->inplace, ccssumover($ptr,$rowids,$nzvals));
+  ccsdiv_rv($ptr,$rowids, $nzvals->inplace, ccssumovert($ptr,$rowids,$nzvals));
   return $d;
 }
 
 ## $d = $d->conditionalize_byrow()
 ##  + each row is a given: hack: just transpose
 sub conditionalize_byrow {
+  my $d = shift;
+  my ($ptr,$rowids,$nzvals) = @$d{qw(ptr rowids nzvals)};
+  ccsdiv_cv($ptr,$rowids, $nzvals->inplace, ccssumover($ptr,$rowids,$nzvals));
+  return $d;
+}
+
+## $d = $d->conditionalize_byrow()
+##  + each row is a given: hack: just transpose
+sub conditionalize_byrow_old {
   my $d = shift;
   my $dt = $d->dtranspose->conditionalize_bycol();
   ccstranspose(@$dt{qw(ptr rowids nzvals)}, @$d{qw(ptr rowids nzvals)});

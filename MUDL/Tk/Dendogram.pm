@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Tk::Dendogram.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -182,7 +182,7 @@ sub view {
 
   #--------------------------------------
   # Info Panel / info frame
-  my $iw = $dg->{info}{top} = $w->Frame(Name=>'infobox',relief=>'groove',-bd=>2);
+  my $iw = $dg->{info}{top} = $w->Frame(Name=>'infobox',-relief=>'groove',-bd=>2);
 
   ##-- infopair($label,\$variable)
   my $iwrow = 0;
@@ -308,8 +308,8 @@ sub view {
 				      );
   $c->Subwidget('xscrollbar')->configure(-takefocus=>0);
   $c->Subwidget('yscrollbar')->configure(-takefocus=>0);
-  $iw->pack(-side=>'left',-fill=>'y',-expand=>0,ipadx=>5,ipady=>5);
-  $c->pack(-side=>'left',-fill=>'both',expand=>1,ipadx=>5,ipady=>5);
+  $iw->pack(-side=>'left',-fill=>'y',-expand=>0,-ipadx=>5,-ipady=>5);
+  $c->pack(-side=>'left',-fill=>'both',-expand=>1,-ipadx=>5,-ipady=>5);
   $c->bindtags(['quickexit', $c->bindtags]);
 
   #--------------------------------------
