@@ -55,10 +55,11 @@ our %subclasses = (
 ##  phat => $pdlDist,     ## dims: ($NBoundClusters, $NPrevTargets) : $phat->at($cid,$tid) = ^p_{<=$i}($cid|$tid)
 ##  #phatd => $lexDist,     ## $phatd->{$tid}{$cid} = ^p_{<=$i}($cid|$tid)
 ##
-##  tenum => $enum,        ## previous+current targets (token) enum (T_{<=$i})
-##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + bos,eos)
+##  tenum => $enum,        ## previous+current targets (type) enum (T_{<=$i})
+##  benum => $enum,        ## previous+current bounds (type) enum (B_{<=$i}) (targets + literals)
+##  lbenum => $enum,       ## literal current bounds (type) enum (LB_{<=$i}) (e.g. bos,eos)
 ##  #ctenum => $enum,       ## (target-)class enum
-##  cbenum => $enum,       ## (bound-)class enum: includes bos,eos
+##  cbenum => $enum,       ## (bound-)class enum: includes literals
 ##  #cttenum => $enum_nary, ## ($target_class,$target_word) enum
 ##  #cbtenum => $enum_nary, ## ($bound_class,$target_word) enum
 ##  #--
@@ -168,6 +169,21 @@ sub squish {
 *update = MUDL::Object::dummy('update');
 
 
+##======================================================================
+## API: literal bounds enum
+##======================================================================
+
+## $lbenum = $mp->lbenum()
+##  + for compatibility; if no {lbenum} is defined, instantiates one with {bos,eos}
+sub lbenum {
+  return $_[0]{lbenum} if (defined($_[0]{lbenum}));
+  my $mp = shift;
+  my $lbenum = $mp->{lbenum} = MUDL::Enum->new();
+  $lbenum->addSymbol($mp->{bos}) if (defined($mp->{bos}));
+  $lbenum->addSymbol($mp->{eos}) if (defined($mp->{eos}));
+  return $lbenum;
+}
+
 ########################################################################
 ## Export & Conversion
 ########################################################################
@@ -247,15 +263,23 @@ sub toHMM {
   my $tenum = $mp->{tenum};
 
   #my $cenum = $mp->{cm}->clusterEnum;
-  my $cenum = $mp->{cbenum};
+  my $cbenum = $mp->{cbenum};
+  my $lbenum = $mp->lbenum(); ##-- use method here for backwards-compatibility
   my $qenum = $hmm->{qenum};
   my $oenum = $hmm->{oenum};
 
   $qenum->addSymbol($_)
-    foreach (grep { $_ ne $mp->{bos} && $_ ne $mp->{eos} } @{$cenum->{id2sym}});
+    foreach (grep
+	     #{ $_ ne $mp->{bos} && $_ ne $mp->{eos}  }
+	     { !exists($lbenum->{sym2id}{$_}) }
+	     @{$cbenum->{id2sym}}
+	    );
 
   $oenum->addSymbol($_)
-    foreach (grep { $_ ne $mp->{bos} && $_ ne $mp->{eos} } @{$tenum->{id2sym}});
+    foreach (grep
+	     { $_ ne $mp->{bos} && $_ ne $mp->{eos} }
+	     @{$tenum->{id2sym}}
+	    );
 
   $N = $qenum->size;
   $M = $oenum->size;
@@ -271,7 +295,7 @@ sub toHMM {
   $o2o    = $o2o->where($o2o != $uid);
 
   ##-- $q2c->at($qid) = $clusterid
-  my $q2c = pdl(long, [ @{$cenum->{sym2id}}{ @{$qenum->{id2sym}} } ]);
+  my $q2c = pdl(long, [ @{$cbenum->{sym2id}}{ @{$qenum->{id2sym}} } ]);
 
   ##-- $o2t->at($oid) = $targetid
   my $o2t = pdl(long, [ @{$tenum->{sym2id}}{ @{$oenum->{id2sym}}[$o2o->list] } ]);
@@ -449,14 +473,17 @@ sub toHMM {
       }
 
       ##-- get translation vector: $c2q->at($cid) == $qid
-      my $c2q = pdl(long, [ @{$qenum->{sym2id}}{ @{$cenum->{id2sym}} } ]);
+      my $c2q = pdl(long, [
+			   #@{$qenum->{sym2id}}{ @{$cbenum->{id2sym}} }
+			   @{$qenum->{sym2id}}{ grep {!exists($lbenum->{sym2id}{$_})} @{$cbenum->{id2sym}} }
+			  ]);
 
       while (($w12,$f)=each(%{$bgd->{nz}})) {
 	($w1,$w2) = $bgd->split($w12);
-	
+
 	$w1id=$tenum->index($w1);
 	$w2id=$tenum->index($w2);
-	
+
 	##-- dispatch
 	if (defined($w1id) && defined($w2id)) {
 	  ##-- normal case: w1 and w2 are 'real' targets: update af
