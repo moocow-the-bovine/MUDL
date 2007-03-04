@@ -35,8 +35,8 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     ntoks => $ntokens,
 ##     jdist => $dist,         ##-- MUDL::Dist::Nary, join tag1+tag2 counts
 ##     txts  => \%txt2undef,   ##-- word type pseudo-set
-##     txttag1 => \%txttag1,   ##-- tok,tag1 pair pseudo-set
-##     txttag2 => \%txttag2,   ##-- tok,tag2 pair pseudo-set
+##     txttag1 => \%txttag1,   ##-- w,tag1 pair pseudo-set
+##     txttag2 => \%txttag2,   ##-- w,tag2 pair pseudo-set
 ##
 ##     ##-- Rand Index (optional): runtime data
 ##     randidx => {
@@ -214,6 +214,9 @@ sub finish {
   ##-- allocate tag1-, tag2- info structures
   ##   %info_tag =
   ##   (
+  ##    ##-- word-type information
+  ##    nwtypes => $ntypes,       ##-- number of word types occurring with this tag at least once
+  ##
   ##    ##-- best-map information
   ##    freq=>$f_tag,
   ##    fbest => max(f($tag,$othertag)),                 ##-- best match frequency
@@ -846,7 +849,33 @@ sub finish {
     @$eval{qw(ntypes nanals1 nanals2)} = ($ntypes,$nanals1,$nanals2);
     $eval->{arate1} = frac($nanals1, $ntypes);
     $eval->{arate2} = frac($nanals2, $ntypes);
+
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ## Get word-type information (type-wise tag "density")
+    ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    my ($txt,$tag,$txttag,%tag_to_ntypes);
+
+    ##-- word-type info: tag1
+    %tag_to_ntypes = qw();
+    foreach $txttag (keys(%{$eval->{txttag1}})) {
+      ($txt,$tag) = split(/\t/,$txttag);
+      ++$tag_to_ntypes{$tag};
+    }
+    while (($tag,$tagi)=each(%$tag1i)) {
+      $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
+    }
+
+    ##-- word-type info: tag2
+    %tag_to_ntypes = qw();
+    foreach $txttag (keys(%{$eval->{txttag2}})) {
+      ($txt,$tag) = split(/\t/,$txttag);
+      ++$tag_to_ntypes{$tag};
+    }
+    while (($tag,$tagi)=each(%$tag2i)) {
+      $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
+    }
   }
+
 
   ##-- reset file reader
   $eval->reset();

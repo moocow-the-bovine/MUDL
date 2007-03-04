@@ -27,9 +27,10 @@ our @ISA = qw(MUDL::Corpus::MetaProfile);
 ##  phatm  => $mask,        ## type=byte,   dims as for $phat; $phatm ~ p(c|w) != 0
 ##
 ##  tenum => $enum,        ## previous+current targets (token) enum (T_{<=$i})
-##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + bos,eos)
-##  cbenum => $enum,       ## (bound-)class enum: includes bos,eos (<=$i)
-##  cenum => $enum,        ## target-cluster enum: does NOT include bos,eos
+##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + literals)
+##  lbenum => $enum,       ## literal current bounds (type) enum (LB_{<=$i}) (e.g. bos,eos)
+##  cbenum => $enum,       ## (bound-)class enum: includes literals (<=$i)
+##  cenum => $enum,        ## target-cluster enum: does NOT include literals
 ##  cm => $cluster_method, ## the initial MUDL::Cluster::Method subclass object used for clustering
 ##  tbeta => $tbeta,       ## pdl($n) : maps targets to their beta values as returned by $mp->d2pbeta()
 ##  ##
@@ -104,16 +105,26 @@ sub bootstrap {
   MUDL::CmdUtils::loadModule(ref($cm))
       or confess(ref($mp), "::bootstrap(): could not load cluster module '", ref($cm), "': $!");
 
+  ##-- initialize: bos,eos
+  @$mp{qw(bos eos)} = @$prof{qw(bos eos)};
+
   ##-- initialize enums
   $mp->{tenum}  = $prof->{targets};
-  $mp->{benum}  = $prof->{targets}->copy;
-  $mp->{cbenum} = $cm->clusterEnum()->copy;
-  $mp->{cenum}  = $mp->{cbenum}->copy;
+  $mp->{benum}  = $prof->{bounds}->copy;
+  $mp->{cenum}  = $cm->clusterEnum()->copy;
+  $mp->{cbenum} = $mp->{cenum}->copy;
+  ##
+  ##-- literal bounds: add to {cbenum}, {benum}
+  $mp->{lbenum} = $mp->lbenum();             ##-- auto-generates if undefined
+  $mp->{cbenum}->addEnum($mp->{lbenum});
+  $mp->{benum }->addEnum($mp->{lbenum});
 
-  ##-- bound-class-hack: bos,eos
-  foreach (@$mp{qw(bos eos)} = @$prof{qw(bos eos)}) {
-    $mp->{cbenum}->addSymbol($_);
-  }
+  ##-- info: enums
+  $mp->vmsg($vl_info, sprintf("bootstrap(): |targets|     = %6d\n", $mp->{tenum}->size));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): |bounds|      = %6d\n", $mp->{benum}->size));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): |lit. bounds| = %6d\n", $mp->{lbenum}->size));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): |clusters|    = %6d\n", $mp->{cenum}->size));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): |cbounds|     = %6d\n", $mp->{cbenum}->size));
 
   ##-- populate {clusterids}: word => argmax_class ( p(class|word) )
   $mp->vmsg($vl_info, "bootstrap(): clusterids ~ w => argmax_c ( p(c|w) )\n");
@@ -137,10 +148,13 @@ sub bootstrap {
   $mp->{stage_info} = {} if (!$mp->{stage_info});
   @{$mp->{stage_info}}{qw(avg prms median min max adev rms)} = map { $_->sclr } $mp->{ugs_k}->stats;
   $mp->{ntgs_k} = $mp->{tenum}->size;
+  $mp->{stage_info}{logavg} = $mp->{ugs_k}->log->average->exp->sclr;
 
-  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: min(f_0(w))=%.2f\n", $mp->{stage_info}{min}));
-  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: max(f_0(w))=%.2f\n", $mp->{stage_info}{max}));
-  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: avg(f_0(w))=%.2f\n", $mp->{stage_info}{avg}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams:    min(f_0(w))=%.2f\n", $mp->{stage_info}{min}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams:    max(f_0(w))=%.2f\n", $mp->{stage_info}{max}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams:    avg(f_0(w))=%.2f\n", $mp->{stage_info}{avg}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: logavg(f_0(w))=%.2f\n", $mp->{stage_info}{logavg}));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): unigrams: median(f_0(w))=%.2f\n", $mp->{stage_info}{median}));
 
   ##-- populate {phat}: p(class|word)
   $mp->vmsg($vl_info, "bootstrap(): phat ~ ^p(c|w)\n");
@@ -193,8 +207,11 @@ sub d2pbeta {
 sub populatePhat {
   my $mp = shift;
 
-  my $phat = zeroes(double, $mp->{cbenum}->size, $mp->{tenum}->size);
-  my $beta = $mp->beta;
+  my $cbenum  = $mp->{cbenum};
+  my $cenum   = $mp->{cenum};
+  #my $phat    = zeroes(double, $cbenum->size, $mp->{tenum}->size);
+  my $phat    = zeroes(double, $cenum->size, $mp->{tenum}->size);
+  my $beta    = $mp->beta;
   my $d2pbeta = $mp->d2pbeta();
   $mp->vmsg($vl_info, "populatePhat(): avg(beta) = ", $beta->avg, "\n");
   $mp->vmsg($vl_info, "populatePhat(): betamode  = ", $mp->{betamode}, "\n");
@@ -238,10 +255,11 @@ sub populatePhat {
   $mp->{tbeta}  = zeroes(double, $phat->dim(1));
   $mp->{tbeta} .= $d2pbeta;
 
-  ##-- class-probability membership hack: bos,eos
-  foreach (@$mp{qw(bos eos)}) {
-    $phat->slice($mp->{cbenum}->index($_).",") .= 0;
-  }
+  ##-- class-probability membership hack: literals
+  #my $lbenum = $mp->lbenum();
+  #foreach (@{$lbenum->{id2sym}}) {
+  #  $phat->slice($cbenum->{sym2id}{$_}.",") .= 0;
+  #}
 
   #@$mp{qw(phat shatr)} = ($phat,$shatr);
   $mp->{phat} = $phat;
@@ -267,9 +285,12 @@ sub update {
   ++$mp->{stage};
 
   ##-- update: profile
+  my $lbenum = $mp->lbenum();
   $mp->vmsg($vl_info, "update(): profile ~ f_{<=k}(d, v_b, w)\n");
-  $mp->vmsg($vl_info, "update(): nbounds      = ", $prof->{bounds}->size, "\n");
-  $mp->vmsg($vl_info, "update(): ntargets     = ", $prof->{targets}->size, "\n");
+  $mp->vmsg($vl_info, "update(): |bounds|           = ", $prof->{bounds}->size, "\n");
+  $mp->vmsg($vl_info, "update(): |literal bounds|   = ", $lbenum->size, "\n");
+  $mp->vmsg($vl_info, "update(): |clustered bounds| = ", $prof->{bounds}->size - $lbenum->size, "\n");
+  $mp->vmsg($vl_info, "update(): |targets|          = ", $prof->{targets}->size, "\n");
   $mp->{prof} = $prof;
 
   ##-- update: load modules
@@ -305,9 +326,12 @@ sub update {
   ##-- update: info & report
   my $ugs_tgs_k = $mp->{ugs_k}->slice("0:".($mp->{stage_info}{ntgs_k}-1));
   @{$mp->{stage_info}}{qw(avg prms median min max adev rms)} = map { $_->sclr } $ugs_tgs_k->stats;
+  $mp->{stage_info}{logavg} = $ugs_tgs_k->log->average->exp->sclr;
   $mp->vmsg($vl_info, sprintf("update(): unigrams: min(f_k(w))=%.2f\n", $mp->{stage_info}{min}));
   $mp->vmsg($vl_info, sprintf("update(): unigrams: max(f_k(w))=%.2f\n", $mp->{stage_info}{max}));
   $mp->vmsg($vl_info, sprintf("update(): unigrams: avg(f_k(w))=%.2f\n", $mp->{stage_info}{avg}));
+  $mp->vmsg($vl_info, sprintf("update(): unigrams: logavg(f_k(w))=%.2f\n", $mp->{stage_info}{logavg}));
+  $mp->vmsg($vl_info, sprintf("update(): unigrams: median(f_k(w))=%.2f\n", $mp->{stage_info}{median}));
 
 
   ##-- update: cluster: C_{k-1}: toPDL
@@ -431,6 +455,7 @@ sub updateProfileUnigramDists {
 
   my $tenum_w_raw = $prf_wv_raw->{targets};
   my $benum_v_raw = $prf_wv_raw->{bounds};
+  my $lbenum      = $mp->lbenum();
   my ($tenum,$tenum_k,$cenum,$cbenum) = @$mp{qw(tenum tenum_k cenum cbenum)};
   my $cids_ltk = $mp->{clusterids};
 
@@ -438,7 +463,7 @@ sub updateProfileUnigramDists {
   my ($id_w_raw,$f,$w,$id_w_k,$id_c);
   if (defined($prf_wv_raw->{tugs})) {
     while (($id_w_raw,$f)=each(%{$prf_wv_raw->{tugs}{nz}})) {
-      $w = $tenum_w_raw->symbol($id_w_raw);
+      $w = $tenum_w_raw->{id2sym}[$id_w_raw];
 
       if (defined($id_w_k = $tenum_k->{sym2id}{$w})) {
 	##-- target is new: add data to $prf_wv_raw->{tugs}
@@ -446,7 +471,7 @@ sub updateProfileUnigramDists {
       }
       else {
 	##-- target is old: add data to $prf_cb->{tugs} (no smearing)
-	$id_c = $cids_ltk->at($tenum->index($w));
+	$id_c = $cids_ltk->at($tenum->{sym2id}{$w});
 	$prf_cb_new->{tugs}{nz}{$id_c} += $f;
       }
     }
@@ -458,7 +483,7 @@ sub updateProfileUnigramDists {
   }
 
   ##-- update: bound unigrams
-  my ($id_v_raw,$v,$id_v_ltk);
+  my ($id_v_raw,$v,$id_v_ltk,$id_v_lb);
   my ($Ncb,$bugs_pdl,$phat);
   if (defined($prf_wv_raw->{bugs})) {
     $Ncb = $cbenum->size();
@@ -468,20 +493,23 @@ sub updateProfileUnigramDists {
     $phat /= $phat->sumover->slice("*1,");
     $phat->inplace->setnantobad->inplace->setbadtoval(0); ##-- hack
 
+    ##-- $c2cb->at($ci) = $cbenum->index( $cenum->symbol($ci) )
+    ##   + used to index $cbenum distribution PDLs for non-literal class-bounds
+    my $c2cb = pdl(long, [ @{$cbenum->{sym2id}}{ @{$cenum->{id2sym}} } ]);
+
     while (($id_v_raw,$f)=each(%{$prf_wv_raw->{bugs}{nz}})) {
 
       ##-- get bound-index ($id_v_ltk)
-      $v        = $benum_v_raw->symbol($id_v_raw);
-      $id_v_ltk = $tenum->index($v);
+      $v        = $benum_v_raw->{id2sym}[$id_v_raw];
 
-      if (defined($id_v_ltk)) {
-	##-- bound-word is a previous target
-	$bugs_pdl += $phat->slice(",($id_v_ltk)") * $f;
-      }
-      else {
+      if (exists($lbenum->{sym2id}{$v})) {
 	##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
-	$id_v_ltk = $cbenum->index($v);
+	$id_v_ltk = $cbenum->{sym2id}{$v};
 	$bugs_pdl->slice("$id_v_ltk") += $f;
+      } else {
+	##-- usual case: bound-word is a previous target: respect $mp->{phat}
+	$id_v_ltk                = $tenum->{sym2id}{$v};
+	$bugs_pdl->index($c2cb) += $phat->slice(",($id_v_ltk)") * $f;
       }
     }
     ##-- PDL-to-EDist
@@ -501,12 +529,12 @@ sub updateProfileUnigramDists {
 ##--------------------------------------------------------------
 ## undef = $mp->updateProfileDists($rawDistNaryDir, $ctrDistNaryDir, $curDistNaryDir)
 ##  + populates $ctrDistNaryDir and $curDistNaryDir from $rawDistNaryDir, where:
-##    - $rawDistNaryDir : profile directional nary dist over targets (\in T_<=k) and bound-words   (\in T_<k)
-##    - $ctrDistNaryDir : profile directional nary dist over classes (\in C_k-1) and bound-classes (\in B_k=C_k-1)
-##    - $curDistNaryDir : profile directional nary dist over targets (\in T_k  ) and bound-classes (\in B_k=C_k-1)
+##    - $rawDistNaryDir : prof directed nary dist wrt targets (\in T_<=k) & bound-words   (\in     (LB u T_<k ))
+##    - $ctrDistNaryDir : prof directed nary dist wrt classes (\in C_k-1) & bound-classes (\in B_k=(LB u C_k-1))
+##    - $curDistNaryDir : prof directed nary dist wrt targets (\in T_k  ) & bound-classes (\in B_k=(LB u C_k-1))
 ##  + output distributions should be subsequently changed to use enums:
-##    - $ctrDistNaryDir : targets=$mp->{cenum}   ; bounds=$mp->{cbenum}
-##    - $curDistNaryDir : targets=$mp->{tenum_k} ; bounds=$mp->{cbenum}
+##    - $ctrDistNaryDir : targets=$mp->{cenum}   ; bounds=$mp->{cbenum}, lbounds=$mp->{lbenum}
+##    - $curDistNaryDir : targets=$mp->{tenum_k} ; bounds=$mp->{cbenum}, lbounds=$mp->{lbenum}
 ##  + requires:
 ##    ~ $mp->{tenum_k}
 ##    ~ $mp->{clusterids}
@@ -519,6 +547,7 @@ sub updateProfileDists {
   my $tenum   = $mp->{tenum};
   my $cbenum  = $mp->{cbenum};
   my $cenum   = $mp->{cenum};
+  my $lbenum  = $mp->lbenum();
 
   my $tenum_k  = $mp->{tenum_k};
   my $cids_ltk = $mp->{clusterids};
@@ -535,38 +564,42 @@ sub updateProfileDists {
   $phat      /= $phat->sumover->slice("*1,");
   $phat->inplace->setnantobad->inplace->setbadtoval(0); ##-- hack
 
+  ##-- $c2cb->at($ci) = $cbenum->index( $cenum->symbol($ci) )
+  ##   + used to index {cbenum} distribution PDLs for non-literal class-bounds
+  my $c2cb = pdl(long, [ @{$cbenum->{sym2id}}{ @{$cenum->{id2sym}} } ]);
+
   my ($key,$f, $w,$v, $ws,$wi, $vs,$vi, $Pbv, $opdl);
   while (($key,$f)=each(%{$wvdist->{nz}})) {
     ($w,$v) = $wvdist->split($key);
 
     ##-- get target-index ($wi)
-    $ws = $wenum->symbol($w);
-    $wi = $tenum_k->index($ws);
+    $ws = $wenum->{id2sym}[$w];
+    $wi = $tenum_k->{sym2id}{$ws};
     if (defined($wi)) {
       ##-- target is new: add data to $fwb_pdl
       $opdl = $fwb_pdl;
     } else {
       ##-- target is old: add associated class-data to $fcb_pdl
       $opdl = $fcb_pdl;
-      $wi = $cids_ltk->at($tenum->index($ws)); ##-- HACK: no smearing
+      $wi   = $cids_ltk->at($tenum->{sym2id}{$ws}); ##-- HACK: no smearing
     }
 
     ##-- get bound-index ($vi)
-    $vs = $venum->symbol($v);
-    $vi = $tenum->index($vs);
-    if (defined($vi)) {
-      ##-- bound-word is a previous target
-      $Pbv                   = $phat->slice(",($vi)");
-      $opdl->slice("($wi)") += $Pbv * $f;
-    }
-    else {
+    $vs  = $venum->{id2sym}[$v];
+
+    if (exists($lbenum->{sym2id}{$vs})) {
       ##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
-      $vi = $cbenum->index($vs);
+      $vi = $cbenum->{sym2id}{$vs};
       $opdl->slice("$wi,$vi") += $f;
+    } else {
+      ##-- bound-word is a previous target
+      $vi = $tenum->{sym2id}{$vs};
+      $Pbv                                 = $phat->slice(",($vi)");
+      $opdl->slice("($wi)")->index($c2cb) += $Pbv * $f;
     }
   }
 
-  $mp->{ugs_k} += $fwb_pdl->xchg(0,1)->sumover; ##-- new target unigrams, may be needed later
+  $mp->{ugs_k} += $fwb_pdl->xchg(0,1)->sumover; ##-- new stage-local target unigrams, may be needed later
 
   ##-- output: {ctrdist}
   @$cbdist{qw(nfields sep enum)} = (@$wvdist{qw(nfields sep)},
@@ -620,7 +653,7 @@ sub updatePhat {
 
   $mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
   $mp->vmsg($vl_info, "            :         betamode  = ", $mp->{betamode}, "\n");
-  my $phat_k = zeroes(double, $mp->{cbenum}->size, $mp->{tenum_k}->size);
+  my $phat_k = zeroes(double, $mp->{cenum}->size, $mp->{tenum_k}->size);
   my $cm_k   = $mp->{cm_k};
 
   my $d2pbeta = $mp->d2pbeta();
@@ -656,7 +689,8 @@ sub updatePhat {
 
   ##-- allocate new ^p_{<=k}()
   $mp->vmsg($vl_info, "updatePhat(): adjust ~ ^p_{<=k}( c_k | t_{<=k} )\n");
-  my $phat  = $mp->{phat}  = zeroes(double, $mp->{cbenum}->size, $mp->{tenum}->size);
+  #my $phat  = $mp->{phat}  = zeroes(double, $mp->{cbenum}->size, $mp->{tenum}->size);
+  my $phat  = $mp->{phat}  = zeroes(double, $mp->{cenum}->size, $mp->{tenum}->size);
   my $phatm = $mp->{phatm} = zeroes(byte,   $phat->dims);
 
   ##----------------------------------------------
@@ -679,10 +713,10 @@ sub updatePhat {
     $phatm->slice(",($tid_lek)") .= $phatm_k->slice(",($tid_k)");
   }
 
-  ##-- HACK: class-membership probability: bos,eos
-  foreach (@$mp{qw(bos eos)}) {
-    $phat->slice($mp->{cbenum}->index($_).",") .= 0;
-  }
+  ##-- HACK: class-membership probability: bos,eos: ---> should be LEFT OUT of phat ENTIRELY!
+  #foreach (@$mp{qw(bos eos)}) {
+  #  $phat->slice($mp->{cbenum}->index($_).",") .= 0;
+  #}
 
   $mp->{phat}  = $phat;
   $mp->{phatm} = $phatm;
@@ -784,6 +818,7 @@ sub getSummaryInfo {
   $info->{prfType} = ref($mp->{prof});
   $info->{nTargets} = $mp->{tenum}->size;
   $info->{nBounds} = $mp->{benum}->size;
+  $info->{nBoundsLiteral} = $mp->lbenum()->size;
   $info->{nClusters} = $mp->{cbenum}->size;
   $info->{nTargets_k} = (defined($mp->{tenum_k})
 			 #? ($mp->{tenum_k}->size - $info->{nClusters})
