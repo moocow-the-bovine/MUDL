@@ -29,10 +29,13 @@ our @ISA = qw(MUDL::Corpus::MetaProfile);
 ##  tenum => $enum,        ## previous+current targets (token) enum (T_{<=$i})
 ##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + literals)
 ##  lbenum => $enum,       ## literal current bounds (type) enum (LB_{<=$i}) (e.g. bos,eos)
-##  cbenum => $enum,       ## (bound-)class enum: includes literals (<=$i)
+##  cbenum => $enum,       ## bound+class enum: includes literals (<=$i) [see {use_cbounds}]
 ##  cenum => $enum,        ## target-cluster enum: does NOT include literals
 ##  cm => $cluster_method, ## the initial MUDL::Cluster::Method subclass object used for clustering
 ##  tbeta => $tbeta,       ## pdl($n) : maps targets to their beta values as returned by $mp->d2pbeta()
+##
+##  use_cbounds=>$bool,    ## if true, stage<k clusters will be used as bounds in update(): default=true
+##
 ##  ##
 ##  ##-- previous data
 ##  ctrprof => $ctr_prof,  ## ^f_{<k}($dir, $bound_cluster, $target_cluster{stage=>'<=k'})
@@ -76,6 +79,7 @@ sub new {
   return $that->SUPER::new(
 			   stage => 0,
 			   verbose => $vl_default,
+			   use_cbounds=>1,
 			   %args,
 			  );
 }
@@ -108,11 +112,14 @@ sub bootstrap {
   ##-- initialize: bos,eos
   @$mp{qw(bos eos)} = @$prof{qw(bos eos)};
 
+  ##-- sanitize 'use_cbounds' (default)
+  $mp->{use_cbounds} = 1 if (!defined($mp->{use_cbounds}));
+
   ##-- initialize enums
   $mp->{tenum}  = $prof->{targets};
   $mp->{benum}  = $prof->{bounds}->copy;
   $mp->{cenum}  = $cm->clusterEnum()->copy;
-  $mp->{cbenum} = $mp->{cenum}->copy;
+  $mp->{cbenum} = ($mp->{use_cbounds} ? $mp->{cenum}->copy : MUDL::Enum->new());
   ##
   ##-- literal bounds: add to {cbenum}, {benum}
   $mp->{lbenum} = $mp->lbenum();             ##-- auto-generates if undefined
@@ -124,7 +131,7 @@ sub bootstrap {
   $mp->vmsg($vl_info, sprintf("bootstrap(): |bounds|      = %6d\n", $mp->{benum}->size));
   $mp->vmsg($vl_info, sprintf("bootstrap(): |lit. bounds| = %6d\n", $mp->{lbenum}->size));
   $mp->vmsg($vl_info, sprintf("bootstrap(): |clusters|    = %6d\n", $mp->{cenum}->size));
-  $mp->vmsg($vl_info, sprintf("bootstrap(): |cbounds|     = %6d\n", $mp->{cbenum}->size));
+  $mp->vmsg($vl_info, sprintf("bootstrap(): |any bounds|  = %6d\n", $mp->{cbenum}->size));
 
   ##-- populate {clusterids}: word => argmax_class ( p(class|word) )
   $mp->vmsg($vl_info, "bootstrap(): clusterids ~ w => argmax_c ( p(c|w) )\n");
@@ -291,6 +298,7 @@ sub update {
   $mp->vmsg($vl_info, "update(): |literal bounds|   = ", $lbenum->size, "\n");
   $mp->vmsg($vl_info, "update(): |clustered bounds| = ", $prof->{bounds}->size - $lbenum->size, "\n");
   $mp->vmsg($vl_info, "update(): |targets|          = ", $prof->{targets}->size, "\n");
+  $mp->vmsg($vl_info, "update(): |mp bounds|        = ", $mp->{cbenum}->size, "\n");
   $mp->{prof} = $prof;
 
   ##-- update: load modules
@@ -506,7 +514,7 @@ sub updateProfileUnigramDists {
 	##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
 	$id_v_ltk = $cbenum->{sym2id}{$v};
 	$bugs_pdl->slice("$id_v_ltk") += $f;
-      } else {
+      } elsif ($mp->{use_cbounds}) {
 	##-- usual case: bound-word is a previous target: respect $mp->{phat}
 	$id_v_ltk                = $tenum->{sym2id}{$v};
 	$bugs_pdl->index($c2cb) += $phat->slice(",($id_v_ltk)") * $f;
@@ -591,7 +599,7 @@ sub updateProfileDists {
       ##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
       $vi = $cbenum->{sym2id}{$vs};
       $opdl->slice("$wi,$vi") += $f;
-    } else {
+    } elsif ($mp->{use_cbounds}) {
       ##-- bound-word is a previous target
       $vi = $tenum->{sym2id}{$vs};
       $Pbv                                 = $phat->slice(",($vi)");
