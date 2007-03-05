@@ -64,10 +64,7 @@ our @_eval_base_fields =
    qw(wppr:tk wprc:tk wpF:tk),
 
    ##-- Rand Index
-   qw(Rand:g Rand:t Rand:tk),
-   qw(ARand:g RandA:g),
-   qw(ARand:t RandA:t),
-   qw(ARand:tk RandA:tk),
+   qw(ARand:g ARand:t ARand:tk),
   );
 
 ##-------------------
@@ -83,7 +80,7 @@ our %_eval_base_families =
    wavg  => [qw(wapr warc waF)],
    pair  => [qw(ppr prc pF)],
    wpair => [qw(wppr wprc wpF)],
-   Rand  => [qw(Rand)],
+   #Rand  => [qw(Rand)],
    ARand => [qw(ARand)],
   );
 our $_eval_default_family = 'meta';
@@ -246,7 +243,7 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(nT stage emi ci corpus xvars->tcclass lrlab auto),
+		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass lrlab nlbds nbds ntgs auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
    'collectDefault' => [ qw(corpus stage), ],
@@ -748,7 +745,10 @@ our %FIELDS =
    'feat'=>'flabel',
 
    ##-- Corpus
-   corpus => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'corpus',
+   corpus => {
+	      #path=>[qw(xvars icbase)],
+	      path=>[qw(xvars fcorpus)],
+	      n=>0, fmt=>'auto', title=>'corpus',
 	       alt=>[
 		     qw(xvars->icorpus xvars->icbase xvars->tcorpus),
 		     qw(icorpus icbase tcorpus),
@@ -760,16 +760,19 @@ our %FIELDS =
 	       condense=>1,
 	     },
    lg=>'lang',
-   lang   => { path=>[qw(xvars icbase)], n=>0, fmt=>'auto', title=>'lg',
-	       eval=>'$_ =~ /^(\w\w)\-/ ? $1 : ($_ =~ /^[uz]/ ? "de" : "en")',
-	       alt=>[
-		     qw(xvars->icorpus xvars->icbase xvars->tcorpus),
-		     qw(icorpus icbase tcorpus),
-		     qw(fcorpus fbase),
-		     qw(xvars->fcorpus xvars->fbase xvars->lang xvars->lg),
-		    ],
-	       hr=>'micro',
-	       condense=>1,
+   lang   => {
+	      #path=>[qw(xvars icbase)],
+	      path=>[qw(xvars fcorpus)],
+	      n=>0, fmt=>'auto', title=>'lg',
+	      eval=>'$_ =~ /^(\w\w)\-/ ? $1 : ($_ =~ /^[uz]/ ? "de" : "en")',
+	      alt=>[
+		    qw(xvars->icorpus xvars->icbase xvars->tcorpus),
+		    qw(icorpus icbase tcorpus),
+		    qw(fcorpus fbase),
+		    qw(xvars->fcorpus xvars->fbase xvars->lang xvars->lg),
+		   ],
+	      hr=>'micro',
+	      condense=>1,
 	     },
 
    ci=>'cspliti',
@@ -854,7 +857,7 @@ our %FIELDS =
 	     },
    'nclusters' => 'nC',
 
-   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg f(T_k)', condense=>1, alt=>[qw(stage nT)],
+   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg_f(T_k)', condense=>1, alt=>[qw(stage nT)],
 	       eval=>'sprintf("%.2f",$_)',
 	       latexTitle=>'$\mathbf{E(f(T_k))}$',
 	     },
@@ -937,31 +940,45 @@ our %FIELDS =
 
       ##-------------------------------------
       ## Eval: Rand Index
-      "Rand:$gt" => { path=>[$p,qw(Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"Rand:$gt"},
-      "rand:$gt" => ["Rand:$gt"],
+      #"Rand:$gt" => { path=>[$p,qw(Rand)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"Rand:$gt"},
+      #"rand:$gt" => ["Rand:$gt"],
 
       ##-------------------------------------
       ## Eval: Adjusted Rand Index
       "ARand:$gt" => { path=>[$p,qw(RandA)], n=>1, fmt=>'%.2f', eval=>'100*$_', title=>"ARand:$gt"},
-      "RandA:$gt" => ["ARand:$gt"],
+      #"RandA:$gt" => ["ARand:$gt"],
 
+      ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      ## Eval: Single-tag: typewise-density (# word types / total_ntypes)
+      "tag:dens:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
+			  evalname=>qq("\$field->{tag}:dens:$gt"),
+			  evaltitle=>q("$field->{tag}"),
+			  eval=>q(100*($_->{$field->{tag}}{wtype_density}||0)),
+			},
+      "itag:dens:$gt" => { path=>[$p,qw(tag1i)], n=>1, fmt=>'%.2f',
+			   evalname=>qq("\$field->{tag}:dens:$gt"),
+			   evaltitle=>q("$field->{tag}"),
+			   eval=>q(100*($_->{$field->{tag}}{wtype_density}||0)),
+			 },
+      "tags:dens:$gt"  => { expand_code=>\&_expand_tags,  _tag_field=>"tag:dens:$gt",  _tag_var=>'tag', },
+      "itags:dens:$gt" => { expand_code=>\&_expand_tags,  _tag_field=>"itag:dens:$gt", _tag_var=>'tag', },
 
       ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       ## Eval: Single-tag (precision,recall,F): Meta
       "tag:pr:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
 			evalname=>qq("\$field->{tag}:pr:$gt"),
 			evaltitle=>q("$field->{tag}"),
-			eval=>q(100*$_->{$field->{tag}}{meta_precision}),
+			eval=>q(100*($_->{$field->{tag}}{meta_precision}||0)),
 		      },
       "tag:rc:$gt" => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
 			evalname=>qq("\$field->{tag}:rc:$gt"),
 			evaltitle=>q("$field->{tag}"),
-			eval=>q(100*$_->{$field->{tag}}{meta_recall}),
+			eval=>q(100*($_->{$field->{tag}}{meta_recall}||0)),
 		      },
       "tag:F:$gt"  => { path=>[$p,qw(tag2i)], n=>1, fmt=>'%.2f',
 			evalname=>qq("\$field->{tag}:F:$gt"),
 			evaltitle=>q("$field->{tag}"),
-			eval=>q(100*$_->{$field->{tag}}{meta_F}),
+			eval=>q(100*($_->{$field->{tag}}{meta_F}||0)),
 		      },
 
       ##-------------------------------------------------
@@ -1804,7 +1821,14 @@ sub _expand_tags {
 
   ##-- map tag2-keys to expanded fields
   #splice(@$xfields, $fi,1, map { {%$srcfield, $tagvar=>$_} } sort(keys(%tags2)));
-  return [map { {%$srcfield, $tagvar=>$_} } sort(keys(%tags2))];
+  my ($ai,$bi);
+  return [map { {%$srcfield, $tagvar=>$_} }
+	  sort {
+	    $ai = ($a =~ /(\d+)$/ ? $1 : 0);
+	    $bi = ($b =~ /(\d+)$/ ? $1 : 0);
+	    $ai <=> $bi || $a cmp $b
+	  } keys(%tags2)
+	 ];
 }
 
 ##---------------------------------------------------------------
@@ -2533,7 +2557,7 @@ sub userVariables {
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK    = @{$EXPORT_TAGS{all}};
 
-END { print STDERR __PACKAGE__  , " loaded.\n"; }
+BEGIN { print STDERR __PACKAGE__  , " loaded.\n"; }
 1;
 
 __END__

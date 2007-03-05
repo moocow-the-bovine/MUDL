@@ -1,27 +1,22 @@
 ##-*- Mode: CPerl -*-
 
-## File: MUDL::Make::Plot.pm
+## File: MUDL::Make::Plot3d.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: make administration: config (pseudo-)fields: plot
+##  + MUDL unsupervised dependency learner: make administration:
+##    config (pseudo-)fields: plot: 3d
 ##======================================================================
 
-package MUDL::Make::Plot;
+package MUDL::Make::Plot3d;
+use MUDL::Make::Plot qw(:utils);
 use MUDL::Make::Fields qw(:utils);
 use MUDL::Make::PlotData;
 use strict;
 use Carp;
-our @ISA = qw(MUDL::Object Exporter);
+our @ISA = qw(MUDL::Make::Plot);
 
 ##======================================================================
 ## Globals
-
-our @EXPORT = qw();
-our %EXPORT_TAGS = (
-		    utils => [qw(autokey)],
-		   );
-$EXPORT_TAGS{all} = [ map {@$_} values(%EXPORT_TAGS) ];
-our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 
 ##======================================================================
 ## Constructor(s)
@@ -30,6 +25,7 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 ##  + %args:
 ##     x=>$x_field_spec,       ##-- a field-specification as per MUDL::Make::Fields
 ##     y=>$y_field_spec,       ##-- a field-specification as per MUDL::Make::Fields
+##     z=>$y_field_spec,       ##-- a field-specification as per MUDL::Make::Fields
 ##     configs=>\@configs,     ##-- array-ref of MUDL::Make::Config objects
 ##
 ##  + Display Options:
@@ -37,16 +33,23 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 ##
 ##     xlabel=>$string,        ##-- default: $x_field->{title}
 ##     ylabel=>$string,        ##-- default: $y_field->{title}
+##     zlabel=>$string,        ##-- default: $z_field->{title}
 ##
 ##     xrange=>$string,        ##-- default: undef (not set)
 ##     yrange=>$string,        ##-- default: undef (not set)
+##     zrange=>$string,        ##-- default: undef (not set)
 ##
 ##     view=>$string,          ##-- GNUplot 'set view ...' (default=undef [not set])
 ##
-##     using=>$which,          ##-- default: undef (none ~ 1:2)
+##     using=>$which,          ##-- default: undef (none ~ 1:2:3)
 ##     with=>$how,             ##-- default: 'lp'
 ##     title=>$window_title,   ##-- global plot title
 ##     smooth=>$how,           ##-- default: undef (none)
+##
+##     ##-- new 3d options
+##     pm3d => $bool,          ##-- whether to 'set pm3d;':    (default: none)
+##     hidden3d => $bool,      ##-- whether to 'set hidden3d;' (default: none)
+##     isosamples => $string,  ##-- if defined, "set isosamples $string;" is called (default: none)
 ##
 ##     ...?
 ##
@@ -74,33 +77,44 @@ sub new {
   my $plot =  $that->SUPER::new(
 				##-- User Options
 				'x'=>'stage',
-				'y'=>'pr:g',
-				'configs'=>[],
+				'y'=>'emi',
+				'z'=>'pr:g',
+				#'configs'=>[],
 
 				#'ptitle'=>'"$auto"', ##-- use auto-generated key
-				ptitle=>undef,        ##-- use auto-generated key (more efficient)
-				notitle=>0,
+				#ptitle=>undef,        ##-- use auto-generated key (more efficient)
+				#notitle=>0,
 
 				##-- I/O options
-				outfile=>'-',
-				datadir=>'.',
-				datasuffix=>'.dat',
+				#outfile=>'-',
+				#datadir=>'.',
+				#datasuffix=>'.dat',
 
 				##-- Display options
-				term=>undef,   ##-- not set
-				xlabel=>undef, ##-- use field title
-				ylabel=>undef, ##-- use field title
-				xrange=>undef, ##-- not set
-				yrange=>undef, ##-- not set
+				#term=>undef,   ##-- not set
+
+				#xlabel=>undef, ##-- use field title
+				#ylabel=>undef, ##-- use field title
+				zlabel=>undef, ##-- use field title
+
+				#xrange=>undef, ##-- not set
+				#yrange=>undef, ##-- not set
+				zrange=>undef, ##-- not set
+
 				with=>'lp',
-				title=>undef,  ##-- not set
-				smooth=>undef,
-				using=>undef,
+				#title=>undef,  ##-- not set
+				#smooth=>undef,
+				#using=>undef,
+
+				##-- 3d options
+				pm3d       => undef,
+				hidden3d   => undef,
+				isosamples => undef,
 
 				##-- Low-level data
-				mfields=>MUDL::Make::Fields->new(),
-				plots=>{},
-				compiled=>0,
+				#mfields=>MUDL::Make::Fields->new(),
+				#plots=>{},
+				#compiled=>0,
 
 				@_
 			      );
@@ -110,10 +124,8 @@ sub new {
 
 ## $obj = $class_or_obj->newFull(%args)
 ##  + creates & compiles
-sub newFull {
-  my $that = shift;
-  my $plot = $that->new(@_)->compile();
-}
+
+#(inherited)
 
 ##======================================================================
 ## Accessors
@@ -123,12 +135,8 @@ sub newFull {
 
 ## \%plots = $plot->plots()
 ##   + just returns $plot->{plots} if compiled; otherwise calls compile()
-sub plots {
-  my $plot = shift;
-  $plot->compile() if (!$plot->{compiled});
-  return $plot->{plots};
-}
 
+#(inherited)
 
 ##======================================================================
 ## Methods
@@ -160,7 +168,7 @@ sub compile {
   my @fdata = $mfields->fieldData(@$configs);
 
   ##-- Partition plot points (field-data hashes) by 
-  my @dimnames = map { $_->{name} } @$xfields[0,1]; ##!!!
+  my @dimnames = map { $_->{name} } @$xfields[0,1,2]; ##!!!
 
   do {
     our (%_);
@@ -184,7 +192,7 @@ sub compile {
 
       ##-- sort this field-hash into the dataset for its title
       $plots->{$ptitle} = MUDL::Make::PlotData->new(
-						    ndims=>2,
+						    ndims=>3,
 						    title=>$ptitle,
 						    using=>$plot->{using},
 						    notitle=>$plot->{notitle},
@@ -214,6 +222,11 @@ sub compile {
     $plot->{ylabel} =~ s/^\s+//;
     $plot->{ylabel} =~ s/\s+$//;
   }
+  if (!defined($plot->{zlabel})) {
+    $plot->{zlabel} = $xfields->[2]{title};
+    $plot->{zlabel} =~ s/^\s+//;
+    $plot->{zlabel} =~ s/\s+$//;
+  }
 
   ##-- set 'compiled' flag
   $plot->{compiled} = 1;
@@ -240,7 +253,7 @@ sub plotCommand {
   my @datafiles = $plot->datafiles();
   my @cmds      = map { $_->plotCommand().', ' } @$plots{sort keys %$plots};
   $cmds[$#cmds] =~ s/\,\s*$//;
-  unshift(@cmds, 'plot ');
+  unshift(@cmds, 'splot ');
   return wantarray ? @cmds : (join("\\\n  ", @cmds).";\n");
 }
 
@@ -262,13 +275,20 @@ sub script {
 	      ##-- Labels
 	      (defined($plot->{xlabel}) ? "set xlabel \"$plot->{xlabel}\";" : qw()),
 	      (defined($plot->{ylabel}) ? "set ylabel \"$plot->{ylabel}\";" : qw()),
+	      (defined($plot->{zlabel}) ? "set zlabel \"$plot->{zlabel}\";" : qw()),
 
 	      ##-- Ranges
 	      (defined($plot->{xrange}) ? "set xrange $plot->{xrange};" : qw()),
 	      (defined($plot->{yrange}) ? "set yrange $plot->{yrange};" : qw()),
+	      (defined($plot->{zrange}) ? "set yrange $plot->{zrange};" : qw()),
 
 	      ##-- View
 	      (defined($plot->{view})   ? "set view $plot->{view};" : qw()),
+
+	      ##-- 3d options
+	      (defined($plot->{pm3d})  ? ($plot->{pm3d} ? "set pm3d;" : "unset pm3d;")     : qw()),
+	      (defined($plot->{hidden3d}) ? ($plot->{hidden3d} ? "set hidden3d;" : "unset hidden3d;") : qw()),
+	      (defined($plot->{isosamples}) ? "set isosamples $plot->{isosamples};" : qw()),
 
 	      ##-- Plot command
 	      scalar($plot->plotCommand()),
@@ -280,15 +300,8 @@ sub script {
 ## Methods: GNUplot script: save
 
 ## $outfile = $plot->saveScript();
-sub saveScript {
-  my $plot = shift;
-  my $fh = IO::File->new(">$plot->{outfile}")
-    or confess(ref($plot),"::saveScript(): open failed for output file '$plot->{outfile}': $!");
-  my $script = scalar($plot->script());
-  $fh->print($script);
-  $fh->close();
-  return $plot->{outfile};
-}
+
+#(inherited)
 
 
 ##======================================================================
@@ -298,16 +311,8 @@ sub saveScript {
 ## Functions: title-generation
 
 ## $key = autokey($fieldDataHash,\@activeFieldNames)
-sub autokey {
-  my ($fdata,$fnames) = @_;
-  return join(', ',
-	      map {
-		"$_=".(defined($fdata->{$_})
-		       ? $fdata->{$_}
-		       : '-undef-')
-	      } grep { $_ ne '_' } @$fnames);
-}
 
+#(imported)
 
 1;
 

@@ -215,7 +215,8 @@ sub finish {
   ##   %info_tag =
   ##   (
   ##    ##-- word-type information
-  ##    nwtypes => $ntypes,       ##-- number of word types occurring with this tag at least once
+  ##    nwtypes => $ntypes,                   ##-- number of word types occurring with this tag at least once
+  ##    wtype_density => $ntypes/$total_types,##-- normalized
   ##
   ##    ##-- best-map information
   ##    freq=>$f_tag,
@@ -856,13 +857,17 @@ sub finish {
     my ($txt,$tag,$txttag,%tag_to_ntypes);
 
     ##-- word-type info: tag1
+    my %wtypes = qw();
     %tag_to_ntypes = qw();
     foreach $txttag (keys(%{$eval->{txttag1}})) {
       ($txt,$tag) = split(/\t/,$txttag);
       ++$tag_to_ntypes{$tag};
+      $wtypes{$txt}=undef;
     }
+    my $nwtypes = $eval->{nwtypes}=scalar(keys(%wtypes));
     while (($tag,$tagi)=each(%$tag1i)) {
       $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
+      $tagi->{wtype_density} = $tagi->{nwtypes} / $nwtypes;
     }
 
     ##-- word-type info: tag2
@@ -873,6 +878,7 @@ sub finish {
     }
     while (($tag,$tagi)=each(%$tag2i)) {
       $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
+      $tagi->{wtype_density} = $tagi->{nwtypes} / $nwtypes;
     }
   }
 
@@ -981,7 +987,7 @@ sub fromEval {
   my @dup = (
 	     qw(label1 label2),
 	     qw(tag1i tag2i),
-	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2),
+	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2 nwtypes),
 	     (map { "meta_$_" } qw(precision recall F)),
 	     (map { "ameta_$_" } qw(precision recall F)),
 	     (map { "avg_$_" } qw(precision recall F)),

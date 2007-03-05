@@ -24,7 +24,7 @@ our $MAKE_TARGETS = join(' ',
 			 #'stage-eval',
 			 #'stage-tgs-eval',
 			 #'stage-tgs-k-eval',
-			 'stage-summary-view',
+			 'stage-summary',
 			);
 
 ##======================================================================
@@ -89,27 +89,27 @@ sub acquire {
   my ($cfg,%args) = @_;
 
   ##-- get common data
-  my $mpdir = $cfg->{xvars}{mpdir};
-  my $stage = $cfg->{xvars}{stage};
+  my $stage    = $cfg->{xvars}{stage};
+  my $stagedir = $cfg->{xvars}{stagedir};
 
   ##-- load eval (summary): global
   my ($file);
-  $file = "$mpdir/stage${stage}.eval.summary.bin";
+  $file = "$stagedir/stage.eval.summary.bin";
   $cfg->{eval_global} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load global-eval file '$file': $!");
 
   ##-- load eval (summary): targets
-  $file = "$mpdir/stage${stage}.tgs.eval.summary.bin";
+  $file = "$stagedir/stage.tgs.eval.summary.bin";
   $cfg->{eval_targets} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load target-eval file '$file': $!");
 
   ##-- load eval (summary): targets_k
-  $file = "$mpdir/stage${stage}.tgs-k.eval.summary.bin";
+  $file = "$stagedir/stage.tgs-k.eval.summary.bin";
   $cfg->{eval_targets_k} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load targets-k-eval file '$file': $!");
 
   ##-- load meta-profile summary
-  $file = "$mpdir/stage${stage}.summary.bin";
+  $file = "$stagedir/stage.summary.bin";
   $cfg->{mpsummary} = MUDL::Object->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load MetaProfile summary file '$file': $!");
 
@@ -128,13 +128,13 @@ sub reacquire {
   $cfg->pushd($args{dir});
 
   ##-- get common data
-  my $mpdir = $cfg->{xvars}{mpdir};
-  my $stage = $cfg->{xvars}{stage};
-  my $tbase = $cfg->{xvars}{tbase};
+  my $stagedir = $cfg->{xvars}{stagedir};
+  my $stage    = $cfg->{xvars}{stage};
+  my $tbase    = $cfg->{xvars}{tbase};
 
   ##-- re-acquire: global
   my ($base,$eval,$esum);
-  $base = "$mpdir/stage${stage}.t-${tbase}.eval";
+  $base = "$stagedir/stage.t-${tbase}.eval";
   $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
     or confess(ref($cfg),"::reacquire(): could not load global-eval file '$base.bin': $!");
   $eval->finish();
@@ -144,7 +144,7 @@ sub reacquire {
   $cfg->{eval_global} = $esum;
 
   ##-- re-acquire: targets
-  $base   = "$mpdir/stage${stage}.t-${tbase}.tgs.eval";
+  $base   = "$stagedir/stage.tgs.t-${tbase}.eval";
   $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
     or confess(ref($cfg),"::reacquire(): could not load targets-eval file '$base.bin': $!");
   $eval->finish();
@@ -154,7 +154,7 @@ sub reacquire {
   $cfg->{eval_targets} = $esum;
 
   ##-- re-acquire: targets-k
-  $base   = "$mpdir/stage${stage}.t-${tbase}.tgs-k.eval";
+  $base   = "$stagedir/stage.tgs-k.t-${tbase}.eval";
   $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
     or confess(ref($cfg),"::reacquire(): could not load targets-eval file '$base.bin': $!");
   $eval->finish();

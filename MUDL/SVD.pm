@@ -104,7 +104,7 @@ sub computeccs {
 ## $svd = $svd->compute($a,$r);
 ##   + $a : pdl ($d-by-$n)
 ##   + (re-)computes svd for input pdl $a
-##   + does nothing if $r==0
+##   + sets $r=$d if $r>$d
 sub compute {
   my ($svd,$a,$r) = @_;
   $r = $svd->{r} if (!defined($r));
@@ -114,6 +114,7 @@ sub compute {
   my $maxiters = $svd->{maxiters} || 2*$r;
 
   my ($d,$n) = $a->dims;
+  $r = $svd->{r} = $d if ($r > $d);
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
   my $vt = zeroes(double, $d, $r);

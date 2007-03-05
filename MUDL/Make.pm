@@ -14,6 +14,8 @@ use MUDL::Object;
 use MUDL::Make::Fields qw(:all);
 use MUDL::Make::Table;
 use MUDL::Make::Plot;
+use MUDL::Make::Plot3d;
+use Text::Wrap qw();
 use strict;
 use Carp;
 our @ISA = qw(MUDL::Object Exporter);
@@ -172,12 +174,16 @@ $ACTIONS{which} = $ACTIONS{help} =
 sub actHelp {
   my $mak = shift;
   my %syn2act = map { ($ACTIONS{$_}{syntax} ? $ACTIONS{$_}{syntax} : $_)=>$ACTIONS{$_} } keys(%ACTIONS);
+  my $tw_columns = $Text::Wrap::columns;
+  $Text::Wrap::columns = 100;
   my ($syn,$act);
   foreach $syn (sort(keys(%syn2act))) {
     $act = $syn2act{$syn};
     print STDERR
-      sprintf("  %-24s : %s\n", $syn, ($act->{help} ? $act->{help} : 'no help'));
+      Text::Wrap::wrap((' ' x 2), (' ' x 29),
+		       sprintf("%-24s : %s\n", $syn, ($act->{help} ? $act->{help} : 'no help')));
   }
+  $Text::Wrap::columns = $tw_columns;
   return 1;
 }
 
@@ -869,6 +875,31 @@ sub actPlot {
   return $rc;
 }
 
+##---------------------------------------------------------------
+## Actions: plot3d
+
+$ACTIONS{plot3d} = $ACTIONS{splot} = 
+  {
+   syntax=>'plot3d %args=(x=>"FIELD",y=>"FIELD",z=>"FIELD",...)',
+   help=>'create and print a 3d GNUplot script for selected data',
+   code=>\&actPlot3d,
+  };
+sub actPlot3d {
+  my ($mak,$args) = @_;
+  return 0 if (!$mak->ensureLoaded);
+  my $rc = 1;
+  my %args = defined($args) ? eval "($args)" : qw();
+  warn(ref($mak)."::actPlot3d($args): error evaluating argument string: $@") if ($@);
+
+  my $configs = $mak->selectedConfigs();
+  my $plot    = MUDL::Make::Plot3d->newFull(configs=>$configs,%args);
+  my $gpfile  = $plot->saveScript();
+
+  $mak->vmsg('info', ref($mak), "::actPlot3d(): saved GNUplot script to '$gpfile'.\n");
+
+  return $rc;
+}
+
 
 
 ##======================================================================
@@ -1140,7 +1171,7 @@ sub syncCollection {
   return 1;
 }
 
-END { print STDERR __PACKAGE__  , " loaded.\n"; }
+BEGIN { print STDERR __PACKAGE__  , " loaded.\n"; }
 1;
 
 __END__
