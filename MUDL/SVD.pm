@@ -83,7 +83,8 @@ sub computeccs {
   $ptr->set(-1, $rowids->nelem);
 
   ##-- defaults
-  my $maxiters = $svd->{maxiters} || 2*$r;
+  $svd->{maxiters} ||= 2*$r;
+  my $maxiters = $svd->{maxiters};
 
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
@@ -111,10 +112,23 @@ sub compute {
   $svd->{r} = $r;
   return $svd if (!$r);
 
-  my $maxiters = $svd->{maxiters} || 2*$r;
+  $svd->{maxiters} ||= 2*$r;
+  my $maxiters = $svd->{maxiters};
 
   my ($d,$n) = $a->dims;
-  $r = $svd->{r} = $d if ($r > $d);
+
+  ##-- sanity check: no svd if $r >= $d
+  ##   + this gets handled in apply():
+  ##     we'll assume here that if you're calling compute(), you really want the SVD
+  #if ($r >= $d) {
+  #  $svd->{u}     = pdl($a);
+  #  $svd->{sigma} = ones(double,$d);
+  #  $svd->{v}     = stretcher(ones($d));
+  #  return $svd;
+  #}
+
+  ##-- back to ye olde grinde
+  $r = $svd->{r} = $d if ($r > $d); ##-- weak sanity check
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
   my $vt = zeroes(double, $d, $r);
@@ -141,7 +155,7 @@ sub compute {
 ##  + just returns $a unless $svd->{r} is set to a true value
 sub apply {
   my ($svd,$a) = @_;
-  return $a if (!$svd->{r});
+  return $a if ($svd->{r} <= 0 || $svd->{r} >= $a->dim(0)); ##-- sanity check
 
   ##-- sanity check(s)
   my ($d,$na) = $a->dims;
@@ -152,7 +166,7 @@ sub apply {
 
   ##-- apply svd
   my $ar  = $a x $svd->{v};
-  $ar    x= stretcher($svd->{sigma})->inv;
+  #$ar    x= stretcher($svd->{sigma})->inv; ##-- this is probably NOT a good idea...
 
   return $ar;
 }
