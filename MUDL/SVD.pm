@@ -20,7 +20,7 @@ our @ISA = qw(MUDL::Object);
 ##  + %args
 ##    ##-- configuration
 ##    r        => $ndims,     ##-- number of target dimensions (0 for no svd)
-##    maxiters => $maxiters,  ##-- max Lanczos iterations (default = 2*$ndims)
+##    maxiters => $maxiters,  ##-- max Lanczos iterations (default = 2*$r)
 ##    kappa    => $kappa,     ##-- tolerance (default=1e-6)
 ##    endl     => $end_l,     ##-- left interval endpoint for unwanted eigenvalues (-1e-30)
 ##    endr     => $end_r,     ##-- left interval endpoint for unwanted eigenvalues ( 1e-30)
@@ -166,7 +166,7 @@ sub apply {
 
   ##-- apply svd
   my $ar  = $a x $svd->{v};
-  #$ar    x= stretcher($svd->{sigma})->inv; ##-- this is probably NOT a good idea...
+  #$ar x= stretcher($svd->{sigma})->inv; ##-- this is probably NOT a wise idea: check the definitions...
 
   return $ar;
 }
