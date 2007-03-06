@@ -1,22 +1,25 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRfdl.pm
+## File: MUDL::Corpus::Profile::LRlogf.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile:
-##    : LR_frequency * local_description_length(B|T)
+##  + MUDL unsupervised dependency learner: corpus profile: L-R log-frequency
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRfdl;
+package MUDL::Corpus::Profile::LRlogf;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
+use strict;
+our @ISA = qw(MUDL::Corpus::Profile::LRlogf); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
+##   + new %args:
+##       eps => $eps,               ##-- replaces log(0): default: 1 or 0.1*(minimum non-zero value)
+##
 ##   + %args:
 ##       eos => $eos_str,
 ##       bos => $bos_str,
@@ -24,12 +27,10 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
 ##       targets => $targets_enum,
 ##       left=>$left_bigrams,       ## ($target,$lneighbor)
 ##       right=>$right_bigrams,     ## ($target,$rneighbor)
+##       smoothgt=>$which,
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,
-			   donorm=>0,
-			   norm_min=>0,
-			   %args);
+  return $that->SUPER::new(nfields=>1,donorm=>0,%args);
 }
 
 ##======================================================================
@@ -38,39 +39,54 @@ sub new {
 ## undef = $profile->addSentence(\@sentence)
 ##  + inherited
 
+## undef = $profile->addBigrams($bigrams,%args)
+##  + inherited
+
 ##======================================================================
 ## Conversion: to PDL
 
 ##-- inherited from MUDL:::Corpus::Profile::LR
+
 ## $pdl = $lr->toPDL()
-## $pdl = $lr->toPDL($pdl,%args)
-##
-## $pdl3d = $lr->smoothPdl($pdl3d,%args);
+## $pdl = $lr->toPDL($pdl)
 
+## $pdl3d = $lr->smoothPdl($pdl3d);
+##-- inherited
 
-## $pdl3d = $lr->finishPdl($pdl3d,%args);
+## $pdl3d = $lr->finishPdl($pdl3d);
 sub finishPdl {
   my ($lr,$pdl) = @_;
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
-  my ($fH_bg, $P_bg);
-  foreach my $z (0,1) {
-    $fH_bg = $pdl->slice("($z),,");
-    $P_bg  = $fH_bg / $fH_bg->sumover->slice("*1,");
+  ##-- get zero mask
+  my $nzmask = ($pdl != 0);
 
-    ## $fH_bg = -$fH_bg * log($P_bg)
-    $fH_bg *= log($P_bg);
-    $fH_bg /= pdl(double,2)->log;
-    $fH_bg *= -1;
+  ##-- get minimum value
+  my $eps = $lr->{eps};
+  if (!defined($eps)) {
+    $eps  = $pdl->where($nzmask)->flat->minimum;
+    if ($eps > 1) {
+      $eps .= 1;
+    } else {
+      $eps *= 0.1;
+    }
   }
+
+  ##-- set eps
+  $pdl->where(!$nzmask) .= $eps;
+
+  ##-- do log
+  $pdl->inplace->log;
+
+  ##-- hack
   $pdl->inplace->setnantobad->inplace->setbadtoval(0);
 
   return $pdl;
 }
 
 ## undef = $lr->normalizePdl($pdl);
-##-- inherited
-
+##
+## (inherited)
 
 ##======================================================================
 ## Help
@@ -79,14 +95,14 @@ sub finishPdl {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract (local) left- and right- description-length profile wrt. fixed boundary set.\n)
+    (qq(Extract left- and right- log-frequency profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
+     .qq(  eps=EPS          [default=1 or half-minimum]\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
      .qq(  eos=EOS_STRING   [default='__\$']\n)
      .qq(  bos=BOS_STRING   [default='__\$']\n)
      .qq(  donorm=BOOL      [default=1]\n)
-     .qq(  smoothgt=WHICH   [default=0] : one of 'bigrams','pdl',0\n)
     );
 }
 
