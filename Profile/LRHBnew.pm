@@ -1,19 +1,19 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRfidlg.pm
+## File: MUDL::Corpus::Profile::LRHBnew.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile
-##    : LR_frequency * global_description_length(T|B)
+##  + MUDL unsupervised dependency learner: corpus profile:
+##    : H_{Bernoulli}(f,n*2)
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRfidlg;
+package MUDL::Corpus::Profile::LRHBnew;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
+our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -29,6 +29,7 @@ sub new {
   return $that->SUPER::new(nfields=>1,
 			   donorm=>0,
 			   norm_min=>0,
+			   smoothgt=>0,
 			   %args);
 }
 
@@ -53,19 +54,32 @@ sub finishPdl {
   my ($lr,$pdl) = @_;
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
-  my ($fH_bg, $P_tgb);
-  #my $f_tug = $lr->targetUgPdl();
-  my $f_bug = $lr->boundUgPdl();
-
+  my ($H_bg, $P_bg, $P_nbg);
+  my $log2 = pdl(double,2)->log;
   foreach my $z (0,1) {
-    $fH_bg = $pdl->slice("($z),,");
+    $H_bg = $pdl->slice("($z),,");
 
-    #$P_bg  = $fH_bg / $f_tug->slice("*1,");                         ##-- p(b|t): global
-    $P_tgb = ($fH_bg->xchg(0,1) / $f_bug->slice("*1,"))->xchg(0,1);  ##-- p(t|b): global
+    ##-- get conditional bigram probabilities: p(b|t)
+    $P_bg  = $fH_bg / $fH_bg->sumover->slice("*1,");
+    $P_bg *= 0.5; ##-- halve "success" probabilities to ensure monotonicity
 
-    $fH_bg *= log($P_tgb);
-    $fH_bg /= pdl(double,2)->log;
-    $fH_bg *= -1;
+    ##-- get negated probabilities: p(¬b|t) = 1 - p(b|t)
+    $P_nbg  = 1.0-$P_bg;
+    #$P_nbg *= 0.5; ##-- ... but DON'T halve the negated probabilities!
+                    ##   + justification (attempt): half of the events we've observed
+                    ##     have been in THE OTHER DIRECTION!
+
+    ##-- get Bernoulli entropy estimates
+    # H(b|t) = -p(b|t)*log(p(b|t)) - p(¬b|t)*log(p(¬b|t))
+    $P_bg  *= -log($P_bg)
+    $P_bg  /= $log2;
+
+    $P_nbg *= -log($P_nbg);
+    $P_nbg /= $log2;
+
+    ##-- set entropy
+    $H_bg .= $P_bg;
+    $H_bg += $P_nbg;
   }
   $pdl->inplace->setnantobad->inplace->setbadtoval(0);
 
@@ -83,7 +97,7 @@ sub finishPdl {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract global left- and right- description-length profile wrt. fixed boundary set.\n)
+    (qq(Extract (local) left- and right- Bernoulli-entropy profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)

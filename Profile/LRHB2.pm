@@ -1,9 +1,10 @@
-#-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRHB.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R conditional entropy (Bernoulli)
+##  + MUDL unsupervised dependency learner: corpus profile:
+##    : L-R conditional entropy (Bernoulli), v2
 ##======================================================================
 
 package MUDL::Corpus::Profile::LRHB2;

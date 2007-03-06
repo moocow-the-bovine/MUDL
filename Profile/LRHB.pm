@@ -1,9 +1,10 @@
-#-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRHB.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R conditional entropy (Bernoulli)
+##  + MUDL unsupervised dependency learner: corpus profile
+##    : L-R conditional entropy (Bernoulli)
 ##======================================================================
 
 package MUDL::Corpus::Profile::LRHB;
@@ -96,7 +97,7 @@ sub finishPdl {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract left- and right-MI profile wrt. fixed boundary set.\n)
+    (qq(Extract left- and right- monotonic Bernoulli entropy profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
