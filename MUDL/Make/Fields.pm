@@ -243,7 +243,9 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass lrlab nlbds nbds ntgs auto),
+		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass lrlab svdr),
+		     qw(xvars->tblabel nlbds nbds ntgs),
+		     qw(auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
    'collectDefault' => [ qw(corpus stage), ],
@@ -857,7 +859,7 @@ our %FIELDS =
 	     },
    'nclusters' => 'nC',
 
-   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg_f(T_k)', condense=>1, alt=>[qw(stage nT)],
+   'fT_k' => { path=>[qw(mpsummary ugk_avg)],    n=>1,  title=>'avg_f(T_k)', condense=>0, alt=>[qw(stage nT)],
 	       eval=>'sprintf("%.2f",$_)',
 	       latexTitle=>'$\mathbf{E(f(T_k))}$',
 	     },
@@ -869,6 +871,8 @@ our %FIELDS =
    'd2pn' => 'mbest',
 
    'tck' => { path=>[qw(xvars tck)], n=>1, alt=>[qw(xvars->tck)], },
+
+   'svdr' => { path=>[qw(xvars svdr)], n=>1, alt=>[qw(xvars->svdr)], },
 
    ##----------------------------------------------------------
    ## Eval: low-level keys
