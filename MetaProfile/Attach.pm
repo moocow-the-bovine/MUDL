@@ -363,7 +363,7 @@ sub update {
   my $crowids  = sequence(long, $cdata->dim(1)) + $trowids->nelem;
   $cmdata_k->dice_axis(1, $trowids) .= $data_k;
   $cmdata_k->dice_axis(1, $crowids) .= $cdata;
-  $cm_k->data($cmdata_k);
+  $cmdata_k = $cm_k->data($cmdata_k); ##-- grab return value b/c $cm->data() might apply an SVD
   $cm_k->{mask}   = ones(long, $cmdata_k->dims);
   $cm_k->{weight} = ones(double, $cmdata_k->dim(0));
 
