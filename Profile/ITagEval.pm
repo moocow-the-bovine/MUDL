@@ -139,11 +139,11 @@ sub error {
   my ($eval,@msg) = @_;
   croak(ref($eval), ": ", @msg, "\n",
 	"> ",
-	(defined($eval->{cr}) && defined($eval->{cr}{filename})
+	(ref($eval->{cr}) && defined($eval->{cr}{filename})
 	 ? $eval->{cr}{filename}
 	 : '(input file)'),
 	" line ",
-	(defined($eval->{cr}) && defined($eval->{cr}{fh})
+	(ref($eval->{cr}) && defined($eval->{cr}{fh})
 	 ? $eval->{cr}{fh}->input_line_number
 	 : '(unknown)'),
 	"\n",
@@ -167,8 +167,8 @@ sub addSentence {
     $tag1 = $tok->attribute($pr->{tag1a});
     $tag2 = $tok->attribute($pr->{tag2a});
 
-    error("undefined tag-1 (attr=$pr->{tag1a})") if (!defined($tag1));
-    error("undefined tag-2 (attr=$pr->{tag2a})") if (!defined($tag2));
+    $pr->error("undefined tag-1 (attr=$pr->{tag1a})") if (!defined($tag1));
+    $pr->error("undefined tag-2 (attr=$pr->{tag2a})") if (!defined($tag2));
 
     ++$pr->{jdist}{nz}{"$tag1\t$tag2"};
     ++$pr->{ntoks};
