@@ -1,27 +1,36 @@
 ##-*- Mode: CPerl -*-
 
-## File: MUDL::Cluster::Buckshot.pm
+## File: MUDL::Cluster::AutoTree.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: buckshot clustering
+##  + MUDL unsupervised dependency learner: clustering method: auto
+##  + uses Buckshot for large datasets, otherwise Tree (hierarchical agglomerative)
 ##======================================================================
 
-package MUDL::Cluster::Buckshot;
+package MUDL::Cluster::AutoTree;
 use PDL;
+#use PDL::GA;
 use PDL::Cluster;
 use MUDL::Cluster::Method;
+use MUDL::Cluster::Buckshot;
 use MUDL::Cluster::Tree;
 use Carp;
 
 use strict;
 
-our @ISA = qw(MUDL::Cluster::Method);
+our @ISA = qw(MUDL::Cluster::Buckshot);
 our @EXPORT_OK = qw();
 
 ##======================================================================
-## Buckshot clustering: Constructor
+## AutoTree clustering: Constructor
 
-## $args = MUDL::Cluster::Buckshot->new(%args);
+## $args = MUDL::Cluster::AutoTree->new(%args);
+##   + %args: new in AutoTree
+##       nlimit      => $nmax,     # maximum $n for which to use Tree clustering (default=1024)
+##       protomethod => $method,   # how to acquire prototypes: see getprotoids(); default=guessed
+##       protoweights=> $weights,  # pdl($n): weights for stochastic prototype selection [optional]
+##                                 # - if undefined, 'rprobs' key will be tried as well
+##                                 #   (see MUDL::Cluster::Method::getcenters() for other uses of 'rprobs')
 ##
 ##   + %args: general:
 ##       data     => $data,     # pdl($d,$n)
@@ -41,7 +50,7 @@ our @EXPORT_OK = qw();
 ##   + %args: for getcenters():
 ##       ctrmethod => $cmethod, # see MUDL::Cluster::Method::getcenters()
 ##       ctrmode   => $cmode,   # 'hard' or 'soft' [default='hard']
-##       ctrm      => $m,       # m-best
+##       ctrm      => $m,       # m-best [default=4]
 ##
 ##   + %args: attachment [cut(), attach()]:
 ##       niters    => $niters,  # maximum number of attachment iterations (default=0) --> BUSTED?
@@ -59,8 +68,13 @@ our @EXPORT_OK = qw();
 sub new {
   my ($that,%args) = @_;
 
-  my ($bc);
-  $bc = $that->SUPER::new(
+  my ($ac);
+  $ac = $that->SUPER::new(
+			  ##
+			  ##-- AutoTree new
+			  nlimit      => 1024,
+			  protomethod => 'auto',
+			  protoweights=> undef,
 			  ##
 			  ##-- general
 			  data=>undef,
@@ -68,23 +82,23 @@ sub new {
 			  weight=>undef,
 			  nclusters=>2,
 			  ##
-			  ##-- prototypes
+			  ##-- Buckshot: prototypes
 			  protos=>undef,
 			  nprotos=>undef,
-			  tree=>MUDL::Cluster::Tree->new(),
-			  dist  =>'b',   ##-- Manhattan distance
-			  method=>'m',   ##-- maximum link
+			  #tree=>MUDL::Cluster::Tree->new(),    ##-- default
+			  dist  =>'u',   ##-- uncentered correlation (vector cosine)
+			  method=>'a',   ##-- group-average link
 			  ##
 			  ##-- clusterdistance() flags
 			  cddist  =>'u',  ##-- uncentered correlation (vector cosine)
-			  cdmethod=>'v',  ##-- pairwise average
+			  cdmethod=>'v',  ##-- group-average
 			  ##
-			  ##-- centroid acquisition
+			  ##-- Buckshot: centroid acquisition: DO WE REALLY NEED THIS?!
 			  ctrmethod => 'mean',
-			  ctrm    => 4,   ##-- m-best
-			  ctrmode => 'hard',
+			  ctrm      => 4,   ##-- m-best
+			  ctrmode   => 'hard',
 			  ##
-			  ##-- attachment
+			  ##-- Buckshot: attachment
 			  niters => 0,
 			  ##
 			  ##-- optional data
@@ -94,10 +108,10 @@ sub new {
 			 );
 
   ##-- setup tree
-  $bc->{tree}{$_} = $bc->{$_} foreach (grep { $_ ne 'class' && $_ ne 'tree' } keys(%$bc));
-  delete($bc->{tree}{data});
+  $ac->{tree}{$_} = $ac->{$_} foreach (grep { $_ ne 'class' && $_ ne 'tree' } keys(%$ac));
+  delete($ac->{tree}{data});
 
-  return $bc;
+  return $ac;
 }
 
 ##======================================================================
@@ -108,36 +122,24 @@ sub datakeys {
   my $bc = shift;
   return
     ($bc->SUPER::datakeys,
+     ##-- super
      #qw(tree
 	#pdata pmask clusterids clusterdists
 	#cdata cmask cdmatrix cdweight cdsizes cdelts)
-     qw(tree protos),
+     #qw(tree protos),
+     qw(protoweights),
     );
 
 }
 
-##======================================================================
 ## $bc2 = $bc->shadow(%args)
-##
-sub shadow {
-  my ($bc,%args) = @_;
-  my $bc2 = $bc->SUPER::shadow(%args);
-  $bc2->{tree} = $bc->{tree}->shadow();
-  return $bc2;
-}
+#(inherited)
 
 ##======================================================================
 ## $data = $bc->data()
 ## $data = $bc->data($data)
 ##   + get/set data -- reset related pdls on set
-sub data {
-  my $bc = shift;
-  return $bc->{data} if (!@_);
-  my $tree = $bc->{tree}->shadow;
-  my $data = $bc->SUPER::data(@_); ##-- maybe compute and/or apply SVD
-  $bc->{tree} = $tree;
-  return $bc;
-}
+#(inherited)
 
 ########################################################################
 ## Utilities: Clustering
@@ -149,8 +151,8 @@ sub data {
 
 ##======================================================================
 ## $pdata = $bc->protodata()
-##  + get prototype ids
-##  + returns $bc->{pdata} if defined
+##  + get prototyping data matrix
+##  + returns $bc->{tree}{data} if it's defined and has $bc->{nprotos} rows
 ##  + otherwise, calls $bc->getprotodata()
 sub protodata {
   my $bc = shift;
@@ -162,35 +164,67 @@ sub protodata {
 }
 
 ##======================================================================
-## $pdata = $bc->getprotodata()
-## $pdata = $bc->getprotodata($protos)
+## $pids = $ac->getprotoids()
+##  + just gets prototype ids
+##  + recognizes the following '$ac->{protomethod}' values:
+##     'auto'  : ranks if available, otherwise random-uniform
+##     'ranks' : select maximum-ranked 'protoweights' elements
+##     'random': uniform random selection
+*getprotos = \&getprotoids;
+sub getprotoids {
+  my $ac = shift;
+
+  die(ref($ac), "::getprotoids(): cowardly refusing to return an empty prototype set")
+    if (!defined($ac->{data}) || $ac->{data}->isnull);
+
+  ##-- check whether we need to select prototypes
+  my $n = $ac->{data}->dim(1);
+  my $k = $ac->{nclusters};
+  return sequence(long,$n) if ($n <= $ac->{nlimit}); ##-- nope: tree-mode clustering
+
+  ##-- get number of prototypes
+  my $nprotos = $ac->{nprotos};
+  $nprotos = sclr(rint(sqrt($k*$n))) if (!defined($nprotos));
+
+  ##-- check for prototype acquisition method
+  my $pmethod = $ac->{protomethod}||'auto';
+  $pmethod = 'ranks' if ($pmethod eq 'auto');
+  if ($pmethod =~ /^rank/ && !defined($ac->{protoweights}) && !defined($ac->{rprobs})) {
+    warn(ref($ac),"::getprotoids(): cannot select by ranks without 'protoweights': using random selection");
+    $pmethod = 'random';
+  }
+
+  my ($ranks);
+  if ($pmethod =~ /^rank/) {
+    ##-- rank selection
+    my $pweights = defined($ac->{protoweights}) ? $ac->{protoweights} : $ac->{rprobs};
+    $ranks = $pweights->qsorti; ##-- sort in ascending order (e.g. reversed)
+  } else {
+    ##-- uniform-random selection
+    $ranks = random($n)->qsorti;
+  }
+
+  return $ranks->slice("-1:-$nprotos")->qsort; ##-- be nice and sort the returned ids
+}
+
+##======================================================================
+## $pdata = $ac->getprotodata()
+## $pdata = $ac->getprotodata($protos)
+## (new)
+##  + calls $ac->getprotoids() if $protos and $ac->{protos} are undefined
+## (inherited):
 ##  + initializes prototype data: @$bc{qw(protos nprotos pdata)}
 ##  + chooses $bc->{nprotos} prototypes uniform-randomly if $bc->{protos} is undefined
 ##  + $bc->{nprotos} defaults to sqrt($k*$n)
 ##  + sets @{$bc->{tree}}{data, mask, weight}
 sub getprotodata {
-  my ($bc,$protos) = @_;
-  $protos = $bc->{protos} if (!defined($protos));
+  my ($ac,$protos) = @_;
+  $protos = $ac->{protos}      if (!defined($protos));
+  $protos = $ac->getprotoids() if (!defined($protos));
+  $ac->{nprotos} = $protos->nelem;
 
-  my ($np,$k,$d,$n) = (@$bc{qw(nprotos nclusters)}, $bc->{data}->dims);
-  if (!defined($protos)) {
-    ##-- choose random prototypes
-    $np = $bc->{nprotos} = sclr(rint(sqrt($k*$n))) if (!$np);
-    ##--
-    #random(float,$n)->minimum_n_ind($protos=zeroes(long,$np));
-    #$protos .= qsort($protos);     ##-- for ease of human inspection
-    ##--
-    my $ri = random(float,$n)->qsorti;
-    $protos = qsort($ri->slice("0:".($np-1)));
-  }
-
-  ##-- get prototype data
-  $bc->{protos} = $protos;
-  $bc->{tree}->data($bc->{data}->dice_axis(1,$protos));
-  $bc->{tree}{mask}   = $bc->{mask}->dice_axis(1,$protos) if (defined($bc->{mask}));
-  $bc->{tree}{weight} = $bc->{weight};
-
-  return $bc->{tree}{data};
+  ##-- call inherited function to set things up
+  return $ac->SUPER::getprotodata($protos);
 }
 
 
@@ -198,37 +232,14 @@ sub getprotodata {
 ## $bc = $bc->protocluster(%args)
 ##  + runs tree clustering algorithm on prototypes
 ##  + calls protodata() to ensure prototypes have been selected
-sub protocluster {
-  my ($bc,%args) = @_;
-  @$bc{keys(%args)} = values(%args);
-  $bc->protodata();
-
-  $bc->{weight} =
-    $bc->{tree}{weight} =
-      ones(double, $bc->{data}->dim(0)) if (!defined($bc->{weight}));
-
-  $bc->{tree}{nclusters} = $bc->{nclusters};
-  $bc->{tree}->cluster(%args);
-  $bc->{tree}->cut();
-
-  return $b;
-}
+#(inherited)
 
 
 ##======================================================================
 ## ($pcdata,$pcmask) = $bc->getprotocenters(%args)
 ##  + gets prototype centers (top-level)
 ##  + just dispatches to $bc->{tree} object
-sub getprotocenters {
-  my $bc = shift;
-
-  $bc->protocluster() if (!defined($bc->{tree}{clusterids}));
-
-  return @{$bc->{tree}}{qw(cdata cmask)}
-    if (defined($bc->{tree}{cdata}) && defined($bc->{tree}{cmask}));
-
-  return $bc->{tree}->getcenters(@_);   ##-- dispatch to {tree} object
-}
+#(inherited)
 
 
 ##======================================================================
@@ -236,38 +247,32 @@ sub getprotocenters {
 ##======================================================================
 
 ## $bc = $bc->attach0(%args)
+## (new)
+##  + dispatch according to size
+## (inherited)
 ##  + attaches non-prototype data to nearest prototype center
 ##  + sets %$bc keys:
 ##     clusterids => $cids, # pdl($n) : as for Cluster::Method
+##
 sub attach0 {
-  my $bc = shift;
+  my $ac = shift;
 
-  ##-- get prototype centroid data
-  my ($cdata,$cmask) = $bc->getprotocenters();
+  if ($ac->{nprotos}==$ac->{data}->dim(1)) {
+    ##-- Tree mode: just copy
+    $ac->{clusterids} = pdl(long,$ac->{tree}{clusterids}->nelem);
+    $ac->{clusterids}->index($ac->{protos}) .= $ac->{tree}{clusterids};
+    return $ac;
+  }
 
-  ##-- get attachment targets
-  my ($d,$k,$n) = ($cdata->dims, $bc->{data}->dim(1));
-  my $atgmask = ones(byte,$n);
-  $atgmask->index($bc->{protos}) .= 0;
-  my $atgids = $atgmask->which;
-  my $natgs  = $atgids->nelem;
-
-  ##-- call superclass attach()
-  my ($acids,$acdist) = $bc->SUPER::attach(rowids=>$atgids,
-					   mask=>$bc->{mask},
-					   cdata=>$cdata,
-					   cmask=>$cmask);
-
-  ##-- get grand total output
-  my $cids = $bc->{clusterids} = zeroes(long,$n);
-  $cids->index($bc->{protos}) .= $bc->{tree}{clusterids};
-  $cids->index($atgids)       .= $acids;
-
-  return $bc;
+  ##-- Buckshot mode
+  return $ac->SUPER::attach0(@_);
 }
 
 
 ## $bc = $bc->attachN(%args)
+## (new)
+##  + dispatch method
+## (inherited)
 ##  + attaches all data to nearest center
 ##  + performs at most $bc->{niters} iterations
 ##  + required keys:
@@ -276,52 +281,9 @@ sub attach0 {
 ##      ctrXXX,             ##-- centroid data acquisition flags
 ##      cdmatrix,           ##-- used for fast attachment if present
 sub attachN {
-  my $bc = shift;
-
-  ##-- iteration control params
-  my $niters = $bc->{niters};
-
-  ##-- centroid data
-  my ($cdata,$cmask);
-
-  ##-- target data
-  my $atgids = sequence(long,$bc->{data}->dim(1));
-
-  ##-- output data
-  my $cids_1 = $bc->{clusterids}; ##-- previous assignment, to check for changes
-  my $cdist  = zeroes(double, $atgids->nelem);
-  my $cids   = pdl($cids_1);
-
-  my ($i);
-  for ($i=0; $niters>0 && $i<$niters; $i++) {
-    ($cdata,$cmask) = $bc->getcenters(@_);   ##-- get centroid data
-
-    #if (!defined($bc->{cdmatrix})) {
-      ##-- compute cluster-to-centroid distances on-the-fly
-      attachtonearest(@$bc{qw(data mask weight)},
-		      $atgids,
-		      $cdata, $cmask,
-		      $cids,  $cdist,
-		      $bc->cddist, $bc->cdmethod);
-    #} else {
-    #  ##-- we already have row-to-centroid distances: use 'em
-    #  attachtonearestd($bc->{cdmatrix}, $atgids, $cids, $cdist);
-    #}
-
-    ##-- BUG: we get empty clusters here sometimes!
-
-    last if (all($cids==$cids_1));     ##-- check for changes
-    $bc->{clusterids} = $cids;         ##-- update {clusterids} flag
-    ($cids_1,$cids) = ($cids,$cids_1); ##-- swap temps
-
-    ##-- invalidate data depending on previous cluster assignment
-    delete(@$bc{qw(csizes celtmask celts cdmatrix cweights),
-		#qw(rprobs),
-		qw(r2cprobs beta),
-	       });
-  }
-
-  return $bc;
+  my $ac = shift;
+  return $ac if ($ac->{nprotos}==$ac->{data}->dim(1));
+  return $ac->SUPER::attachN(@_);
 }
 
 
@@ -332,40 +294,15 @@ sub attachN {
 ##======================================================================
 ## $bc = $bc->cluster(%args)
 ##  + actually runs clustering algorithm
-sub cluster {
-  my ($bc,%args) = @_;
-  @$bc{keys(%args)} = values(%args);
-
-  ##-- sanity check(s)
-  #$bc->{mask}   = ones(long,$bc->{data}->dims)     if (!defined($bc->{mask}));
-  $bc->{mask}   = !$bc->{data}->isbad              if (!defined($bc->{mask}));
-  $bc->{weight} = ones(double,$bc->{data}->dim(0)) if (!defined($bc->{weight}));
-
-  $bc->protocluster();   ##-- cluster prototypes
-  $bc->attach0();        ##-- attach non-protos to proto centroids
-  $bc->attachN();        ##-- re-attachment EM
-
-  return $bc;
-}
+##  + calls protocluster(), attach0(), attachN()
+#(inherited)
 
 
 ##======================================================================
 ## $clusterids = $tc->cut()
 ## $clusterids = $tc->cut($nclusters)
 ##   + cut tree, returns vector clusterids($n)
-sub cut {
-  my ($bc,$nclusters) = @_;
-  $bc->{nclusters} = $nclusters if (defined($nclusters));
-  $bc->{nclusters} = 2 if (!defined($bc->{nclusters}));
-
-  ##-- maybe re-cluster?
-  if (!defined($bc->{clusterids}) || $bc->{clusterids}->dim(0) != $bc->{data}->dim(1)) {
-    $bc->cluster();
-  }
-
-  return $bc->{clusterids};
-}
-
+##   + may call cluster() if dimensions don't match up correctly
 
 
 ########################################################################

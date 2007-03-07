@@ -31,6 +31,7 @@ our @EXPORT_OK = qw();
 ##   + svd %args:
 ##       svd      => $svd,     # a MUDL::SVD object (optional), called on data($data)
 ##       svdr     => $r,       # number of reduced dimensions (==$svd->{r})
+##       svd_save => $bool,    # whether to try and re-use same SVD for different data()
 ##   + for clusterdistance():
 ##       cddist   => $cddist,   # clusterdistance() dist   flag (default={dist})     : for clusterdistance()
 ##       cdmethod => $cdmethod, # clusterdistance() method flag (default=from method): for clusterdistance()
@@ -90,6 +91,7 @@ sub new {
 			     data=>undef,
 			     ##-- svd data
 			     svd=>undef,
+			     svd_save=>0,
 			     ##-- flags
 			     dist=>'b',
 			     method=>'m',
@@ -120,7 +122,7 @@ sub datakeys {
     (qw(data mask weight ctree linkdist clusterids),  #leafdist
      qw(csizes celtmask celts cdmatrix cweights),
      qw(rprobs r2cprobs beta),
-     qw(protos),
+     qw(protos protoweights),
      #qw(svd),
     );
 }
@@ -147,7 +149,10 @@ sub data {
   ##-- svd
   if (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $data->dim(0)) {
     require MUDL::SVD;
-    $cm->{svd}->compute($data);
+    $cm->{svd}->compute($data) if (!defined($cm->{svd}{v})                   ##-- new SVD
+				   || $data->dim(0) != $cm->{svd}{v}->dim(1) ##-- dimension mismatch
+				   || !$cm->{svd_save}                       ##-- user request
+				  );
     #$data = $cm->{svd}{u};
     $data = $cm->{svd}->apply($data);
   }
@@ -492,8 +497,18 @@ sub mmaxmask {
 ##      ctrmode => $which,     # 'hard' or 'soft', for m-best methods: default='hard'
 ##      cddist => $cddist,     # distance method (default='u')
 ##      cdmethod => $cdmethod, # link type (default='v')
+##      cweights => $cweights, # pdl($k,$n) ~ p(t_n|c_k) for 'wsum' method
+##      rprobs  => $rowprobs,  # pdl($n) ~ p(t_n) : for 'weighted' method
 ##  + known methods:
-##      'mean', 'median', ...
+##      mean           # arithmetic mean of 'hard' cluster elements
+##      median         # median of 'hard' cluster elements
+##      wsum           # general weighted sum, req. 'cweights'=>pdl($k,$n)~p(t_n|c_k)
+##      mbest_mean     # arithmetic mean of m-best cluster elements, via clusterDistanceMatrix()
+##      mbest_inverse  # weighted m-best sum using clusterDistanceMatrix() inverse
+##      weighted       # weighted sum using clusterDistanceMatrix() & 'rprobs'=>pdl($n)~p(t_n)
+##      mbest_weighted # weighted m-best using clusterDistanceMatrix() & 'rprobs'=>pdl($n)~p(t_n)
+##    TODO:
+##      bayes          # Bayesian inversion, hopefully using membershipProbPdl() and 'rprobs'
 sub getcenters {
   my ($cm,%args) = @_;
 
@@ -557,8 +572,8 @@ sub d2c_mean {
 sub d2c_median {
   my $cm = shift;
   my ($cdata,$cmask) = $cm->d2c_pdls(@_);
-  getclustermean(@$cm{qw(data mask clusterids)}, $cdata,$cmask);
-  ##-- stupidity check
+  getclustermedian(@$cm{qw(data mask clusterids)}, $cdata,$cmask);
+  ##-- sanity check
   croak(__PACKAGE__, "::d2c_mean(): PDL::Cluster::getclustermedian() returned zero matrix!")
     if (all($cdata==0));
   return ($cdata,$cmask);
@@ -581,7 +596,7 @@ sub ctrmode {
 ## ($cdata,$cmask) = $cm->d2c_wsum(%args)
 ##  + general abstract method for weighted sums
 ##  + %$cm keys:
-##     cweights => $cweights, # pdl($k,$n) ~ p(c_k | t_n)
+##     cweights => $cweights, # pdl($k,$n) ~ p(t_n|c_k)
 ##  + returns d2c_mean() if $cweights is not defined
 sub d2c_wsum {
   my $cm = shift;
@@ -723,7 +738,7 @@ sub d2c_mbest_weighted {
 
   ###-- get weight matrix
   my $cweights = $mbestmask->convert(double);
-  $cweights   /= $cweights->xchg(0,1)->sumover;  ##-- normalize by cluster
+  $cweights   /= $cweights->xchg(0,1)->sumover;  ##-- normalize by cluster ~ p(c)
   $cweights   *= $rprobs->slice("*1,:");         ##-- apply row-weights
   $cweights   /= $cweights->xchg(0,1)->sumover;  ##-- ... and normalize
 
@@ -1132,18 +1147,25 @@ sub leafEnum {
   return $lenum;
 }
 
-## $clusterEnum = $cm->clusterEnum()
+## $clusterEnum = $cm->clusterEnum(%args)
 ##  + returns enums representing the clusters
+##  + additional %args:
+##     offset=>$offset # added to label & index for each cluster
+##     prefix=>$str,   # cluster prefix (default='c')
+##  + other %args are passed to MUDL::Enum->new() if it is called
 sub clusterEnum {
   require MUDL::Enum;
   my ($cm,%args) = @_;
   my $k = $cm->{nclusters};
+  my $prefix = defined($args{prefix}) ? $args{prefix} : 'c';
+  my $offset = $args{offset}||0;
+  delete(@args{qw(prefix offset)});
 
   ##-- generate enums
   my $cenum = $cm->{cenum};
   if (!defined($cenum)) {
     $cenum = MUDL::Enum->new(%args);
-    $cenum->addIndexedSymbol('c'.$_, $_) foreach (0..($k-1));
+    $cenum->addIndexedSymbol($prefix.($_+$offset), $_+$offset) foreach (0..($k-1));
   }
 
   return $cenum;

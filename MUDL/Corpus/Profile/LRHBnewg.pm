@@ -60,7 +60,7 @@ sub finishPdl {
     $H_bg = $pdl->slice("($z),,");
 
     ##-- get conditional bigram probabilities: p(b|t)
-    $P_bg  = $fH_bg / $f_tug->slice("*1,");
+    $P_bg  = $H_bg / $f_tug->slice("*1,");
     $P_bg *= 0.5; ##-- halve "success" probabilities to ensure monotonicity
 
     ##-- get negated probabilities: p(¬b|t) = 1 - p(b|t)
@@ -71,7 +71,7 @@ sub finishPdl {
 
     ##-- get Bernoulli entropy estimates
     # H(b|t) = -p(b|t)*log(p(b|t)) - p(¬b|t)*log(p(¬b|t))
-    $P_bg  *= -log($P_bg)
+    $P_bg  *= -log($P_bg);
     $P_bg  /= $log2;
 
     $P_nbg *= -log($P_nbg);

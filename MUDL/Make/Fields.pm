@@ -243,8 +243,9 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass lrlab svdr),
-		     qw(xvars->tblabel nlbds nbds ntgs),
+		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass lrlab),
+		     qw(svdlabel svdr),
+		     qw(bdlabel nlbds nbds tglabel ntgs),
 		     qw(auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
@@ -725,26 +726,39 @@ our %FIELDS =
    'xvars->tck' => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
 
    ##-- MetaProfile xvars aliases
+   'method'=>'xlabel',
    'xlabel'     => { path=>[qw(xvars xlabel)], title=>'method',
 		     alt=>[qw(xvars->tcclass xvars->tcm xvars->tccm),
 			   qw(tcclass tcm tccm),
 			   qw(lrlabel xvars->lrlabel), ##-- hack
 			  ],
 		   },
-   'method'=>'xlabel',
+
+   'dist'=>'dlabel',
    'dlabel'     => { path=>[qw(xvars dlabel)], title=>'dist',
 		     alt=>[qw(xvars->tcd xvars->tccd),
 			   qw(tcd tccd),
 			   qw(lrlabel xvars->lrlabel), ##-- hack
 			  ],
 		   },
-   'dist'=>'dlabel',
+
+   'feat'=>'flabel',
    'flabel'     => { path=>[qw(xvars flabel)], title=>'feat',
 		     alt=>[qw(lrwhich xvars->lrwhich),
 			   qw(lrlabel xvars->lrlabel), ##-- hack
 			  ],
 		   },
-   'feat'=>'flabel',
+
+
+   'bds' => 'bdlabel',
+   'bdlabel'     => { path=>[qw(xvars bdlabel)], title=>'bds', condense=>0, },
+
+   'tgs' => 'tglabel',
+   'tglabel'     => { path=>[qw(xvars tglabel)], title=>'tgs', condense=>0, },
+
+   'svd'      => 'svdlabel',
+   'svdlabel' => { path=>[qw(xvars svdlabel)], title=>'svd', condense=>0, },
+
 
    ##-- Corpus
    corpus => {

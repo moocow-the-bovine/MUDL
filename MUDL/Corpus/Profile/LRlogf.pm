@@ -7,13 +7,13 @@
 ##======================================================================
 
 package MUDL::Corpus::Profile::LRlogf;
-use MUDL::Corpus::Profile::LRBigrams;
+use MUDL::Corpus::Profile::LRFBigrams;
 use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
 use strict;
-our @ISA = qw(MUDL::Corpus::Profile::LRlogf); #)
+our @ISA = qw(MUDL::Corpus::Profile::LRFBigrams); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -55,7 +55,7 @@ sub new {
 
 ## $pdl3d = $lr->finishPdl($pdl3d);
 sub finishPdl {
-  my ($lr,$pdl) = @_;
+  my ($lr,$pdl,%args) = @_;
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
   ##-- get zero mask
