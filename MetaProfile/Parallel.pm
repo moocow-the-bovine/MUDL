@@ -213,7 +213,7 @@ sub update {
   ##-- update: cluster method
   $mp->vmsg($vl_info, "update(): cm_k()\n");
   my $cm   = $mp->{cm};
-  my $cm_k = $mp->{cm_k} = $cm->shadow(enum=>$mp->{tenum_k}, nprotos=>undef);
+  my $cm_k = $mp->{cm_k} = $cm->shadow(enum=>$mp->{tenum_k}, nprotos=>undef, nclusters=>$mp->{nclusters});
 
   ##-- update: cluster method: SVD
   $mp->vmsg($vl_info, "        : SVD: present   ? ", ($cm->{svd} ? 'yes' : 'no'), "\n");
@@ -258,7 +258,7 @@ sub update {
   $mp->vmsg($vl_info, "update(): cluster: cut(k=$mp->{nclusters})\n");
   $cm_k->cut($mp->{nclusters});
 
-  ##-- update: potentially apply hard-clustering bonus (?)
+  ##-- update: potentially apply hard-clustering bonus (?) --> this ought to happen in clusterDistanceMatrx() !
   $mp->vmsg($vl_info, "update(): cluster: clusterDistanceMatrix()\n");
   my $cdm_k = $cm_k->clusterDistanceMatrix();
   if ($cm_k->{cdmethod} =~ /\+bb/) {
