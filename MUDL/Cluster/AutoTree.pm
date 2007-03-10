@@ -27,6 +27,7 @@ our @EXPORT_OK = qw();
 ## $args = MUDL::Cluster::AutoTree->new(%args);
 ##   + %args: new in AutoTree
 ##       nlimit      => $nmax,     # maximum $n for which to use Tree clustering (default=1024)
+##       maxprotos   => $nmax,     # maximum number of prototypes to choose
 ##
 ##   + %args: general:
 ##       data     => $data,     # pdl($d,$n)
@@ -76,6 +77,7 @@ sub new {
 			  ##
 			  ##-- AutoTree new
 			  nlimit      => 1024,
+			  maxprotos   => 1024,
 			  protomethod => 'auto',
 			  #protoweights=> undef,
 			  ##
@@ -181,6 +183,12 @@ sub getprotoids {
   my $n = $ac->{data}->dim(1);
   my $k = $ac->{nclusters};
   return sequence(long,$n) if ($n <= $ac->{nlimit}); ##-- nope: tree-mode clustering
+
+  ##-- check whether we need to cap number of protos
+  my $np    = $ac->{nprotos};
+  my $maxp  = $ac->{maxprotos};
+  my $autop = sclr(rint(sqrt(pdl($k)*$n)));
+  $ac->{nprotos} = $maxp if (defined($maxp) && !defined($np) && $autop > $maxp);
 
   ##-- dispatch to Buckshot
   return $ac->SUPER::getprotoids(@_);

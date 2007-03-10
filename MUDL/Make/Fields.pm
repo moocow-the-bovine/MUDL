@@ -30,7 +30,7 @@ our @_eval_base_fields =
    ##-- Meta (token-wise)
    qw(pr:g rc:g F:g ar:g),
    qw(pr:t rc:t F:t ar:t),
-   qw(pr:tk rc:tk F:t ar:tk),
+   qw(pr:tk rc:tk F:tk ar:tk),
 
    ##-- Adjusted Meta (token-wise)
    qw(ampr:g amrc:g amF:g),
@@ -902,6 +902,13 @@ our %FIELDS =
       ##-------------------------------------------------
       ## Eval: Ambiguity Rates: ar:*
       "ar:$gt" => { path=>[$p, qw(arate1)],  n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>" ar:$gt" },
+
+      ##-------------------------------------------------
+      ## Eval: bitwise entropies
+      (map {
+	my $bp = $_;
+	("${bp}:$gt" => { path=>[$p,$bp], n=>1, fmt=>'%.2f', eval=>'0+$_',  title=>"${bp}:${gt}", })
+      } qw(H1 H2 H12 H1g2 H2g1 Hu1 Hu2 Hu12 Hu1g2 Hu2g1)),
 
       ##-------------------------------------
       ## Eval: Meta-*: m*:*

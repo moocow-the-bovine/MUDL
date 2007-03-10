@@ -330,6 +330,9 @@ sub attach0 {
   $cids->index($bc->{protos}) .= $bc->{tree}{clusterids};
   $cids->index($atgids)       .= $acids;
 
+  ##-- clear cache
+  delete($bc->{tpcdmatrix});
+
   return $bc;
 }
 

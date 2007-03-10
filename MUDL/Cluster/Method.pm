@@ -50,7 +50,7 @@ our @EXPORT_OK = qw();
 ##       ctrm      => $m,       # for m-best methods
 ##   + for getprofile():
 ##       tpmethod  => $tpmethod, # string: acquisition method: see getprofile()
-##       tm        => $nw,       # maximum number of witnesses per cluster
+##       tpm       => $tpm,      # maximum number of "witnesses" per cluster
 ##   + optional data:
 ##       enum     => $enum,     # leaf-id enumerator
 ##       cenum    => $enum,     # cluster-id enumerator
@@ -106,7 +106,7 @@ sub new {
 			     cdmethod => 'v',
 			     cdbonus => 1, ##-- hard-clustering bonus
 			     ##-- getprofile() flags
-			     tpmethod => 'full',
+			     tpmethod => 'centers',
 			     ##-- output data
 			     clusterids=>undef,
 			     nclusters=>2,
@@ -300,7 +300,10 @@ sub attach {
   my $cdist = zeroes(double,$nrows);
 
   ##-- attachment
-  attachtonearestd($tpcdm, $rowids, $cids, $cdist);
+  attachtonearestd($tpcdm, sequence(long,$rowids->nelem), $cids, $cdist);
+
+  ##-- clear cached data
+  #delete($cm->{tpcdmatrix});
 
   ##-- return
   return ($cids,$cdist);
@@ -555,13 +558,14 @@ sub profileDistanceMatrix {
   }
 
   ##-- Grand Unified DataMatrix: sizes & elements
-  my $tpcsizes = $cm->profileSizes();
-  my $tpcelts  = $cm->profileElements();
+  my ($tpcsizes,$tpcelts);
+  clustersizes   ($tpcids, $tpcsizes=zeroes(long,$k));
+  clusterelements($tpcids, $tpcsizes, $tpcelts =zeroes(long,$tpcsizes->max,$k)-1);
 
   ##-- ye olde guttes
   clusterdistancematrix($tmpdata, $tmpmask, $cm->{weight},
 			#$rowids=
-			(sequence(long,$nRows)+$nTrimmed),
+			($nTrimmed+sequence(long,$nRows)),
 			$tpcsizes, $tpcelts,
 			$cm->{tpcdmatrix},
 			@args{qw(cddist cdmethod)});
@@ -570,15 +574,15 @@ sub profileDistanceMatrix {
     if ($cm->{tpcdmatrix}->inplace->setnantobad->nbad > 0);
 
   ##-- apply hard-clustering bonus ?
-  if ($args{cdmethod} =~ /\+b/ && $args{cdbonus}) {
+  if ($args{cdmethod} =~ /\+b/ && $args{cdbonus} && defined($cm->{clusterids})) {
     print STDERR
       ("<<<DEBUG>>>: ", ref($cm),
        "::profileDistanceMatrix() adding bonus for nRows=$nRows rowids.\n",
       );
 
-    my $cemask     = $cm->clusterElementMask();
-    my $row_cemask = $cemask->dice_axis(1, $rowids);
-    $cm->{cdmatrix}->where($row_cemask) .= 0;
+    my $cemask        = $cm->clusterElementMask();
+    my $row_cemask    = $cemask->dice_axis(1, $rowids);
+    $cm->{tpcdmatrix}->where($row_cemask) .= 0;
   }
 
   ##-- unset recursion detection flag
@@ -614,7 +618,7 @@ sub clusterDistanceMatrix {
 
   ##-- just return pre-computed profile-matrix if requested & defined
   $args{cdprofile} = $cm->{cdprofile} if (!defined($args{cdprofile}));
-  if ($args{cdprofile} && defined($cm->{tpcdmatrix})) {
+  if ($args{cdprofile}) {
     $cm->{cdmatrix} = $cm->profileDistanceMatrix(%args);
     delete($cm->{_in_cdmatrix});
     return $cm->{cdmatrix};
