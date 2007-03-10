@@ -18,7 +18,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LRFBigrams); #)
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
 ##   + new %args:
-##       eps => $eps,               ##-- replaces log(0): default: 1 or 0.1*(minimum non-zero value)
+##       eps => $eps,    ##-- added to all frequency values; avoid log(0)==-inf: default=1
 ##
 ##   + %args:
 ##       eos => $eos_str,
@@ -63,23 +63,28 @@ sub finishPdl {
 
   ##-- get minimum value
   my $eps = $lr->{eps};
-  if (!defined($eps)) {
-    $eps  = $pdl->where($nzmask)->flat->minimum;
-    if ($eps > 1) {
-      $eps .= 1;
-    } else {
-      $eps *= 0.1;
-    }
-  }
-
-  ##-- set eps
-  $pdl->where(!$nzmask) .= $eps;
+  ##-- eps: guess via non-zero minimum
+  #if (!defined($eps)) {
+  #  $eps  = $pdl->where($nzmask)->flat->minimum;
+  #  if ($eps > 1) {
+  #    $eps .= 1;
+  #  } else {
+  #    $eps *= 0.1;
+  #  }
+  #}
+  ##-- eps: set zeroes
+  #$pdl->where(!$nzmask) .= $eps;
+  ##
+  ##-- eps: simple: use constant
+  $eps  = 1 if (!defined($eps));
+  $pdl += $eps;
 
   ##-- do log
   $pdl->inplace->log;
 
-  ##-- hack
-  $pdl->inplace->setnantobad->inplace->setbadtoval(0);
+  ##-- hack in case we still have infinite values [make 'em bad]
+  #$pdl->inplace->setnantobad->inplace->setbadtoval(0);
+  $pdl->inplace->setnantobad();
 
   return $pdl;
 }

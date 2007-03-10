@@ -29,8 +29,8 @@ our @EXPORT_OK = qw();
 ##       nlimit      => $nmax,     # maximum $n for which to use Tree clustering (default=1024)
 ##       protomethod => $method,   # how to acquire prototypes: see getprotoids(); default=guessed
 ##       protoweights=> $weights,  # pdl($n): weights for stochastic prototype selection [optional]
-##                                 # - if undefined, 'rprobs' key will be tried as well
-##                                 #   (see MUDL::Cluster::Method::getcenters() for other uses of 'rprobs')
+##                                 # - if undefined, 'dataweights' key will be tried as well
+##                                 #   (see MUDL::Cluster::Method::getcenters() for other uses of 'dataweights')
 ##
 ##   + %args: general:
 ##       data     => $data,     # pdl($d,$n)
@@ -189,7 +189,7 @@ sub getprotoids {
   ##-- check for prototype acquisition method
   my $pmethod = $ac->{protomethod}||'auto';
   $pmethod = 'ranks' if ($pmethod eq 'auto');
-  if ($pmethod =~ /^rank/ && !defined($ac->{protoweights}) && !defined($ac->{rprobs})) {
+  if ($pmethod =~ /^rank/ && !defined($ac->{protoweights}) && !defined($ac->{dataweights})) {
     warn(ref($ac),"::getprotoids(): cannot select by ranks without 'protoweights': using random selection");
     $pmethod = 'random';
   }
@@ -197,7 +197,7 @@ sub getprotoids {
   my ($ranks);
   if ($pmethod =~ /^rank/) {
     ##-- rank selection
-    my $pweights = defined($ac->{protoweights}) ? $ac->{protoweights} : $ac->{rprobs};
+    my $pweights = defined($ac->{protoweights}) ? $ac->{protoweights} : $ac->{dataweights};
     $ranks = $pweights->qsorti; ##-- sort in ascending order (e.g. reversed)
   } else {
     ##-- uniform-random selection
@@ -259,7 +259,7 @@ sub attach0 {
 
   if ($ac->{nprotos}==$ac->{data}->dim(1)) {
     ##-- Tree mode: just copy
-    $ac->{clusterids} = pdl(long,$ac->{tree}{clusterids}->nelem);
+    $ac->{clusterids} = zeroes(long,$ac->{tree}{clusterids}->nelem);
     $ac->{clusterids}->index($ac->{protos}) .= $ac->{tree}{clusterids};
     return $ac;
   }

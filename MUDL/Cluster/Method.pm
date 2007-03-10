@@ -8,6 +8,7 @@
 package MUDL::Cluster::Method;
 use PDL;
 use PDL::Cluster;
+#use PDL::GA;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
 use Carp;
@@ -21,7 +22,7 @@ our @EXPORT_OK = qw();
 ## Generic Clustering Method : Constructor
 
 ## $cm = MUDL::Cluster::Method->new(%args);
-##   + %args:
+##   + basic %args:
 ##       class   => $classname, # string: class-name or MUDL::Cluster:: suffix
 ##   + data %args:
 ##       data     => $data,    # pdl($d,$n)
@@ -42,20 +43,23 @@ our @EXPORT_OK = qw();
 ##                              #   AND
 ##                              #     $cdbonus is a true value (default=true)
 ##   + for getcenters():
-##       ctrmethod => $cmethod, # see getcenters()
+##       ctrmethod => $cmethod, # string: acquisition method: see getcenters()
 ##       ctrmode   => $cmode,   # 'hard' or 'soft' [default='hard']
-##       ctrm      => $m,       # m-best
+##       ctrm      => $m,       # for m-best methods
+##   + for getprofile():
+##       tpmethod => $tpmethod, # string: acquisition method: see getprofile()
+##       tm        => $nw,      # maximum number of witnesses per cluster
 ##   + optional data:
-##       enum     => $enum,    # leaf-id enumerator
-##       cenum    => $enum,    # cluster-id enumerator
+##       enum     => $enum,     # leaf-id enumerator
+##       cenum    => $enum,     # cluster-id enumerator
 ##   + additional data:
 ##     - post-cluster():
 ##         #tree     => $ctree,   # pdl(2,$n) gives structure of clustering tree (see below) [(2,n-1) used]
 ##         #linkdist => $vector,  # pdl($n) array giving distances between sister nodes [(n-1) used]
-##     - post-cut($k):
+##     - post cut($k):
 ##         nclusters  => $k,                # number of clusters
 ##         clusterids => $rowid2clusterid,  # pdl($n) maps data rows to cluster-id (range 0..($k-1))
-##     - post-leafdistances():
+##     - post clusterDistanceMatrix()
 ##         cdmatrix   => $cdmatrix, # pdl($k,$n) maps (clusterid,leaf) to distance(leaf,clusterid)
 ##   + where:
 ##       $n : number of data instances (rows)
@@ -121,8 +125,9 @@ sub datakeys {
   return
     (qw(data mask weight ctree linkdist clusterids),  #leafdist
      qw(csizes celtmask celts cdmatrix cweights),
-     qw(rprobs r2cprobs beta),
+     qw(dataweights dataprobs r2cprobs beta), #rprobs
      qw(protos protoweights),
+     qw(tpdata tpmask tpcids),
      #qw(svd),
     );
 }
@@ -218,6 +223,7 @@ sub shadow {
 #  return $cdm;
 #}
 
+
 ########################################################################
 ## Attachment
 ########################################################################
@@ -229,8 +235,8 @@ sub shadow {
 ##      rowids=>$rowids  # long($nrows)   (default: sequence($n2))
 ##      cdata=>$cdata,   # double($d,$k)  (default: $cm->getcenters)
 ##      cmask=>$cmask,   # long($d,$k)    (default: $cm->getcenters)
-##      cddist=>$cdd,    # as for getcenters()  (default: $cm->cddist)
-##      cdmethod=>$cdm,  # as for getcenters()  (default: $cm->cdmethod)
+##      cddist=>$cdd,    # for PDL::Cluster::clusterdistance() (default: $cm->cddist)
+##      cdmethod=>$cdm,  # for PDL::Cluster::clusterdistance() (default: $cm->cdmethod)
 ##  + attaches $rowids rows of $data to nearest cluster center,
 ##    as returned by $cm->getcenters()
 sub attach {
@@ -354,7 +360,9 @@ sub clusterElements {
 }
 
 ## $cdmatrix = $cm->clusterDistanceMatrix(%args)
-##  + gets cluster distance matrix $cdmatrix = $cm->{cdmatrix}
+##  + gets cluster-to-datum distance matrix $cdmatrix = $cm->{cdmatrix}
+##  + WARNING: O($n**2)
+##  + see centerDistanceMatrix() or protoDistanceMatrix() for other options
 ##  + %args:
 ##     rowids   => $pdl,    ## rows to populate (default: sequence($n))
 ##     cddist   => $dist,   ## default/clobber: $cm->{cddist}
@@ -368,6 +376,11 @@ sub clusterDistanceMatrix {
 
   ##-- just return pre-computed matrix if defined
   return $cm->{cdmatrix} if (defined($cm->{cdmatrix}));
+
+  ##-- check & set recursion-detection flag
+  confess(ref($cm), "::clusterDistanceMatrix(): recursion detected: probably a bad ctrmethod")
+    if ($cm->{_in_cdmatrix});
+  $cm->{_in_cdmatrix}=1;
 
   ##-- arg parsing
   $args{cddist}   = $cm->cddist()   if (!defined($args{cddist}));
@@ -410,8 +423,13 @@ sub clusterDistanceMatrix {
     $cm->{cdmatrix}->where($row_cemask) .= 0;
   }
 
+  ##-- unset recursion detection flag
+  delete($cm->{_in_cdmatrix});
+
   return $cm->{cdmatrix};
 }
+
+
 
 
 ##======================================================================
@@ -497,20 +515,27 @@ sub mmaxmask {
 ##      ctrmode => $which,     # 'hard' or 'soft', for m-best methods: default='hard'
 ##      cddist => $cddist,     # distance method (default='u')
 ##      cdmethod => $cdmethod, # link type (default='v')
-##      cweights => $cweights, # pdl($k,$n) ~ p(t_n|c_k) for 'wsum' method
-##      rprobs  => $rowprobs,  # pdl($n) ~ p(t_n) : for 'weighted' method
-##  + known methods:
+##      cweights => $cweights, # pdl($k,$n) ~ p(t_n|c_k) for 'wsum' methods
+##      dataweights  => $dweights,  # pdl($n) ~ f(t_n) : for 'weighted' methods (formerly 'rprobs')
+##
+##  + known methods, "safe":
 ##      mean           # arithmetic mean of 'hard' cluster elements
 ##      median         # median of 'hard' cluster elements
 ##      wsum           # general weighted sum, req. 'cweights'=>pdl($k,$n)~p(t_n|c_k)
+##  + known methods, "unsafe" (i.e., methods which call clusterDistanceMatrix())
 ##      mbest_mean     # arithmetic mean of m-best cluster elements, via clusterDistanceMatrix()
 ##      mbest_inverse  # weighted m-best sum using clusterDistanceMatrix() inverse
-##      weighted       # weighted sum using clusterDistanceMatrix() & 'rprobs'=>pdl($n)~p(t_n)
-##      mbest_weighted # weighted m-best using clusterDistanceMatrix() & 'rprobs'=>pdl($n)~p(t_n)
+##      weighted       # weighted sum using clusterDistanceMatrix() & $dataweights
+##      mbest_weighted # weighted m-best using clusterDistanceMatrix() & $dataweights
 ##    TODO:
-##      bayes          # Bayesian inversion, hopefully using membershipProbPdl() and 'rprobs'
+##      bayes          # Bayesian inversion, hopefully using membershipProbPdl() and 'dataweights'
 sub getcenters {
   my ($cm,%args) = @_;
+
+  ##-- check & set recursion-detection flag
+  confess(ref($cm), "::getcenters(): recursion detected: probably a bad ctrmethod/cdmethod combination")
+    if ($cm->{_in_getcenters});
+  $cm->{_in_getcenters}=1;
 
   ##-- parse arguments
   @$cm{keys(%args)} = values(%args); ##-- clobber
@@ -523,12 +548,20 @@ sub getcenters {
   $ctrmethod = $cm->{ctrmethod} = 'mean' if (!defined($ctrmethod));
 
   ##-- get method subroutine
-  my $msub = $cm->can($ctrmethod);
-  $msub = $cm->can("d2c_$ctrmethod") if (!defined($msub));
+  #my $msub = $cm->can($ctrmethod); ##-- bad for e.g. 'median' (returns PDL::median)
+  #$msub = $cm->can("d2c_$ctrmethod") if (!defined($msub));
+  ##--
+  my $msub = $cm->can("d2c_$ctrmethod");
   croak(ref($cm), "::getcenters(): unknown centroid discovery method '$ctrmethod'")
     if (!defined($msub));
 
-  return $msub->($cm);
+  ##-- dispatch
+  my ($cdata,$cmask) = @$cm{qw(cdata cmask)} = $msub->($cm);
+
+  ##-- unset recursion detection flag
+  delete($cm->{_in_getcenters});
+
+  return ($cdata,$cmask);
 }
 
 ##----------------------------------------------------------------------
@@ -537,7 +570,7 @@ sub getcenters {
 
 ## ($cdata,$cmask) = $cm->d2c_pdls()
 ##   + gets initial (empty) output pdls of proper size
-##   + $cm keys:
+##   + $cm keys (also set)
 ##       cdata => $cdata,  ##-- pdl(double,$d,$k)
 ##       cmask => $cmask,  ##-- pdl(long,  $d,$k)
 sub d2c_pdls {
@@ -547,7 +580,30 @@ sub d2c_pdls {
   my ($cdata,$cmask) = @$cm{qw(cdata cmask)};
   $cdata = zeroes(double,$d,$k) if (!defined($cdata));
   $cmask = ones(long,$d,$k)     if (!defined($cmask));
-  return @$cm{qw(cdata cmask)} = ($cdata,$cmask);
+  return
+    @$cm{qw(cdata cmask)} = ($cdata,$cmask);
+}
+
+## $dprobs = $cm->dataprobs(%args)
+##  + get data (row) probabilities
+##  + $dprobs: pdl($n): $dprobs(w) ~ p(w)
+##  + %args and/or $cm keys:
+##      dataweights => $dweights,  ##-- pdl($n) ~ f(w)  (default: ones($n))
+##  + sets & respects keys:
+##      dataprobs => $dprobs,      ##-- return value
+sub dataprobs {
+  my ($cm,%args) = @_;
+
+  return $cm->{dataprobs} if (defined($cm->{dataprobs}));
+
+  ##-- get weights
+  my $n        = $cm->{ndata};
+  my $dweights = $args{dweights};
+  $dweights    = $cm->{dweights} if (!defined($dweights));
+  $dweights    = ones(double,$n) if (!defined($dweights));
+
+  ##-- ... and normalize 'em
+  return $cm->{dataprobs} = $dweights / $dweights->flat->sumover;
 }
 
 ##----------------------------------------------------------------------
@@ -669,11 +725,12 @@ sub d2c_mbest_inverse {
   $cweights   /= $cdmin;        ##-- numerator
   $cweights->inplace->pow(-1);  ##-- invert
   $cweights   *= $mbestmask;    ##-- apply m-best mask
-  $cweights   /= $cweights->xchg(0,1)->sumover; ##-- ... and normalize by col
+  $cweights   /= $cweights->xchg(0,1)->sumover; ##-- ... and normalize by col (i.e. by cluster)
 
   ##-- get centroid data as weighted sum
   return $cm->d2c_wsum(@_);
 }
+
 
 ## ($cdata,$cmask) = $cm->d2c_weighted(%args);
 ## + gets centers as: c(i) = \sum_{w} p(w|c) w(i)
@@ -681,18 +738,15 @@ sub d2c_mbest_inverse {
 ##     p(w|c) = p(c|w)p(w) / \sum_w p(c|w)p(w)
 ##     p(c|w) = / 1 if w \in c
 ##              \ 0 otherwise
-##     p(w)   = $rprobs(w)
+##     p(w)   = $dataprobs(w)                   ##-- see dataprobs()
 ##   - so:
 ##     c(i)   = \sum_{w \in c} p(w) w(i)
 ## + %$cm keys:
-##     rprobs  => $rprobs,  # row-probabilities: pdl($n)    ~ p(w)
-##                          # if undefined, returns d2c_mean()
+##     dataweights => $dweights, # data-row weights: pdl($n) ~ f(w)
 sub d2c_weighted {
   my ($cm,%args) = @_;
-  my $rprobs   = $args{rprobs};
-  $rprobs      = $cm->{rprobs} if (!defined($rprobs));
-  return $cm->d2c_mean(%args) if (!defined($rprobs));
 
+  my $dprobs   = $cm->dataprobs(%args);
   my $cdm      = $cm->clusterDistanceMatrix(%args);
   my $celtmask = $cm->clusterElementMask(%args);
 
@@ -709,7 +763,7 @@ sub d2c_weighted {
   #$cweights->xchg(0,1) /= $cweights->sumover;   ##-- ... normalize by cluster
   ##-- ... for hard mask, at this point, $cweights==$celtmask!
 
-  my $cweights = $celtmask * $rprobs->slice("*1,:"); ##-- apply row-weights
+  my $cweights = $celtmask * $dprobs->slice("*1,:"); ##-- apply row-weights
   $cweights   /= $cweights->xchg(0,1)->sumover;      ##-- ... and normalize
 
   ##-- get centroid data as weighted sum
@@ -722,29 +776,237 @@ sub d2c_weighted {
 ##     p(w|c) = p(c|w)p(w) / \sum_w p(c|w)p(w)
 ##     p(c|w) = / 1/m if w \in mbest(c)
 ##              \ 0   otherwise
-##     p(w)   = $rprobs(w)
+##     p(w)   = $dataprobs(w)                   ##-- see dataprobs()
 ## + %$cm keys:
-##     rprobs  => $rprobs,  # row-probabilities: pdl($n)    ~ p(w)
-##                          # if undefined, returns d2c_mbest_mean()
-##     ctrmode => $mode,    # 'hard' or 'soft'
+##     dataweights => $dweights, # data-row weights: pdl($n) ~ f(w)
+##     ctrmode => $mode,         # 'hard' or 'soft'
 sub d2c_mbest_weighted {
   my ($cm,%args) = @_;
-  my $rprobs   = $args{rprobs};
-  $rprobs      = $cm->{rprobs} if (!defined($rprobs));
-  return $cm->d2c_mean(%args) if (!defined($rprobs));
-
+  my $dprobs   = $cm->dataprobs(%args);
   my $cdm       = $cm->clusterDistanceMatrix(%args);
   my $mbestmask = $cm->d2c_mbest_mask(%args);
 
   ###-- get weight matrix
   my $cweights = $mbestmask->convert(double);
   $cweights   /= $cweights->xchg(0,1)->sumover;  ##-- normalize by cluster ~ p(c)
-  $cweights   *= $rprobs->slice("*1,:");         ##-- apply row-weights
+  $cweights   *= $dprobs->slice("*1,:");         ##-- apply row-weights
   $cweights   /= $cweights->xchg(0,1)->sumover;  ##-- ... and normalize
 
   ##-- get centroid data as weighted sum
   return $cm->d2c_wsum(%args);
 }
+
+
+##======================================================================
+## Cluster "Profiles" (aka 'witnesses')
+##======================================================================
+
+##--> CONTINUE (elsewhere):
+## + add method: 'profileDistanceMatrix': datum distance to "trimmed" cluster
+## + alter method: 'clusterDistanceMatrix': dispatch via 'cdstrategy' option
+##   - implement strategies: 'full', 'profile'
+## + move new prototype selection stuff from AutoTree into Buckshot
+##   (except for 'nlimit')
+## + check out whether we actually need to maintain full cluster distance matrix
+##   in MetaProfile --> probably yes, since we need it for non-'hard' phat.
+
+
+## ($tpdata,$tpmask,$tpcids) = $cm->getprofile(%args)
+##  + get row ids (0 <= $witnessId < $n) of cluster witnesses
+##  + just returns the relevant keys if defined
+##  + %args:
+##     tpmethod    => $method, # string: witness acquisition method (see below); defualt='mean'
+##     tpm         => $m,      # constant: maximum number of rows per cluster
+##     dataweights => $dw,     # pdl($n): for weight-sensitive selection methods
+##  + requires:
+##     $cm->{clusterids}
+##  + calls:
+##      ???
+##  + known methods:
+##      full     # returns all known data rowids
+##      mean     # cluster mean
+##      median   # cluster median
+##      ranks    # get "heaviest" cluster elements, according to $dataweights
+##      weighted # stochastically select by $dataweights
+sub getprofile {
+  my ($cm,%args) = @_;
+
+  ##-- check & set recursion-detection flag
+  confess(ref($cm), "::getprofile(): recursion detected: probably a bad tpmethod/ctrmethod combination")
+    if ($cm->{_in_getprofile});
+  $cm->{_in_getprofile}=1;
+
+  ##-- parse arguments
+  @$cm{keys(%args)} = values(%args); ##-- clobber
+
+  ##-- ensure custerids() is defined
+  $cm->cut()  if (!defined($cm->{clusterids}));
+
+  ##-- get method
+  my $tpmethod = $cm->{tpmethod};
+  $tpmethod = $cm->{tpmethod} = 'mean' if (!defined($tpmethod));
+
+  ##-- get method subroutine
+  my $msub = $cm->can("tp_$tpmethod");
+  croak(ref($cm), "::getprofile(): unknown profile acquisition method '$tpmethod'")
+    if (!defined($msub));
+
+  ##-- dispatch
+  my ($tpdata,$tpmask,$tpcids) = @$cm{qw(tpdata tpmask tpcids)} = $msub->($cm);
+
+  ##-- unset recursion detection flag
+  delete($cm->{_in_getprofile});
+
+  return ($tpdata,$tpmask,$tpcids);
+}
+
+## ($tpdata,$tpmask,$tpcids) = $cm->tp_pdls($nTrimmed)
+##   + allocates & sets trimmed profile pdls
+##   + $nTrimmed is the total number of data rows to allocate in the output pdls; default=1
+sub tp_pdls {
+  my ($cm,$nt) = @_;
+  my $d = $cm->{data}->dim(0);
+  $nt = $cm->{nclusters} if (!defined($nt));
+  my ($tpdata,$tpmask,$tpcids) = @$cm{qw(tpdata tpmask tpcids)};
+  $tpdata = zeroes(double,$d,$nt) if (!defined($tpdata));
+  $tpmask = ones(long,$d,$nt)     if (!defined($tpmask));
+  $tpcids = zeroes(long,$nt)      if (!defined($tpcids));
+  return
+    #@$cm{qw(tpdata tpmask tpcids)} =
+    ($tpdata,$tpmask,$tpcids);
+}
+
+## ($tpdata,$tpmask,$tpcids) = $cm->tp_full()
+##   + get full *untrimmed* cluster profile
+sub tp_full {
+  my $cm = shift;
+  return
+    #@$cm{qw(tpdata tpmask tpcids)} =
+    @$cm{qw(data mask clusterids)};
+}
+
+
+## ($tpdata,$tpmask,$tpcids) = $cm->tp_mean()
+##   + get trimmed cluster profile by arithmetic average
+sub tp_mean {
+  my $cm = shift;
+  my ($tpdata,$tpmask,$tpcids) = $cm->tp_pdls($cm->{nclusters});
+  getclustermean(@$cm{qw(data mask clusterids)}, $tpdata,$tpmask);
+  ##-- sanity check
+  confess(__PACKAGE__, "::tp_mean(): PDL::Cluster::getclustermean() returned zero matrix!")
+    if (all($tpdata==0));
+  $tpcids .= sequence(long,$tpcids->nelem);
+  return ($tpdata,$tpmask,$tpcids);
+}
+
+## ($tpdata,$tpmask,$tpcids) = $cm->tp_median()
+##   + get trimmed cluster profile by median
+sub tp_median {
+  my $cm = shift;
+  my ($tpdata,$tpmask,$tpcids) = $cm->tp_pdls($cm->{nclusters});
+  getclustermedian(@$cm{qw(data mask clusterids)}, $tpdata,$tpmask);
+  ##-- sanity check
+  confess(__PACKAGE__, "::tp_mean(): PDL::Cluster::getclustermedian() returned zero matrix!")
+    if (all($tpdata==0));
+  $tpcids .= sequence(long,$tpcids->nelem);
+  return ($tpdata,$tpmask,$tpcids);
+}
+
+## ($tpdata,$tpmask,$tpcids) = $cm->tp_ranks()
+##   + get m-"heaviest" trimmed cluster profile
+##   + uses $cm keys:
+##      dataweights => $dw, # pdl($n) : determines which data are 'best'
+##      tpm         => $m,  # constant: max witnesses per cluster?
+sub tp_ranks {
+  my $cm=shift;
+
+  ##-- get full cluster sizes
+  my $tpm = $cm->{tpm};
+  my $k   = $cm->{nclusters};
+  my $csizes = pdl($cm->clusterSizes());
+  $csizes->where($csizes>$tpm) .= $tpm;
+
+  ##-- get output pdls
+  my ($tpdata,$tpmask,$tpcids) = $cm->tp_pdls($csizes->sum);
+
+  ##-- get some basic stuff
+  my $cemask = $cm->clusterElementMask();
+  my $dw     = $cm->{dataweights};
+  if (!defined($dw)) {
+    warn(ref($cm),"::tp_ranks(): using reverse presentation order for data-weights");
+    $dw  = $cm->{ndata} - sequence($cm->{ndata});
+  }
+
+  ##-- get m-"heaviest" cluster elements
+  my $mdw     = $dw * $cemask->xchg(0,1);                  ##-- datum-element weights by cluster ($n,$k)
+  my $mdwmaxi = $cm->mmaxi($mdw,$tpm);                     ##-- ${tpm}-best data row-ids by cluster ($tpm,$k)
+
+  ##-- get output index pdls
+  my $mdwmaxii    = sequence(long,$tpm)->slice(",*$k");
+  my $mdwmaxii_ok = $mdwmaxii < $csizes->slice("*$tpm");   ##-- respect cluster sizes
+  my $mdw_xvals   = $mdwmaxii->xvals->where($mdwmaxii_ok); ##-- row indices into $mdwmaxi, <= $tpm
+  my $mdw_yvals   = $mdwmaxii->yvals->where($mdwmaxii_ok); ##-- col indices into $mdwmaxi, <= $nclusters
+
+  ##-- build output data pdls
+  my $tprowids  = $mdwmaxi->index2d($mdw_xvals,$mdw_yvals); ##-- data row ids for clusters $mdw_yvals
+  $tpdata .= $cm->{data}->dice_axis(1,$tprowids);
+  $tpmask .= (defined($cm->{mask})
+	      ? $cm->{mask}->dice_axis(1,$tprowids);
+	      : $tpdata->isgood());
+  $tpcids   .= $mdw_yvals;
+
+  ##-- and return
+  return ($tpdata,$tpmask,$tpcids);
+}
+
+## ($tpdata,$tpmask,$tpcids) = $cm->tp_weighted()
+##   + get trimmed cluster profile by stochastic selection over $dataweights
+##   + uses $cm keys:
+##      dataweights => $dw, # pdl($n) : determines which data are 'best'
+##      tpm         => $m,  # constant: max witnesses per cluster?
+sub tp_weighted {
+  my $cm=shift;
+  require PDL::GA;
+
+  ##-- get full cluster sizes
+  my $tpm = $cm->{tpm};
+  my $k   = $cm->{nclusters};
+  my $csizes = pdl($cm->clusterSizes());
+  $csizes->where($csizes>$tpm) .= $tpm;
+
+  ##-- get output pdls
+  my ($tpdata,$tpmask,$tpcids) = $cm->tp_pdls($csizes->sum);
+
+  ##-- get some basic stuff
+  my $cemask = $cm->clusterElementMask();
+  my $dw     = $cm->{dataweights};
+  if (!defined($dw)) {
+    warn(ref($cm),"::tp_ranks(): using reverse presentation order for data-weights");
+    $dw  = $cm->{ndata} - sequence($cm->{ndata});
+  }
+
+  ##-- select cluster elements
+  my $mdw     = $dw * $cemask->xchg(0,1);                      ##-- datum-element weights by clusters ($n,$k)
+  my $mdwseli = PDL::GA::roulette_nr($mdw,n=>$tpm)->xchg(0,1); ##-- ${tpm} selected rowids by clusters ($tpm,$k)
+
+  ##-- get output index pdls
+  my $mdwselii    = sequence(long,$tpm)->slice(",*$k");
+  my $mdwselii_ok = $mdwselii < $csizes->slice("*$tpm");   ##-- respect cluster sizes
+  my $mdw_xvals   = $mdwselii->xvals->where($mdwselii_ok); ##-- row indices into $mdwseli, <= $tpm
+  my $mdw_yvals   = $mdwselii->yvals->where($mdwselii_ok); ##-- col indices into $mdwseli, <= $nclusters
+
+  ##-- build output data pdls
+  my $tprowids  = $mdwseli->index2d($mdw_xvals,$mdw_yvals); ##-- data row ids for clusters $mdw_yvals
+  $tpdata .= $cm->{data}->dice_axis(1,$tprowids);
+  $tpmask .= (defined($cm->{mask})
+	      ? $cm->{mask}->dice_axis(1,$tprowids);
+	      : $tpdata->isgood());
+  $tpcids   .= $mdw_yvals;
+
+  ##-- and return
+  return ($tpdata,$tpmask,$tpcids);
+}
+
 
 ##======================================================================
 ## Utilities: distance-to-probability

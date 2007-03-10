@@ -213,7 +213,7 @@ sub update {
   ##-- update: cluster method
   $mp->vmsg($vl_info, "update(): cm_k()\n");
   my $cm   = $mp->{cm};
-  my $cm_k = $mp->{cm_k} = $cm->shadow(class=>'MUDL::Cluster::Method',enum=>$mp->{tenum_k});
+  my $cm_k = $mp->{cm_k} = $cm->shadow(enum=>$mp->{tenum_k}, nprotos=>undef);
 
   ##-- update: cluster method: SVD
   $mp->vmsg($vl_info, "        : SVD: present   ? ", ($cm->{svd} ? 'yes' : 'no'), "\n");
@@ -244,6 +244,12 @@ sub update {
   $data_k = $cm_k->data($data_k); ##-- grab return value b/c $cm_k->data() might apply an SVD
   $cm_k->{mask}   = ones(long,   $data_k->dims  );
   $cm_k->{weight} = ones(double, $data_k->dim(0));
+
+  ##-- update: cluster: row probabilities
+  if ($curprof->can('targetUgPdl')) {
+    $mp->vmsg($vl_info, "update(): cluster: data (row) weights\n");
+    $cm_k->{dataweights} = $curprof->targetUgPdl();
+  }
 
   ##-- update: cluster: cluster()
   $mp->vmsg($vl_info, "update(): cluster: cluster()\n");
@@ -448,16 +454,22 @@ sub updateCm {
   $mp->vmsg($vl_info, "updateCm(): cm\n");
   my $cm_ltk = $mp->{cm_ltk} = $mp->{cm};
   my $cm_k   = $mp->{cm_k};
-  my $cm     = $mp->{cm} = $cm_ltk->shadow(class=>'MUDL::Cluster::Method',enum=>$mp->{tenum});
+  my $cm     = $mp->{cm} = $cm_ltk->shadow(
+					   #class=>'MUDL::Cluster::Method',
+					   enum=>$mp->{tenum},
+					   nprotos=>undef,
+					  );
 
   ##-- update: cm: clusterids
   $mp->vmsg($vl_info, "updateCm(): clusterids\n");
-  my $nC_ltk   = $cenum->size;
   my $cids_ltk = $cm_ltk->{clusterids};
   my $cids_k   = $cm_k->{clusterids};
-  my $cids     = zeroes(long, $cids_ltk->nelem + $cids_k->nelem) -1; ##-- (-1) for sanity check
+  my $cids     = $cm->{clusterids} = zeroes(long, $cids_ltk->nelem + $cids_k->nelem) -1; ##-- (-1) for sanity check
+  my $nC_ltk   = $cenum->size;
+  my $nCB_ltk  = $cbenum->size;
+  my $nT_ltk   = $cids_ltk->nelem;
 
-  $cids->slice("0:".($nC_ltk-1)) .= $cids_ltk;
+  $cids->slice("0:".($nT_ltk-1)) .= $cids_ltk;
   $cids->index($tk2t)            .= $cids_k + $nC_ltk;
 
   ##-- update: cluster enum
@@ -465,10 +477,10 @@ sub updateCm {
   delete($cm_k->{cenum});
   my $cenum_k = $cm_k->clusterEnum(offset=>$nC_ltk);
   my ($cid,$cstr);
-  foreach $cid (0..($cenum_k->size-1)) {
-    $cstr = $cenum_k->{id2sym}[$cid];
-    $cenum->addIndexedSymbol($cstr,$cid);
-    $cbenum->addIndexedSymbol($cstr,$cid) if ($mp->{use_cbounds});
+  foreach $cid ($nC_ltk..($cenum_k->size-1)) {
+    next if (!defined($cstr = $cenum_k->{id2sym}[$cid]));
+    $cenum->addIndexedSymbol($cstr,  $cid);
+    $cbenum->addIndexedSymbol($cstr, ($cid-$nC_ltk)+$nCB_ltk) if ($mp->{use_cbounds});
   }
 
   ##-- populate cm: dimensions
@@ -478,8 +490,9 @@ sub updateCm {
 
   ##-- populate cm: cluster distance matrix
   ## + remind me: why do we need to maintain this? --> may be related to toHMM() method...
-  $mp->vmsg($vl_info, "updateCm(): cluster distance matrix\n");
   if (defined($cm_ltk->{cdmatrix})) {
+    $mp->vmsg($vl_info, "updateCm(): cluster distance matrix\n");
+
     ##-- setup new $cm->{cdmatrix}
     my $cdm = $cm->{cdmatrix} = zeroes(double, $cm->{nclusters}, $cm->{ndata});
     $cdm
@@ -494,6 +507,17 @@ sub updateCm {
     my $cdm_k = $cm_k->clusterDistanceMatrix();
     $cdm->slice($nC_ltk.":-1,")->dice_axis(1,$tk2t) .= $cdm_k;
   }
+
+  ##-- populate cm: data (row) weights
+  ## + do we really need to maintain this?
+  if (defined($cm_ltk->{dataweights})) {
+    $mp->vmsg($vl_info, "updateCm(): data (row) weights\n");
+
+    my $dweights = $cm->{dataweights} = zeroes(double, $cm->{ndata});
+    $dweights->slice("0:".($cm_ltk->{dataweights}->nelem-1)) .= $cm_ltk->{dataweights};
+    $dweights->index($tk2t) .= defined($cm_k->{dataweights}) ? $cm_k->{dataweights} : 1;
+  }
+
 
   ##-- return
   return $mp->{cm} = $cm;

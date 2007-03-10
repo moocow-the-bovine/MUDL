@@ -136,7 +136,7 @@ sub data {
   my $tree = $bc->{tree}->shadow;
   my $data = $bc->SUPER::data(@_); ##-- maybe compute and/or apply SVD
   $bc->{tree} = $tree;
-  return $bc;
+  return $data;
 }
 
 ########################################################################
@@ -168,6 +168,7 @@ sub protodata {
 ##  + chooses $bc->{nprotos} prototypes uniform-randomly if $bc->{protos} is undefined
 ##  + $bc->{nprotos} defaults to sqrt($k*$n)
 ##  + sets @{$bc->{tree}}{data, mask, weight}
+##  + sets $bc->{tree}{rprobs}, if available
 sub getprotodata {
   my ($bc,$protos) = @_;
   $protos = $bc->{protos} if (!defined($protos));
@@ -189,6 +190,7 @@ sub getprotodata {
   $bc->{tree}->data($bc->{data}->dice_axis(1,$protos));
   $bc->{tree}{mask}   = $bc->{mask}->dice_axis(1,$protos) if (defined($bc->{mask}));
   $bc->{tree}{weight} = $bc->{weight};
+  $bc->{tree}{dataweights} = $bc->{dataweights}->index($protos) if (defined($bc->{dataweights}));
 
   return $bc->{tree}{data};
 }

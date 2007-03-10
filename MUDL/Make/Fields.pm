@@ -243,7 +243,7 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass lrlab),
+		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass mplabel lrlab),
 		     qw(svdlabel svdr),
 		     qw(bdlabel nlbds nbds tglabel ntgs),
 		     qw(auto),
@@ -725,7 +725,7 @@ our %FIELDS =
    tck          => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
    'xvars->tck' => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
 
-   ##-- MetaProfile xvars aliases
+   ##-- MetaProfile xvars aliases: labels
    'method'=>'xlabel',
    'xlabel'     => { path=>[qw(xvars xlabel)], title=>'method',
 		     alt=>[qw(xvars->tcclass xvars->tcm xvars->tccm),
@@ -758,6 +758,9 @@ our %FIELDS =
 
    'svd'      => 'svdlabel',
    'svdlabel' => { path=>[qw(xvars svdlabel)], title=>'svd', condense=>0, },
+
+   'mp'       => 'mplabel',
+   'mplabel' => { path=>[qw(xvars mplabel)], title=>'mp', condense=>0, },
 
 
    ##-- Corpus
