@@ -41,7 +41,9 @@ our %subclasses = (
 		   full => 'MUDL::Corpus::MetaProfile::Full',
 		   deep => 'MUDL::Corpus::MetaProfile::Deep',
 		   attach => 'MUDL::Corpus::MetaProfile::Attach',
-		   DEFAULT => 'MUDL::Corpus::MetaProfile::Deep',
+		   parallel => 'MUDL::Corpus::MetaProfile::Parallel',
+		   para     => 'MUDL::Corpus::MetaProfile::Parallel',
+		   DEFAULT => 'MUDL::Corpus::MetaProfile::Attach',
 		  );
 
 ##======================================================================

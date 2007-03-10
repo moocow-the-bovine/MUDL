@@ -407,6 +407,14 @@ sub update {
   $cm_k->{mask}   = ones(long, $cmdata_k->dims);
   $cm_k->{weight} = ones(double, $cmdata_k->dim(0));
 
+  ##-- update: cluster: cm_k: row-probabilities
+  if ($ctrprof->can('targetUgPdl') && $curprof->can('targetUgPdl')) {
+    $mp->vmsg($vl_info, "update(): cluster: data (row) weights()\n");
+    $cm_k->{dataweights} = zeroes(double, $cmdata_k->dim(1));
+    $cm_k->{dataweights}->index($crowids) .= $ctrprof->targetUgPdl();
+    $cm_k->{dataweights}->index($trowids) .= $curprof->targetUgPdl();
+  }
+
   ##-- update: cluster: clusterdistancematrix()
   $mp->vmsg($vl_info, "update(): clusterdistancematrix()\n");
   $mp->vmsg($vl_info, "        : dims = ", join(' ', $cmdata_k->dims), "\n");
@@ -563,8 +571,8 @@ sub updateProfileUnigramDists {
       }
     }
     ##-- PDL-to-EDist
-    $prf_cb_new->{bugs}->fromPDLnz($bugs_pdl) if (defined($prf_cb_new));
-    %{$prf_wb_new->{bugs}{nz}} = %{$prf_cb_new->{bugs}{nz}};
+    $prf_wb_new->{bugs}->fromPDLnz($bugs_pdl);
+    %{$prf_cb_new->{bugs}{nz}} = %{$prf_wb_new->{bugs}{nz}} if (defined($prf_cb_new));
   }
 
   ##-- totals
@@ -794,6 +802,9 @@ sub updateCm {
   my $tenum   = $mp->{tenum};
   my $tenum_k = $mp->{tenum_k};
 
+  ##-- id-translation pdl: [$id_Tk] = $id_Tlek
+  my $tk2t = pdl(long, [ @{$tenum->{sym2id}}{ @{$tenum_k->{id2sym}} } ]);
+
   ##-- create new cm
   $mp->vmsg($vl_debug, "updateCm(): cm\n");
   my $cm_ltk = $mp->{cm_ltk} = $mp->{cm};
@@ -804,12 +815,10 @@ sub updateCm {
   my $cids_ltk = $cm_ltk->{clusterids};
   my $cids_k   = $cm_k->{clusterids};
   my $cids     = zeroes(long, $tenum->size);
-  my ($tid,$tid_k,$cid);
 
   ##-- add cluster-ids
   $cids->slice("0:".($cids_ltk->dim(0)-1)) .= $cids_ltk;
-  $cids->slice($cids_ltk->dim(0).":-1")    .= $cids_k;
-
+  $cids->index($tk2t)                      .= $cids_k;
   $mp->{clusterids} = $cm->{clusterids} = $cids;
 
   ##-- populate cm: dimensions
@@ -819,8 +828,25 @@ sub updateCm {
   ##-- populate cm: cluster distance matrix
   if (defined($cm_ltk->{cdmatrix})) {
     my $cdm = $cm->{cdmatrix} = zeroes(double, $cm->{nclusters}, $cm->{ndata});
+
+    ##-- copy old values: d_{<=k}(c,w)
     $cdm->slice(",0:".($cm_ltk->{cdmatrix}->dim(1)-1))   .= $cm_ltk->{cdmatrix};
-    $cdm->slice(",".($cm_ltk->{cdmatrix}->dim(1)).":-1") .= $cm_k->{cdmatrix};
+
+    ##-- copy new values. d_k(c,w)
+    #$cdm->slice(",".($cm_ltk->{cdmatrix}->dim(1)).":-1") .= $cm_k->{cdmatrix};
+    ##--
+    #my $cdm_k = $cm_k->clusterDistanceMatrix();
+    my $cdm_k = $cm_k->{cdmatrix};
+    #$cdm->dice_axis(1,$tk2t) .= $cdm_k;
+  }
+
+  ##-- populate cm: data (row) weights
+  if (defined($cm_ltk->{dataweights})) {
+    my $dweights = $cm->{dataweights} = zeroes(double,$cm->{ndata});
+    $dweights->slice("0:".($cm_ltk->{dataweights}->nelem-1)) .= $cm_ltk->{dataweights};
+    $dweights->index($tk2t) .= (defined($cm_k->{dataweights})
+				? $cm_k->{dataweights}->slice(-($tk2t->nelem).":-1")
+				: 1);
   }
 
   return $mp->{cm} = $cm;
