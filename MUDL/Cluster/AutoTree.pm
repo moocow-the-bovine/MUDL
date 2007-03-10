@@ -27,10 +27,6 @@ our @EXPORT_OK = qw();
 ## $args = MUDL::Cluster::AutoTree->new(%args);
 ##   + %args: new in AutoTree
 ##       nlimit      => $nmax,     # maximum $n for which to use Tree clustering (default=1024)
-##       protomethod => $method,   # how to acquire prototypes: see getprotoids(); default=guessed
-##       protoweights=> $weights,  # pdl($n): weights for stochastic prototype selection [optional]
-##                                 # - if undefined, 'dataweights' key will be tried as well
-##                                 #   (see MUDL::Cluster::Method::getcenters() for other uses of 'dataweights')
 ##
 ##   + %args: general:
 ##       data     => $data,     # pdl($d,$n)
@@ -39,9 +35,16 @@ our @EXPORT_OK = qw();
 ##       nclusters=> $k,        # number of desired clusters     (default=2)
 ##
 ##   + %args: prototypes [cluster(), protocluster()]:
-##       protos   => $rowids,   # pdl(long,$np) (default=random)
+##       protos   => $rowids,   # pdl(long,$np) (default=selected)
 ##       nprotos  => $np,       # number of protos (default=rint(sqrt($k*$n)))
-##       tree     => $tree,     # a MUDL::Cluster::Tree object for clustering prototypes (default=new)
+##       protos   => $rowids,      # pdl(long,$np) (default=random)
+##       nprotos  => $np,          # number of protos (default=rint(sqrt($k*$n)))
+##       protomethod => $method,   # how to acquire prototypes: see getprotoids(); default=guessed
+##       protoweights=> $weights,  # pdl($n): weights for stochastic prototype selection [optional]
+##                                 # - if undefined, 'dataweights' key will be tried as well
+##                                 #   (see MUDL::Cluster::Method::getcenters() for other uses of 'dataweights')
+##       tree     => $tree,        # a MUDL::Cluster::Tree object for clustering prototypes (default=new)
+##       ##
 ##       ##-- subdata:
 ##       {tree}{data}  => $pdata,     # pdl($d,$np): prototype data
 ##       {tree}{dist}  => $metric,    # distance metric character flag (default='b') : default=$cm->{dist}
@@ -74,7 +77,7 @@ sub new {
 			  ##-- AutoTree new
 			  nlimit      => 1024,
 			  protomethod => 'auto',
-			  protoweights=> undef,
+			  #protoweights=> undef,
 			  ##
 			  ##-- general
 			  data=>undef,
@@ -97,6 +100,9 @@ sub new {
 			  ctrmethod => 'mean',
 			  ctrm      => 4,   ##-- m-best
 			  ctrmode   => 'hard',
+			  ##
+			  ##-- clusterDistanceMatrix() stuff
+			  cdprofile=>1,     ##-- default is to use trimmed profiles for distance matrix
 			  ##
 			  ##-- Buckshot: attachment
 			  niters => 0,
@@ -154,14 +160,7 @@ sub datakeys {
 ##  + get prototyping data matrix
 ##  + returns $bc->{tree}{data} if it's defined and has $bc->{nprotos} rows
 ##  + otherwise, calls $bc->getprotodata()
-sub protodata {
-  my $bc = shift;
-  return ((defined($bc->{nprotos})
-	   && defined($bc->{tree}{data})
-	   && $bc->{nprotos}==$bc->{tree}{data}->dim(1))
-	  ? $bc->{tree}{data}
-	  : $bc->getprotodata());
-}
+#(inherited)
 
 ##======================================================================
 ## $pids = $ac->getprotoids()
@@ -170,6 +169,7 @@ sub protodata {
 ##     'auto'  : ranks if available, otherwise random-uniform
 ##     'ranks' : select maximum-ranked 'protoweights' elements
 ##     'random': uniform random selection
+#(inherited)
 *getprotos = \&getprotoids;
 sub getprotoids {
   my $ac = shift;
@@ -182,29 +182,8 @@ sub getprotoids {
   my $k = $ac->{nclusters};
   return sequence(long,$n) if ($n <= $ac->{nlimit}); ##-- nope: tree-mode clustering
 
-  ##-- get number of prototypes
-  my $nprotos = $ac->{nprotos};
-  $nprotos = sclr(rint(sqrt($k*$n))) if (!defined($nprotos));
-
-  ##-- check for prototype acquisition method
-  my $pmethod = $ac->{protomethod}||'auto';
-  $pmethod = 'ranks' if ($pmethod eq 'auto');
-  if ($pmethod =~ /^rank/ && !defined($ac->{protoweights}) && !defined($ac->{dataweights})) {
-    warn(ref($ac),"::getprotoids(): cannot select by ranks without 'protoweights': using random selection");
-    $pmethod = 'random';
-  }
-
-  my ($ranks);
-  if ($pmethod =~ /^rank/) {
-    ##-- rank selection
-    my $pweights = defined($ac->{protoweights}) ? $ac->{protoweights} : $ac->{dataweights};
-    $ranks = $pweights->qsorti; ##-- sort in ascending order (e.g. reversed)
-  } else {
-    ##-- uniform-random selection
-    $ranks = random($n)->qsorti;
-  }
-
-  return $ranks->slice("-1:-$nprotos")->qsort; ##-- be nice and sort the returned ids
+  ##-- dispatch to Buckshot
+  return $ac->SUPER::getprotoids(@_);
 }
 
 ##======================================================================
@@ -217,23 +196,13 @@ sub getprotoids {
 ##  + chooses $bc->{nprotos} prototypes uniform-randomly if $bc->{protos} is undefined
 ##  + $bc->{nprotos} defaults to sqrt($k*$n)
 ##  + sets @{$bc->{tree}}{data, mask, weight}
-sub getprotodata {
-  my ($ac,$protos) = @_;
-  $protos = $ac->{protos}      if (!defined($protos));
-  $protos = $ac->getprotoids() if (!defined($protos));
-  $ac->{nprotos} = $protos->nelem;
-
-  ##-- call inherited function to set things up
-  return $ac->SUPER::getprotodata($protos);
-}
-
+#(inherited)
 
 ##======================================================================
 ## $bc = $bc->protocluster(%args)
 ##  + runs tree clustering algorithm on prototypes
 ##  + calls protodata() to ensure prototypes have been selected
 #(inherited)
-
 
 ##======================================================================
 ## ($pcdata,$pcmask) = $bc->getprotocenters(%args)
