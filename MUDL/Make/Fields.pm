@@ -762,6 +762,19 @@ our %FIELDS =
    'mp'       => 'mplabel',
    'mplabel' => { path=>[qw(xvars mplabel)], title=>'mp', condense=>0, },
 
+   'emf'      => 'emflabel',
+   'emflabel' => { path=>[qw(xvars emflabel)], title=>'frz', condense=>0, },
+
+   'emam'     => { path=>[qw(xvars)], title=>'emam', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{emam}' },
+   'embm'     => { path=>[qw(xvars)], title=>'embm', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{embm}' },
+   'emum'     => { path=>[qw(xvars)], title=>'emum', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{emum}' },
+
+   'emamlab'   => 'emamlabel',
+   'emamlabel' => { path=>[qw(xvars emamlabel)], title=>'AM', condense=>0 },
+   'embmlab'   => 'embmlabel',
+   'embmlabel' => { path=>[qw(xvars embmlabel)], title=>'BM', condense=>0 },
+   'emumlab'   => 'emumlabel',
+   'emumlabel' => { path=>[qw(xvars emumlabel)], title=>'UM', condense=>0 },
 
    ##-- Corpus
    corpus => {
@@ -901,7 +914,8 @@ our %FIELDS =
      (
       ##-------------------------------------------------
       ## Eval: Ambiguity Rates: ar:*
-      "ar:$gt" => { path=>[$p, qw(arate1)],  n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>" ar:$gt" },
+      "ar:$gt" => { path=>[$p, qw(arate1)],  n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>"ar:$gt" },
+      "ar2:$gt" => { path=>[$p, qw(arate2)],  n=>1, fmt=>'%.3f', eval=>'0+$_',  title=>"ar2:$gt" },
 
       ##-------------------------------------------------
       ## Eval: bitwise entropies

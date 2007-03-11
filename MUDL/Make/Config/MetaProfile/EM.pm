@@ -88,12 +88,12 @@ sub acquire {
 
   ##-- acquire Config::MetaProfile eval data
   $cfg->SUPER::acquire(%args);
-  @$cfg{qw(mpeval_global mpeval_targets)} = @$cfg{qw(eval_global eval_targets)};
+  @$cfg{qw(mpeval_global mpeval_targets mpeval_targets_k)} = @$cfg{qw(eval_global eval_targets eval_targets_k)};
 
   ##-- get basename for summary files
   my $filebase = $cfg->{xvars}{emhmm};
   $filebase  =~ s/\.bin$//;
-  $filebase .=  ".t-${tbase}";
+  #$filebase .=  ".t-${tbase}";
 
   ##-- load eval (summary): global
   my ($file);

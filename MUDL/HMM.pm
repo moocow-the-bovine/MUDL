@@ -1197,7 +1197,7 @@ sub maximize {
   $hmm->smootha(%args) if ($args{maxa} && $args{smootha});
   $hmm->smoothb(%args) if ($args{maxb} && $args{smoothb});
 
-  $hmm->{b}->where(!$hmm->restrictionMask()) .= logzero if ($args{maxb} && $hmm->{restrict});
+  $hmm->{b}->where(!$hmm->restrictionMask()) .= logzero if ($args{maxb} && $hmm->{dorestrict});
 
   return ($ahat,$bhat,$pihat,$omegahat);
 }
@@ -1473,6 +1473,143 @@ sub fbTagSentence {
     $s->[$i]->tag($hmm->{qenum}->symbol($path->at($i)));
   }
   return $s;
+}
+
+##======================================================================
+## Freezing
+##======================================================================
+
+## $hmm = $hmm->freeze(%args)
+##   + "freeze" an HMM by exponentiation & re-normalization of (some)
+##      component distributions
+##   + %args:
+##     - freezea  => $bool,    ## "freeze" $a    ? default=$hmm->{freezea}     || 1
+##     - freezeb  => $bool,    ## "freeze" $b    ? default=$hmm->{freezeb}     || 1
+##     - freezepi => $bool,    ## "freeze" $pi   ? default=$hmm->{freezepi}    || 1
+##     - freezeomega => $bool, ## "freeze" $omega? default=$hmm->{freezeomega} || 1
+##     - freezeby => $r,       ## exponent to freeze by (0 for no freezing)
+sub freeze__OLD {
+  my ($hmm,%args) = @_;
+  $args{freezeby} = 2 if (!defined($args{freezeby}));
+  foreach (qw(freezea freezeb freezepi freezeomega freezeby)) {
+    next if (defined($args{$_}));
+    $args{$_} = defined($hmm->{$_}) ? $hmm->{$_} : 1;
+  }
+  ##-- sanity check
+  my $freezeby = $args{freezeby};
+  return $hmm if ($freezeby==0 || !grep {$_} values(%args));
+
+  ##-- freeze distributions: exponentiate
+  $hmm->{a}     *= $freezeby if ($args{freezea});
+  $hmm->{pi}    *= $freezeby if ($args{freezepi});
+  $hmm->{omega} *= $freezeby if ($args{freezeomega});
+  if ($args{freezeb}) {
+    ##-- freeze 'b' by first inverting
+    my $bf  = $hmm->bf(round=>0);          ##-- joint       : bf  ~ f(q,w)
+    my $bfw = $bf->sumover;                ##-- word freqs  : bfw ~ f(w)
+    $bf    /= $bf->sumover->slice("*1,");  ##-- invert      : bf  ~ f(q,w)/f(w) ~ p(q|w)
+    $bf   **= $freezeby;                   ##-- freeze      : bf  ~ p(q|w)^r
+    $bf    /= $bf->sumover->slice("*1,");  ##-- re-normalize: bf  ~ p(q|w)^r / Z_{p(q|w)^r} = p'(q|w)
+    $bf    *= $bfw->slice("*1,");          ##-- re-joint    : bf  ~ f'(q,w) = p'(q|w)*f(w)
+    $hmm->{b} = $bf;
+  }
+
+  ##-- ... and re-normalize
+  my ($ahat,$bhat,$pihat,$omegahat) = hmmmaximize(@$hmm{qw(a b pi omega)});
+  $hmm->{a}     = $ahat     if ($args{freezea});
+  $hmm->{b}     = $bhat     if ($args{freezeb});
+  $hmm->{pi}    = $pihat    if ($args{freezepi});
+  $hmm->{omega} = $omegahat if ($args{freezeomega});
+
+  ##-- smooth & sanitize
+  $hmm->smootha(%args) if ($args{freezea} && $args{smootha});
+  $hmm->smoothb(%args) if ($args{freezeb} && $args{smoothb});
+
+  $hmm->{a}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezea});
+  $hmm->{b}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezeb});
+  $hmm->{pi}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezepi});
+  $hmm->{omega}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezeomega});
+
+  $hmm->{b}->where(!$hmm->restrictionMask()) .= logzero if ($args{freezeb} && $hmm->{dorestrict});
+
+  return $hmm;
+}
+
+*freeze = \&freeze__NEW;
+sub freeze__NEW {
+  my ($hmm,%args) = @_;
+  $args{freezeby} = 2 if (!defined($args{freezeby}));
+  foreach (qw(freezeby freezea freezeb freezepi freezeomega)) {
+    next if (defined($args{$_}));
+    $args{$_} = defined($hmm->{$_}) ? $hmm->{$_} : 1;
+  }
+  ##-- sanity check
+  my $freezeby = $args{freezeby};
+  return $hmm if ($freezeby==0 || $freezeby==1 || !grep {$_} values(%args));
+
+  ##-- freeze distributions
+
+  ##-- freeze: arcs
+  my $ea      = $hmm->af(round=>0)->log;       ##-- af     ~ f( q1,  q2)
+  my $eomega  = $hmm->omegaf(round=>0)->log;   ##-- omegaf ~ f( q1, EOS)
+  if ($args{freezea} || $args{freezeomega}) {
+    ##-- freeze: arcs: a, omega
+    my $easum  = $ea->xchg(0,1)->logsumover;    ##-- easum         ~ f(q1-->Q)
+    #my $eosum  = $eomega->logsumover;           ##-- eosum         ~ f(Q-->EOS)
+    my $eaosum = logadd($eomega,$easum);        ##-- eaosum        ~ f(q1-->(Q u {EOS}))
+    #
+    $ea       -= $eaosum;                       ##-- a : cond by q1 ~ p(q1-->q2 |q1-->(Q+EOS))
+    $eomega   -= $eaosum;                       ##-- om: cond by q1 ~ p(q1-->EOS|q1-->(Q+EOS))
+    #
+    $ea       *= $freezeby if ($args{freezea});     ##-- a : freeze ~ p(q1-->q2 |q1-->(Q+EOS))^r
+    $eomega   *= $freezeby if ($args{freezeomega}); ##-- om: freeze ~ p(q1-->EOS|q1-->(Q+EOS))^r
+    #
+    my $eaofsum = logadd($eomega, $ea->xchg(0,1)->logsumover); ##-- ~ Z_{p(q1-->(Q+EOS))^r}
+    #
+    $ea       -= $eaofsum;                      ##-- a : renorm     ~ p(q1-->q2 |q1-->(Q+EOS))^r / Z = p'(q1-->q2 |q1)
+    $eomega   -= $eaofsum;                      ##-- om: renorm     ~ p(q1-->EOS|q1-->(Q+EOS))^r / Z = p'(q1-->EOS|q1)
+    #
+    $ea       += $eaosum;                       ##-- a : re-joint   ~ f'(q1-->q2)
+    $eomega   += $eaosum;                       ##-- om: re-joint   ~ f'(q1-->EOS)
+  }
+
+  ##-- freeze: arcs: pi
+  my $epi    = $hmm->pif(round=>0)->log;           ##-- pi:         ~ f(BOS,  q2)
+  my $pisum  = $epi->logsumover;                   ##-- pi: sum     ~ f(BOS,   Q) = f(BOS)
+  $epi      -= $pisum;                             ##-- pi: prob    ~ p(BOS-->q2|BOS-->Q)
+  $epi      *= $freezeby if ($args{freezepi});     ##-- pi: freeze  ~ p(BOS-->q2|BOS-->Q)^r
+  $epi      -= $epi->logsumover;                   ##-- pi: renorm  ~ p(BOS-->q2|BOS-->Q)^r / Z = p'(BOS-->q2|BOS-->Q)
+  $epi      += $pisum;                             ##-- pi: re-joint~ f'(BOS-->q2)
+
+  ##-- freeze: observation probabilities
+  my $eb = $hmm->bf(round=>0)->log;           ##-- joint         ~ f(q,w)
+  if ($args{freezeb}) {
+    my $ebw = $eb->logsumover;                ##-- word freqs    ~ f(w)
+    $eb    -= $ebw->slice("*1,");             ##-- cond by word  ~ f(q,w)/f(w) ~ p(q|w)
+    $eb    *= $freezeby;                      ##-- freeze        ~ p(q|w)^r
+    $eb    -= $eb->logsumover->slice("*1,");  ##-- norm by word  ~ p(q|w)^r / Z_{p(q|w)^r} = p'(q|w)
+    $eb    += $ebw->slice("*1,");             ##-- joint         ~ f'(q,w) = p'(q|w)*f(w)
+  }
+
+  ##-- ... and re-normalize
+  my ($ahat,$bhat,$pihat,$omegahat) = hmmmaximize($ea,$eb,$epi,$eomega);
+  $hmm->{a}     = $ahat     if ($args{freezea});
+  $hmm->{b}     = $bhat     if ($args{freezeb});
+  $hmm->{pi}    = $pihat    if ($args{freezepi});
+  $hmm->{omega} = $omegahat if ($args{freezeomega});
+
+  ##-- smooth & sanitize
+  $hmm->smootha(%args) if ($args{freezea} && $args{smootha});
+  $hmm->smoothb(%args) if ($args{freezeb} && $args{smoothb});
+
+  $hmm->{a}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezea});
+  $hmm->{b}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezeb});
+  $hmm->{pi}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezepi});
+  $hmm->{omega}->inplace->setnantobad->inplace->setbadtoval(logzero) if ($args{freezeomega});
+
+  $hmm->{b}->where(!$hmm->restrictionMask()) .= logzero if ($args{freezeb} && $hmm->{dorestrict});
+
+  return $hmm;
 }
 
 
