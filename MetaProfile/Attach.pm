@@ -837,7 +837,7 @@ sub updateCm {
     ##--
     #my $cdm_k = $cm_k->clusterDistanceMatrix();
     my $cdm_k = $cm_k->{cdmatrix};
-    #$cdm->dice_axis(1,$tk2t) .= $cdm_k;
+    $cdm->dice_axis(1,$tk2t) .= $cdm_k;
   }
 
   ##-- populate cm: data (row) weights
@@ -845,7 +845,7 @@ sub updateCm {
     my $dweights = $cm->{dataweights} = zeroes(double,$cm->{ndata});
     $dweights->slice("0:".($cm_ltk->{dataweights}->nelem-1)) .= $cm_ltk->{dataweights};
     $dweights->index($tk2t) .= (defined($cm_k->{dataweights})
-				? $cm_k->{dataweights}->slice(-($tk2t->nelem).":-1")
+				? $cm_k->{dataweights}->slice("0:".($tk2t->nelem-1))
 				: 1);
   }
 

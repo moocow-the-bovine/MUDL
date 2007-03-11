@@ -215,8 +215,11 @@ sub finish {
   ##   %info_tag =
   ##   (
   ##    ##-- word-type information
-  ##    nwtypes => $ntypes,                   ##-- number of word types occurring with this tag at least once
-  ##    wtype_density => $ntypes/$total_types,##-- normalized
+  ##    nwtypes => $ntypes,                      ##-- number of word types occurring with this tag at least once
+  ##    wtype_density => $ntypes/$total_types,   ##-- ...normalized to [0,1]
+  ##    nwtypesi => $ntypesi,                    ##-- number of word types ocurring with this tag
+  ##                                             ##   and some alternate tag mapped to it at least once
+  ##    wtypei_density => $ntypesi/$total_types, ##-- ...normalized to [0,1]
   ##
   ##    ##-- best-map information
   ##    freq=>$f_tag,
@@ -868,6 +871,7 @@ sub finish {
     while (($tag,$tagi)=each(%$tag1i)) {
       $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
       $tagi->{wtype_density} = $tagi->{nwtypes} / $nwtypes;
+      $tag2i->{$tagi->{tbest}}{nwtypesi} += $tagi->{nwtypes};  ##-- inverse
     }
 
     ##-- word-type info: tag2
@@ -879,6 +883,15 @@ sub finish {
     while (($tag,$tagi)=each(%$tag2i)) {
       $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
       $tagi->{wtype_density} = $tagi->{nwtypes} / $nwtypes;
+      $tag1i->{$tagi->{tbest}}{nwtypesi} += $tagi->{nwtypes}; ##-- inverse
+    }
+
+    ##-- inverse word-type info: normalized
+    while (($tag,$tagi)=each(%$tag1i)) {
+      $tagi->{wtypei_density} = ($tagi->{nwtypesi}||0)/$nwtypes;
+    }
+    while (($tag,$tagi)=each(%$tag2i)) {
+      $tagi->{wtypei_density} = ($tagi->{nwtypesi}||0)/$nwtypes;
     }
   }
 
