@@ -32,8 +32,9 @@ sub new {
 				                  ##    + contain array-ref '__point__'=>[$x,$y,...]
 
 				 ##-- I/O options
-				 'datafile'=>undef, ##-- datafile name (default: auto-generate)
-				 'datadir'=>'.',    ##-- datafile directory
+				 'datafile'=>undef,   ##-- datafile name (default: auto-generate)
+				 'datadir'=>'.',      ##-- datafile directory
+				 'gpdatadir'=>undef,  ##-- datafile directory for script
 				 'datasuffix'=>'.dat',
 
 				 ##-- Display Options
@@ -68,6 +69,15 @@ sub datafile {
   $file =~ s/[\s\<\>\(\)\[\]\:\/\\]+/_/g;
   $file =~ s/\.\_/\./g;
   return $pdata->{datafile} = $pdata->{datadir}.'/'.$file.$pdata->{datasuffix};
+}
+
+## $datafile = $pdata->gpdatafile()
+sub gpdatafile {
+  my $pdata = shift;
+  return $pdata->datafile() if (!defined($pdata->{gpdatadir}) || $pdata->{gpdatadir} eq $pdata->{datadir});
+  my $datafile = $pdata->datafile();
+  $datafile =~ s/^\Q$pdata->{datadir}\E/$pdata->{gpdatadir}/;
+  return $datafile;
 }
 
 
@@ -135,7 +145,7 @@ sub plotCommand {
   my ($pdata,%args) = @_;
   @$pdata{keys(%args)} = values(%args);
   return (''
-	  .'"'.$pdata->datafile().'"'
+	  .'"'.$pdata->gpdatafile().'"'
 	  .(defined($pdata->{using}) ? " using $pdata->{using}" : '')
 	  .(defined($pdata->{smooth}) ? " smooth $pdata->{smooth}" : '')
 	  .(defined($pdata->{with})  ? " with $pdata->{with}" : '')

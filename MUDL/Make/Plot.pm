@@ -53,6 +53,7 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 ##  + I/O Options:
 ##     outfile=>$file,         ##-- script output file (default=stdout)
 ##     datadir=>$dir,          ##-- default='.',
+##     gpdatadir=>$dir,        ##-- data dir for script: default=$datadir
 ##     datasuffix=>$suffix,    ##-- default='.dat'
 ##
 ##  + Agglomeration Options:
@@ -70,7 +71,7 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 ##     plots => \%plots,       ##-- plot data { $title1=>{points=>\@fdata1, ... }, ... }
 ##     compiled=>$bool,        ##-- true iff plots has been compiled
 sub new {
-  my $that = shift;
+  my ($that,%args) = @_;
   my $plot =  $that->SUPER::new(
 				##-- User Options
 				'x'=>'stage',
@@ -84,6 +85,7 @@ sub new {
 				##-- I/O options
 				outfile=>'-',
 				datadir=>'.',
+				gpdatadir=>undef,    ##-- default: datadir
 				datasuffix=>'.dat',
 
 				##-- Display options
@@ -102,7 +104,7 @@ sub new {
 				plots=>{},
 				compiled=>0,
 
-				@_
+				%args,
 			      );
 
   return $plot;
@@ -191,6 +193,7 @@ sub compile {
 						    smooth=>$plot->{smooth},
 						    with=>$plot->{with},
 						    datadir=>$plot->{datadir},
+						    gpdatadir=>$plot->{gpdatadir},
 						    datasuffix=>$plot->{datasuffix},
 						   )
 	if (!$plots->{$ptitle});
