@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 ##
 ## File: MUDL::CorpusIO.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -42,6 +42,11 @@ our %FORMATS =
    ttt  => 'TT',
    tt  => 'TT',
    t => 'TT',
+   ##
+   ##-- TT/bin
+   'ttt.bin' => 'TT::Bin',
+   'tt.bin' => 'TT::Bin',
+   't.bin' => 'TT::Bin',
    ##
    ##-- Brown
    bt => 'Brown',
@@ -181,6 +186,7 @@ our @ISA = qw(MUDL::CorpusIO);
 ########################################################################
 
 use MUDL::CorpusIO::TT;
+use MUDL::CorpusIO::TT::Bin;
 use MUDL::CorpusIO::Separated;
 #use MUDL::CorpusIO::LOB;
 #use MUDL::CorpusIO::Brown;
