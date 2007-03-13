@@ -762,6 +762,9 @@ our %FIELDS =
    'mp'       => 'mplabel',
    'mplabel' => { path=>[qw(xvars mplabel)], title=>'mp', condense=>0, },
 
+   'beta'    => 'mppbeta',
+   'mppbeta' => { path=>[qw(xvars mppbeta)], title=>'beta', condense=>0, },
+
    'emf'      => 'emflabel',
    'emflabel' => { path=>[qw(xvars emflabel)], title=>'frz', condense=>0, },
 

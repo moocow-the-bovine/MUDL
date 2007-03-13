@@ -97,6 +97,7 @@ sub new {
 			   changed=>0,  ##-- true if changes are KNOWN to have been made to collection
 			   loaded=>0,   ##-- true if collection is loaded
 			   paranoid=>0, ##-- set to true to backup old collection files
+			   backup=>'~', ##-- backup suffix
 
 			   ##-- Dummy?
 			   dummy=>0,
@@ -273,7 +274,7 @@ $ACTIONS{save} =
 sub actSave {
   my ($mak,$file) = @_;
   $file = $mak->{colfile} if (!$file);
-  my $rc = $mak->ensureLoaded && $mak->{col}->saveFile($file);
+  my $rc = $mak->ensureLoaded && $mak->saveSafe($mak->{col},$file);
   $mak->{changed} = 0 if ($rc && $file eq $mak->{colfile});
   return $mak;
 }
@@ -290,8 +291,31 @@ $ACTIONS{saveSelection} = $ACTIONS{saveSel} =
   };
 sub actSaveSelection {
   my ($mak,$file) = @_;
-  return $mak->ensureLoaded && $mak->selected()->saveFile($file);
+  return $mak->ensureLoaded && $mak->saveSafe($mak->selected(),$file);
 }
+
+##---------------------------------------------------------------
+## Utilties: save: safe
+
+## $mak->safeSave($col,$filename)
+*safeSave = \&saveSafe;
+sub saveSafe {
+  my ($mak,$col,$file) = @_;
+  ##
+  ##-- maybe make a bacup
+  if ($mak->{backup} && -e $file) {
+    my $bak = $file.$mak->{backup};
+    $mak->vmsg('info', ref($mak), "::saveSafe(): backing up old '$file' to '$bak'\n");
+    if (-e $bak) {
+      unlink($bak)
+	or die(ref($mak), "::saveSafe(): could not unlink old backup '$bak'");
+    }
+    rename($file,$bak)
+      or die(ref($mak), "::saveSafe(): could not create backup file '$bak'");
+  }
+  return $col->saveFile($file);
+}
+
 
 ##---------------------------------------------------------------
 ## Actions: select
@@ -1162,7 +1186,8 @@ sub syncCollection {
       rename($file, sprintf("$file.bak.%03d",$ctr));
     }
 
-    my $rc = $mak->{col}->saveFile($file);
+    #my $rc = $mak->{col}->saveFile($file);
+    my $rc = $mak->saveSafe($mak->{col},$file);
     $mak->{changed} = 0;
     $mak->{coldigest} = $digest;
     return $rc;

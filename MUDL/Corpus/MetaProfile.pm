@@ -477,7 +477,8 @@ sub toHMM {
       ##-- get translation vector: $c2q->at($cid) == $qid
       my $c2q = pdl(long, [
 			   #@{$qenum->{sym2id}}{ @{$cbenum->{id2sym}} }
-			   @{$qenum->{sym2id}}{ grep {!exists($lbenum->{sym2id}{$_})} @{$cbenum->{id2sym}} }
+			   #@{$qenum->{sym2id}}{ grep {!exists($lbenum->{sym2id}{$_})} @{$cbenum->{id2sym}} }
+			   @{$qenum->{sym2id}}{ @{$mp->{cenum}{id2sym}} }
 			  ]);
 
       while (($w12,$f)=each(%{$bgd->{nz}})) {
@@ -489,15 +490,15 @@ sub toHMM {
 	##-- dispatch
 	if (defined($w1id) && defined($w2id)) {
 	  ##-- normal case: w1 and w2 are 'real' targets: update af
-	  $af->dice($c2q->at($cids->at($w1id)), $c2q->at($cids->at($w2id))) += $f;
+	  $af->dice( $c2q->at($cids->at($w1id)), $c2q->at($cids->at($w2id)) ) += $f;
 	}
 	elsif ($w1 eq $bos && defined($w2id)) {
 	  ##-- w1==bos: update pi
-	  $pif->dice($c2q->at($cids->at($w2id))) += $f;
+	  $pif->dice( $c2q->at($cids->at($w2id)) ) += $f;
 	}
 	elsif ($w2 eq $eos && defined($w1id)) {
 	  ##-- w2==eos: update omega
-	  $omegaf->dice($c2q->at($cids->at($w1id))) += $f;
+	  $omegaf->dice( $c2q->at($cids->at($w1id)) ) += $f;
 	} else {
 	  next;			##-- ignore "real" unknowns (?)
 	}
@@ -571,7 +572,7 @@ sub toHMM {
   ## estimate: arcs: 'estimateb'
   if (defined($args{arcmode}) && $args{arcmode} eq 'estimateb') {
     ##-- delayed arc-probability estimation
-    $mp->vmsg($vl_info, "toHMM(): estimate: arcs (delayed): mode=$args{arcmode})\n");
+    $mp->vmsg($vl_info, "toHMM(): estimate: arcs (finally): mode=$args{arcmode}\n");
 
     my $b1f         = ($hmm->bf() * $hmm->restrictionMask())->xchg(0,1)->sumover;
     my $a1f         = $b1f / ($N+1);
