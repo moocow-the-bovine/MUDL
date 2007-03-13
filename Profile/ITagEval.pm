@@ -54,6 +54,10 @@ our @ISA = qw(MUDL::Corpus::Profile);
 ##     nanals1 => $n1,         ##-- total number of (type,tag1) pairs
 ##     nanals2 => $n2,         ##-- total number of (type,tag2) pairs
 ##
+##     ##-- summary data: basic
+##     ntags1 => $n1,          ##-- number of distinct (tag1)s encountered
+##     ntags2 => $n2,          ##-- number of distinct (tag2)s encountered
+##
 ##     ##-- summary data: token-wise (meta-tagging)
 ##     meta_precision=>$prec,       ##-- p(best(tag2|tag1)|tag1)
 ##     meta_recall=>$recall,        ##-- p(best(tag1|tag2)|tag2)
@@ -895,6 +899,10 @@ sub finish {
     }
   }
 
+  ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  ## general: number of tags
+  $eval->{ntags1} = scalar(keys %$tag1i);
+  $eval->{ntags2} = scalar(keys %$tag2i);
 
   ##-- reset file reader
   $eval->reset();
@@ -1000,7 +1008,7 @@ sub fromEval {
   my @dup = (
 	     qw(label1 label2),
 	     qw(tag1i tag2i),
-	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2 nwtypes),
+	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2 nwtypes ntags1 ntags2),
 	     (map { "meta_$_" } qw(precision recall F)),
 	     (map { "ameta_$_" } qw(precision recall F)),
 	     (map { "avg_$_" } qw(precision recall F)),
@@ -1057,6 +1065,9 @@ sub saveNativeFh {
      (defined($esum->{nanals1}) ? "\$nanals1=$esum->{nanals1};\n" : qw()),
      (defined($esum->{nanals2}) ? "\$nanals2=$esum->{nanals2};\n" : qw()),
 
+     (defined($esum->{ntags1}) ? "\$ntags1=$esum->{ntags1};\n" : qw()),
+     (defined($esum->{ntags2}) ? "\$ntags2=$esum->{ntags2};\n" : qw()),
+
      "##", ("-" x 78), "\n",
      "## ", ref($esum), " Summary\n",
      "## Identifiers:\n",
@@ -1069,6 +1080,12 @@ sub saveNativeFh {
 
      (defined($esum->{ntypes})
       ? ("## Num. Types               : ", sprintf("%6d\n",   $esum->{ntypes}))
+      : qw()),
+     (defined($esum->{ntags1})
+      ? ("## Num. Tags / Got          : ", sprintf("%6d\n",   $esum->{ntags1}))
+      : qw()),
+     (defined($esum->{ntags2})
+      ? ("## Num. Tags / Wanted       : ", sprintf("%6d\n",   $esum->{ntags2}))
       : qw()),
      (defined($esum->{nanals1}) && defined($esum->{arate1})
       ? ("## Ambiguity / Got          : ", sprintf("%6d  (%6.2f an/typ)\n", $esum->{nanals1}, $esum->{arate1}))
