@@ -1,21 +1,12 @@
 ##-*- Mode: CPerl -*-
 ##
-## File: MUDL::Corpus::Buffer::Pdl2.pm
+## File: MUDL::Corpus::Buffer::PdlFull.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: in-memory corpus buffer: Pdls with attributes
 ##
 ## --> UNUSED: basic testing performed, seems to work, but:
-##     NOT SIGNIFICANTLY FASTER than plain .tt FILES (for unigram counting)
-##
-##    ##-- testing getSentence():
-##    cmpthese(4,{buf=>\&test_buf_io, file=>\&test_file_io, binfile=>\&test_binfile_io, pb2=>\&test_pb2_io})
-##              Rate    file     pb2     pb1 binfile     buf
-##    file    1.22/s      --    -32%    -57%    -57%    -91%  # MUDL::CorpusIO::TT
-##    pb2     1.79/s     46%      --    -37%    -38%    -88%  # MUDL::Corpus::Buffer::Pdl2 (this package)
-##    pb1     2.84/s    133%     59%      --     -1%    -80%  # MUDL::Corpus::Bffer::Pdl   (text only)
-##    binfile 2.86/s    134%     60%      1%      --    -80%  # MUDL::CorpusIO::TT::Bin
-##    buf     14.3/s   1071%    700%    404%    400%      --  # MUDL::Corpus::Buffer / MUDL::Token::TT
+##     NOT SIGNIFICANTLY FASTER than plain .tt FILES (for unigram counting, i.e. text() access)
 ##
 ## --> this class WOULD make sense if all data was handled INTERNALLY (i.e. modulo I/O)
 ##     by "global" Enums & id-translation pdls, but that's a major undertaking
@@ -23,7 +14,7 @@
 ##
 ##======================================================================
 
-package MUDL::Corpus::Buffer::Pdl2;
+package MUDL::Corpus::Buffer::PdlFull;
 use MUDL::Corpus::Buffer;
 use MUDL::Enum;
 use PDL;
@@ -41,41 +32,64 @@ our @ISA = qw(MUDL::Corpus::Buffer);
 ##   + %args:
 ##      ##
 ##      ##-- basic data
-##      #sents => \@array_of_pdls,     ## buffer content
-##      txtpdl   => $txtpdl,           ## pdl(long,$nTokens)             : token-text Ids
-##      attr2pdl => \%attr2pdl,        ## {$attrName=>pdl(long,$nTokens) : token-attribute-value Ids
-##      soffsets => $lenpdl,           ## pdl(long,$nSents+1)            : sentence-start offset
+##      pdls     => \%attr2pdl         ## (text=>pdl(long,$nTokens_or_more), ..., $attrN=>pdl(long,$circa_nTokens))
+##      soffsets => $lenpdl,           ## pdl(long,$nSents+1) : sentence-start offset
+##      ##
+##      ##-- dynamic re-allocation
 ##      tget     => $n,                ## number of token-slots to grow by on overflow (default=8192)
 ##      sget     => $n,                ## number of sentence-slots to grow by on overflow (default=512)
+##      ##
+##      ##-- general buffer stuff
 ##      offset   => $zero_offset,      ## >= 0, logical offset for {sents}[0]
-##      nsents   => $n,                ## number of actually stored sentences (should by $cb->{soffsets}->ngood)
-##      ntoks    => $n,                ## number of actually stored tokens
+##      nsents   => $nSents,           ## number of actually stored sentences (should by $cb->{soffsets}->ngood)
+##      ntoks    => $nTokens,          ## number of actually stored tokens
 ##      ##
 ##      ##-- enums
-##      txtenum   => $text_enum,       ## token-text enum
-##      attr2enum => \%attr2enum,      ## token-attr enums, indexed by attribute name
-##      wantattrs => $bool_or_hashref, ## boolean: keep all attrs yes/no, hashref: attr-name pseudo-set to keep: default=1
+##      enums     => \%attr2enum,      ## (text=>$textEnum, tag=>$tagEnum, ..., $attrN=>$attrNEnum)
+##      wantattrs => $bool_or_hashref, ## ###hashref or boolean (default: boolean=1)
+##                                     ##  + boolean: keep all attrs yes/no
+##                                     ## ### + hashref: attr-name pseudo-set to keep
 sub new {
   my $that = shift;
   return bless {
-		  ##-- basic data
-		  txtpdl   => null->convert(long),
-		  attr2pdl => {},
-		  soffsets => zeroes(long,1),
-		  tget     => 8192,
-		  sget     => 512,
-		  offset   => 0,
-		  nsents   => 0,
-		  ntoks    => 0,
+		##-- basic data
+		pdls => {},
+		soffsets => zeroes(long,1),
 
-		  ##-- enums
-		  txtenum  => MUDL::Enum->new(),
-		  attr2enum=> {},
-		  wantattrs=> 1,
+		##-- allocation stuff
+		tget     => 8192,
+		sget     => 512,
+
+		##-- buffer stuff
+		offset   => 0,
+		nsents   => 0,
+		ntoks    => 0,
+
+		##-- enums
+		enums     => {},
+		wantattrs => 1,
 
 		  @_
 	       }, ref($that)||$that;
 }
+
+##======================================================================
+## new methods
+
+## $cb = $cb->trimPdls()
+## $cb = $cb->trimPdls($nsents,$ntoks)
+##  + trims buffer pdls to $nsents sentences, $ntoks tokens, defaults are @$cb{qw(nsents ntoks)}
+sub trimPdls {
+  my ($cb,$nsents,$ntoks) = @_;
+  $nsents = $cb->{nsents} if (!defined($nsents));
+  $ntoks  = $cb->{ntoks} if (!defined($ntoks));
+  $cb->{soffsets}->inplace->reshape($nsents+1);
+  foreach (values(%{$cb->{pdls}})) {
+    $_->inplace->reshape($ntoks);
+  }
+  return $cb;
+}
+
 
 ##======================================================================
 ## accessors
@@ -83,10 +97,9 @@ sub new {
 ## $cb = $cb->clear()
 sub clear {
   my $cb = shift;
-  $cb->{txtpdl}       = null->convert(long),
   $cb->{soffsets}     = zeroes(long,1),
-  %{$cb->{attr2pdl}}  = qw();
-  %{$cb->{attr2enum}} = qw();
+  %{$cb->{pdls}}  = qw();
+  %{$cb->{enums}} = qw();
   $cb->{offset} = 0;
   $cb->{nsents} = 0;
   $cb->{ntoks} = 0;
@@ -97,12 +110,11 @@ sub clear {
 ##   + clear buffered data, update offset
 sub flush {
   my $cb = shift;
-
+  %{$cb->{pdls}} = qw();
+  $cb->{soffsets} = zeroes(long,1);
   $cb->{offset} += $cb->{nsents};
-  $cb->{sents}   = undef;
   $cb->{nsents}  = 0;
   $cb->{ntoks}   = 0;
-
   return $cb;
 }
 
@@ -115,7 +127,7 @@ sub flush {
 ##  + %args are passed to MUDL::CorpusIO::BufReader->new()
 sub reader {
   my $cb = shift;
-  return MUDL::CorpusIO::Pdl2BufReader->new(buffer=>$cb,@_);
+  return MUDL::CorpusIO::PdlFullBufReader->new(buffer=>$cb,@_);
 }
 
 ## $cw = $buf->writer(%args)
@@ -123,7 +135,7 @@ sub reader {
 ##  + %args are passed to MUDL::CorpusIO::BufWriter->new()
 sub writer {
   my $cb = shift;
-  return MUDL::CorpusIO::Pdl2BufWriter->new(buffer=>$cb,@_);
+  return MUDL::CorpusIO::PdlFullBufWriter->new(buffer=>$cb,@_);
 }
 
 ##======================================================================
@@ -156,22 +168,25 @@ sub writer {
 
 
 ########################################################################
-## I/O: PdlBufReader
+## I/O: PdlFullBufReader
 ##
 ##  + read from a MUDL::Corpus::Buffer::Pdl
 ##
 ########################################################################
 
 
-package MUDL::CorpusIO::Pdl2BufReader;
+package MUDL::CorpusIO::PdlFullBufReader;
+use MUDL::Corpus::EBuffer;
+use MUDL::EToken;
 use PDL;
-our @ISA = qw(MUDL::CorpusIO::BufReader);
+use strict;
+our @ISA = qw(MUDL::CorpusIO::EBufReader);
 
 ## $cr = MUDL::CorpusIO::PdlBufReader->new(buffer=>$buffer,%args)
 ##  + structure:
-##    buffer=> $corpus_buffer,    ##-- underlying buffer (alias='corpus')
-##    rpos  => $buffer_index,     ##-- *logical* read position in underlying buffer
-##    tclass => $TOKEN_CLASSNAME, ##-- Default: MUDL::Token
+##    buffer => $corpus_buffer,    ##-- underlying buffer (alias='corpus')
+##    rpos   => $buffer_index,     ##-- *logical* read position in underlying buffer
+##    #tclass => $TOKEN_CLASSNAME,  ##-- Default: MUDL::EToken: NO
 ##
 sub new {
   my ($that,%args) = @_;
@@ -181,16 +196,16 @@ sub new {
 		buffer=>undef,
 		rpos  =>0,
 		nsents=>0,
-		tclass=>'MUDL::Token',
+		#tclass=>'MUDL::EToken',
 		%args
 	       }, ref($that)||$that;
 }
 
 
-## $buf = $cr->buffer()
-## $buf = $cr->buffer($buf)
-##
-## (inherited)
+## $buf_or_undef = $cr->buffer()
+## $buf          = $cr->buffer($buf)
+##   + get/set buffer (may return undef)
+#(inherited)
 
 ## $bool = $cr->eof
 sub eof {
@@ -215,17 +230,19 @@ sub getSentence {
 
   my $s = bless([
 		 map {
-		   $cr->{tclass}->new(text=>$buf->{txtenum}{id2sym}[$_])
-		 } $buf->{txtpdl}->slice("$si0:$si1")->list
+		   bless { _enums=>$buf->{enums}, text=>$_ }, 'MUDL::EToken'
+		 } (defined($buf->{pdls}{text}) ? $buf->{pdls}{text}->slice("$si0:$si1")->list : qw())
 		], 'MUDL::Sentence');
 
   ##-- maybe add some attributes
   if ($buf->{wantattrs}) {
-    my ($i,$attr,$apdl,@avals);
-    while (($attr,$apdl)=each(%{$buf->{attr2pdl}})) {
-      @avals = @{$buf->{attr2enum}{$attr}{id2sym}}[ $apdl->slice("$si0:$si1")->list ];
+    my ($i,$attr,$apdl,$asize);
+    while (($attr,$apdl)=each(%{$buf->{pdls}})) {
+      next if ($attr eq 'text');
+      $asize = $apdl->nelem;
       foreach $i (0..$#$s) {
-	$s->[$i]->attribute($attr,$avals[$i]);
+	next if ($si0+$i >= $asize);
+	$s->[$i]{$attr} = $apdl->at($si0+$i);
       }
     }
   }
@@ -236,47 +253,56 @@ sub getSentence {
 ## \%token_or_undef = $cr->getToken();
 ##  + not implemented
 
+## $bufferOrClass = $cr->getBuffer()
+##  + get buffer or an appropriate class
+##  + used by fromString, fromFile, etc. methods
+sub getBuffer { return $_[0]{buffer} || 'MUDL::Corpus::Buffer::PdlFull'; }
+
 ## undef = $cr->fromString($string)
-##  + not implemented
+##  + inherited from MUDL::Corpus::Buffer
 
 ## undef = $cr->fromFile($filename_or_fh);
-##  + not implemented
+##  + inherited from MUDL::Corpus::Buffer
 
 ## $n = $cr->nSentences()
 ##  + returns number of sentences already read
 sub nSentences { return $_[0]{nsents}; }
 
 ## undef = $cr->reset();
-sub reset {
-  $_[0]{rpos} = 0;
-}
+# + inherited
 
 ## $n = $cr->nTokens()
-sub nTokens { return $_[0]{ntoks}; }
+# + inherited
 
 
 ########################################################################
-## I/O: BufWriter
+## I/O: PdlFullBufWriter
 ##
-##  + write to a MUDL::Corpus::Buffer
+##  + write to a MUDL::Corpus::Buffer::PdlFull
 ########################################################################
 
-package MUDL::CorpusIO::Pdl2BufWriter;
+package MUDL::CorpusIO::PdlFullBufWriter;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::CorpusIO::BufWriter);
+our @ISA = qw(MUDL::CorpusIO::EBufWriter);
 
-## $cr = MUDL::CorpusIO::PdlBufWriter->new(buffer=>$buffer,%args)
+## $cr = MUDL::CorpusIO::PdlFullBufWriter->new(buffer=>$buffer,%args)
 ##  + structure:
 ##    buffer=> $corpus_buffer, ##-- underlying buffer (alias='corpus')
 ##    type=>   $pdl_datatype,  ##-- default=long
 sub new {
   my ($that,%args) = @_;
   my $buf = defined($args{buffer}) ? $args{buffer} : $args{corpus};
-  $buf = MUDL::Corpus::Buffer::Pdl2->new() if (!defined($buf));
+  $buf = MUDL::Corpus::Buffer::PdlFull->new() if (!defined($buf));
   delete(@args{qw(buffer corpus)});
   return bless {
 		buffer=>$buf,
+		##
+		##-- CorpusWriter wrapping
+		#saveSub=>\&saveSub,   ##-- method to use for buffer saving
+		#                      ##   + this gets set by toString(), toFile(), etc.
+		#saveArgs=>\@args,     ##-- user args to \&saveSub, e.g. 'mode','iolayers'; default: none
+		#
 		%args
 	       }, ref($that)||$that;
 }
@@ -285,11 +311,8 @@ sub new {
 sub flush {
   ##-- trim buffer pdls
   my $cw = shift;
-  my $buf = $cw->{buffer};
-  $buf->{soffsets}->reshape($buf->{nsents}+1);
-  foreach (values(%{$buf->{attr2pdl}})) {
-    $_->reshape($buf->{soffsets}->at(-1));
-  }
+  $cw->{buffer}->trimPdls();
+  $cw->SUPER::flush();
   return $cw;
 }
 
@@ -298,15 +321,20 @@ sub putSentence {
   my ($cw,$s) = @_;
   my $buf = $cw->{buffer};
 
-  ##-- maybe re-allocate
-  if ($buf->{nsents}+1 >= $buf->{soffsets}->nelem) {
-    $buf->{soffsets}->reshape($buf->{soffsets}->nelem + $buf->{sget});
+  ##-- maybe re-allocate: sentences
+  my $oldsize = $buf->{soffsets}->nelem;
+  if ($oldsize <= $buf->{nsents}+1) {
+    $buf->{soffsets}->inplace->reshape($oldsize + $buf->{sget});
+    $buf->{soffsets}->slice("${oldsize}:-1") .= -1;
   }
-  while ($buf->{ntoks}+scalar(@$s) >= $buf->{txtpdl}->nelem) {
-    $buf->{txtpdl}->reshape($buf->{txtpdl}->nelem + $buf->{tget});
-    foreach (values(%{$buf->{attr2pdl}})) {
-      $_->reshape($buf->{txtpdl}->nelem + $buf->{tget});
-    }
+  ##-- maybe re-allocate: text
+  my $txtpdl = $buf->{pdls}{text};
+  $txtpdl = $buf->{pdls}{text} = zeroes(long,$buf->{tget})-1 if (!defined($txtpdl));
+  $oldsize=$txtpdl->nelem;
+  while ($oldsize <= $buf->{ntoks}+scalar(@$s)) {
+    $txtpdl->inplace->reshape($oldsize + $buf->{tget});
+    $txtpdl->slice("${oldsize}:-1") .= -1;
+    $oldsize = $txtpdl->nelem;
   }
 
   ##-- store NEXT sentence offset
@@ -317,32 +345,28 @@ sub putSentence {
   $buf->{ntoks} = $s1+1;
 
   ##-- store tokens
-  $buf->{txtpdl}->slice("$s0:$s1") .= pdl(long,[map { $buf->{txtenum}->addSymbol(ref($_) ? $_->text : $_) } @$s]);
+  my ($i,$tok);
+  foreach $i (0..$#$s) {
+    $tok = $s->[$i];
 
-  ##-- store attributes
-  if ($buf->{wantattrs}) {
-    ##-- attrs: get wanted attributes & allocate pdls, enums
-    my ($wantattrs);
-    if (ref($buf->{wantattrs})) {
-      ##-- attrs: get & alloc: buffer-local specific attributes at user request
-      $wantattrs = $buf->{wantattrs};
-    } else {
-      ##-- attrs: get & alloc: find all attributes in sentence
-      $wantattrs = { tag=>undef };
-      @$wantattrs{ keys(%{$buf->{attr2pdl}}) }                       = undef;
-      @$wantattrs{ map {ref($_) ? $_->attributeNames() : qw()} @$s } = undef;
+    ##-- general case: anything else: make it an EToken (handle Enum extension, etc.)
+    if (!ref($tok) || ref($tok) ne 'MUDL::EToken' || $tok->{_enums} ne $buf->{enums}) {
+      $tok = MUDL::EToken->newFromToken($tok,_enums=>$buf->{enums});
     }
-    ##-- attrs: get & alloc: allocate
-    my ($attr,$apdl,$aenum);
-    foreach $attr (keys(%$wantattrs)) {
-      $aenum = $buf->{attr2enum}{$attr} = MUDL::Enum->new()
-	if (!defined($aenum=$buf->{attr2enum}{$attr}));
-      $apdl  = $buf->{attr2pdl}{$attr}  = zeroes(long,$buf->{txtpdl}->nelem)->setvaltobad(0)
-	if (!defined($apdl=$buf->{attr2pdl}{$attr}));
-      $apdl->reshape($buf->{txtpdl}->nelem) if ($apdl->nelem < $buf->{txtpdl}->nelem);
 
-      ##-- attrs: store
-      $apdl->slice("$s0:$s1") .= pdl(long,[map {$aenum->addSymbol(ref($_) ? $_->attribute($attr) : 'BAD')} @$s]);
+    ##-- special case: all MUDL::ETokens which share our enums
+    $txtpdl->slice($s0+$i) .= $tok->{text};
+
+    ##-- attrs: assume enums are safe
+    next if (!$buf->{wantattrs});
+    foreach (grep {$_ ne '_enums' && $_ ne 'text'} keys(%$tok)) {
+      $buf->{pdls}{$_} = zeroes(long,$txtpdl->nelem)-1 if (!defined($buf->{pdls}{$_}));
+      $oldsize = $buf->{pdls}{$_}->nelem;
+      if ($oldsize != $txtpdl->nelem) {
+	$buf->{pdls}{$_}->inplace->reshape($txtpdl->nelem);
+	$buf->{pdls}{$_}->slice("${oldsize}:-1") .= -1;
+      }
+      $buf->{pdls}{$_}->slice($s0+$i) .= $tok->{$_};
     }
   }
 
