@@ -150,12 +150,15 @@ sub new {
 		buffer=>undef,
 		rpos=>0,
 		nsents=>0,
+		##
+		##--loadArgs=>[], ##-- args for loadGenericFile if called on buffer
 		%args
 	       }, ref($that)||$that;
 }
 
-## $buf = $cr->buffer()
-## $buf = $cr->buffer($buf)
+## $buf_or_undef = $cr->buffer()
+## $buf          = $cr->buffer($buf)
+##   + get/set buffer (may return undef)
 sub buffer {
   my $cr = shift;
   if (@_) {
@@ -186,11 +189,32 @@ sub getSentence {
 ## \%token_or_undef = $cr->getToken();
 ##  + not implemented
 
+## $bufferOrClass = $cr->getBuffer()
+##  + get buffer or an appropriate class
+##  + used by fromString, fromFile, etc. methods
+sub getBuffer { return $_[0]{buffer} || 'MUDL::Corpus::Buffer'; }
+
 ## undef = $cr->fromString($string)
-##  + not implemented
+sub fromString {
+  my $cr = shift;
+  $cr->{buffer} = $cr->getBuffer->loadBinString(shift);
+  $cr->reset;
+  return $cr;
+}
 
 ## undef = $cr->fromFile($filename_or_fh);
-##  + not implemented
+sub fromFile {
+  my ($cr,$file) = @_;
+  if (ref($file)) {
+    $cr->{buffer} = $cr->getBuffer->loadBinFh($file);
+  } else {
+    $cr->{buffer} = $cr->getBuffer->loadFile($file, (defined($cr->{loadArgs})
+						     ? @{$cr->{loadArgs}}
+						     : qw()));
+  }
+  $cr->reset;
+  return $cr;
+}
 
 ## $n = $cr->nSentences()
 ##  + returns number of sentences already read
@@ -226,14 +250,26 @@ sub new {
   delete(@args{qw(buffer corpus)});
   return bless {
 		buffer=>$buf,
-		#wpos=>undef, ##-- undef: end-of-buffer
-		#clobber=>0,  ##-- how many old elements to clobber
+		#wpos=>undef,     ##-- undef: end-of-buffer
+		#clobber=>0,      ##-- how many old elements to clobber
+		##
+		##-- CorpusWriter wrapping
+		#saveSub=>\&saveSub,   ##-- method to use for buffer saving
+		#                      ##   + this gets set by toString(), toFile(), etc.
+		#saveArgs=>\@args,     ##-- user args to \&saveSub, e.g. 'mode','iolayers'; default: none
 		%args
 	       }, ref($that)||$that;
 }
 
-## $buf = $cw->buffer()
-## $buf = $cw->buffer($buf)
+## DESTROY: close fh if defined
+#sub DESTROY {
+#  my $cw=shift;
+#  $cw->{fh}->close if (defined($cw->{fh}));
+#}
+
+## $buf_or_undef = $cw->buffer()
+## $buf          = $cw->buffer($buf)
+##   + get/set buffer (may return undef)
 sub buffer {
   my $cw = shift;
   if (@_) {
@@ -242,9 +278,6 @@ sub buffer {
   }
   return $cw->{buffer};
 }
-
-## $bool = $cw->flush
-sub flush { return 1; }
 
 ## undef = $cw->putSentence(\@sent);
 sub putSentence {
@@ -265,13 +298,37 @@ sub putSentence {
 ## undef = $cr->putToken($text_or_hashref);
 ##  + not implemented
 
+## $bool = $cw->flush
+sub flush {
+  my $cw = shift;
+  return 1 if (!defined($cw->{buffer}) || !defined($cw->{saveSub}));
+  return $cw->{saveSub}->(defined($cw->{saveArgs}) ? @{$cw->{saveArgs}} : qw());
+}
+
 ## undef = $cr->toString(\$string)
-##  + not implemented
+sub toString {
+  #my ($cw,$strref)=@_;
+  #$cw->{saveMethod} = sub { $cw->{buffer}->saveBinString($strref); };
+  ##--
+  my $buf    = $_[0]{buffer};
+  my $strref = $_[1];
+  $_[0]{saveSub} = sub { $$strref = $buf->saveBinString(@_); };
+}
 
 ## undef = $cr->toFile($filename_or_fh);
-## undef = $cr->Fh($fh);
-##  + not implemented
-
+## undef = $cr->toFh($fh);
+*toFh = \&toFile;
+sub toFile {
+  #my ($cw,$file) = @_;
+  #$cw->{saveMethod} = (ref($file)
+	#	       ? UNIVERSAL::can($cw->{buffer},'saveBinFh')
+	#	       : UNIVERSAL::can($cw->{buffer},'saveGenericFile'));
+  ##--
+  my $buf  = $_[0]{buffer};
+  my $file = $_[1];
+  return $_[0]{saveSub} = sub { $buf->saveBinString($file,@_) } if (ref($file));
+  return $_[0]{saveSub} = sub { $buf->saveGenericFile($file,@_) };
+}
 
 1;
 

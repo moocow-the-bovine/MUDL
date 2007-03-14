@@ -612,7 +612,7 @@ sub saveBinFh {
   ##-- I/O layers
   my @iolayers = $args{iolayers} ? @{$args{iolayers}} : qw();
   binmode($fh);
-  binmode($fh,$_) foreach (grep { $_ !~ /^:gzip/ } @iolayers); ##-- HAC: ignore ':gzip' layers!
+  binmode($fh,$_) foreach (grep { $_ !~ /^:gzip/ } @iolayers); ##-- HACK: ignore ':gzip' layers!
 
   ##-- Hack: freeze & gzip (maybe)
   if (grep { $_ =~ /^:gzip/ } @iolayers) {

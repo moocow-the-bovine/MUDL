@@ -1,0 +1,8 @@
+#1_i	2_bench	3_ttt	4_ttt.pdlbuf.bin	5_ttt.bin	6_ttt.cbuf.bin	7_ttt.ebuf.bin	8_ttt.ebuftt.bin
+0	size	0	-1.89			-11.88		-41.43		-63.69		-24.79
+1	getSent	-93	-89			-82		0		-58
+2	getText	-83	-78			-65		0		-45
+3	fullPdl	-99	0			-98		-98		-81
+4	spdls	-99	0			-98		-98		-81
+5	putr	-94	-99			-89		0		-96
+6	putr_e	-95	-95			-89		0		-83

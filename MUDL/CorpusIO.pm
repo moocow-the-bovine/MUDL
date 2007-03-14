@@ -28,7 +28,7 @@ use Carp;
 
 ## $cr = $class_or_object->fileReader($filename,%args)
 ##  + new reader for $filename
-##  + $filename may be prefixed with 'fmt:'
+##  + $filename may be prefixed with '${fmt}:', where ${fmt} is a key of this hash
 our %FORMATS =
   (
    ##-- FileList
@@ -43,7 +43,7 @@ our %FORMATS =
    tt  => 'TT',
    t => 'TT',
    ##
-   ##-- TT/bin
+   ##-- TT/bin (experimental)
    'ttt.bin' => 'TT::Bin',
    'tt.bin' => 'TT::Bin',
    't.bin' => 'TT::Bin',
@@ -60,6 +60,20 @@ our %FORMATS =
    ##-- aliases
    native => 'TT',
    tnt => 'TT',
+   ##
+   ##-- Buffered
+   'cbuf.bin' => 'Buffer',
+   'buffer'   => 'Buffer',
+   ##
+   ##-- Buffered + Enumerated
+   'ebuf.bin' => 'EBuffer',
+   'ebuffer'  => 'EBuffer',
+   'ebuftt.bin' => 'EBuffer::TT',
+   'ebuffertt'=> 'EBuffer::TT',
+   ##
+   ##-- Buffered + Enumerated + Pdl-ized
+   'pdlbuf.bin' => 'PdlBuffer::Full',
+   'pdlbuffer'  => 'PdlBuffer::Full',
    ##
    ##-- default
    #DEFAULT => 'XML',
@@ -171,14 +185,23 @@ our @ISA = qw(MUDL::CorpusIO);
 ## undef = $cw->putSentence(\@sent);
 *putSentence = dummy('putSentence');
 
-## undef = $cr->putToken($text_or_hashref);
+## undef = $cw->putReader($corpusReader)
+sub putReader {
+  my ($cw,$cr) = @_;
+  my ($s);
+  $cw->putSentence($s) while (defined($s=$cr->getSentence));
+}
+
+## undef = $cw->putToken($text_or_hashref);
 *putToken = dummy('putToken');
 
-## undef = $cr->toString(\$string)
+## undef = $cw->toString(\$string)
 *toString = dummy('toString');
 
-## undef = $cr->toFile($filename_or_fh);
+## undef = $cw->toFile($filename_or_fh);
 *toFile = dummy('toFile');
+
+## undef = $cw->toFh($fh);
 *toFh = dummy('toFh');
 
 ########################################################################
@@ -186,7 +209,7 @@ our @ISA = qw(MUDL::CorpusIO);
 ########################################################################
 
 use MUDL::CorpusIO::TT;
-use MUDL::CorpusIO::TT::Bin;
+use MUDL::CorpusIO::TT::Bin; ##-- experimental
 use MUDL::CorpusIO::Separated;
 #use MUDL::CorpusIO::LOB;
 #use MUDL::CorpusIO::Brown;
@@ -200,9 +223,30 @@ use MUDL::CorpusIO::FileList;
 ##-- OBSOLETE
 ##   + use MUDL::CorpusIO::BufReader, MUDL::CorpusIO::BufWriter
 ##   + defined in MUDL::Corpus::Buffer;
-package MUDL::CorpusIO::Corpus;      our @ISA = qw(MUDL::CorpusIO::BufReader MUDL::CorpusIO::BufWriter);
+package MUDL::CorpusIO::Corpus;      our @ISA=qw(MUDL::CorpusIO::BufReader MUDL::CorpusIO::BufWriter);
 package MUDL::CorpusReader::Corpus;  our @ISA=qw(MUDL::CorpusIO::BufReader);
 package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusIO::BufWriter);
+
+##-- more aliases: MUDL::Corpus::Buffer
+package MUDL::CorpusIO::Buffer;      our @ISA=qw(MUDL::CorpusIO::BufReader MUDL::CorpusIO::BufWriter);
+package MUDL::CorpusReader::Buffer;  our @ISA=qw(MUDL::CorpusIO::BufReader);
+package MUDL::CorpusWriter::Buffer;  our @ISA=qw(MUDL::CorpusIO::BufWriter);
+
+##-- more aliases: MUDL::Corpus::EBuffer
+package MUDL::CorpusIO::EBuffer;      our @ISA=qw(MUDL::CorpusIO::EBufReader MUDL::CorpusIO::EBufWriter);
+package MUDL::CorpusReader::EBuffer;  our @ISA=qw(MUDL::CorpusIO::EBufReader);
+package MUDL::CorpusWriter::EBuffer;  our @ISA=qw(MUDL::CorpusIO::EBufWriter);
+
+##-- more aliases: MUDL::Corpus::EBuffer::TT
+package MUDL::CorpusIO::EBuffer::TT;      our @ISA=qw(MUDL::CorpusIO::EBufTTReader MUDL::CorpusIO::EBufTTWriter);
+package MUDL::CorpusReader::EBuffer::TT;  our @ISA=qw(MUDL::CorpusIO::EBufTTReader);
+package MUDL::CorpusWriter::EBuffer::TT;  our @ISA=qw(MUDL::CorpusIO::EBufTTWriter);
+
+##-- even more aliases: MUDL::Corpus::Buffer::PdlFull
+package MUDL::CorpusIO::PdlBuffer::Full;       our @ISA=('MUDL::CorpusIO::PdlFullBufReader',
+							 'MUDL::CorpusIO::PdlFullBufWriter');
+package MUDL::CorpusReader::PdlBuffer::Full;   our @ISA=qw(MUDL::CorpusIO::PdlFullBufReader);
+package MUDL::CorpusWriter::PdlBuffer::Full;   our @ISA=qw(MUDL::CorpusIO::PdlFullBufWriter);
 
 1;
 

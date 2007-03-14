@@ -194,6 +194,26 @@ sub decodeAll {
   return $enum;
 }
 
+##======================================================================
+## I/O : Binary: hooks
+
+## ($serialized_string, @other_refs) = STORABLE_freeze($obj,$cloning_flag)
+sub STORABLE_freeze {
+  my ($obj,$cloning) = @_;
+  return ('',[map { $_ eq 'sym2id' ? qw() : ($_=>$obj->{$_}) } keys(%$obj)]);
+}
+
+## $obj = STORABLE_thaw($obj, $cloning_flag, $serialized_string, @other_refs)
+sub STORABLE_thaw {
+  my ($obj,$cloning,$str,$ar) = @_;
+  %$obj = @$ar;
+  #return $obj if (ref($obj) ne __PACKAGE__); ##-- hack
+  $obj->{sym2id} = {} if (!defined($obj->{sym2id}));
+  @{$obj->{sym2id}}{grep {defined($_)} @{$obj->{id2sym}}}
+    = grep {defined($obj->{id2sym}[$_])} (0..$#{$obj->{id2sym}});
+  return $obj;
+}
+
 
 ##======================================================================
 ## I/O : AT&T / Native

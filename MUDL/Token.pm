@@ -21,6 +21,7 @@ our @ISA = qw(MUDL::Object);
 ## Default object structure
 ##  + hashref { text=>$text, tag=>$tag, %attributes }
 
+## $tok = $class->new(text=>$text, tag=>$tag, %attributes);
 sub new { return bless { @_[1..$#_] }, ref($_[0])||$_[0]; }
 
 ##======================================================================
@@ -37,11 +38,44 @@ sub tag { return (exists($_[1]) ? $_[0]{tag}=$_[1] : $_[0]{tag}); }
 ## @attributeNames = $tok->attributeNames()
 sub attributeNames { return grep { $_ ne 'text' && $_ ne 'tag' } keys(%{$_[0]}); }
 
+## @attributeValues = $tok->attributeValues
+sub attributeValues { return map { $_[0]{$_} } $_[0]->attributeNames; }
+
 ## %attributes = $tok->attributes
 sub attributes { return map { $_=>$_[0]{$_} } $_[0]->attributeNames; }
 
-## @attributeValues = $tok->attributeValues
-sub attributeValues { return map { $_[0]{$_} } $_[0]->attributeNames; }
+##  %tokHash = $tok->asHash #-- list context
+## \%tokHash = $tok->asHash #-- scalar context, may be dangerous to change
+##  + like (text=>$tok->text, tag=>$tok->tag, $tok->attributes());
+sub asHash {
+  return (ref($_[0]) eq __PACKAGE__ ##-- fast implementation for hashed tokens
+	  ? (wantarray
+	     ? %{$_[0]}
+	     : $_[0])
+	  : (wantarray
+	     ? (text=>$_[0]->text, tag=>$_[0]->tag, $_[0]->attributes)   ##-- default
+	     : {text=>$_[0]->text, tag=>$_[0]->tag, $_[0]->attributes}));
+}
+
+
+## @tokArray = $tok->asArray(\@attrNames) #-- list context
+## %tokArray = $tok->asArray(\@attrNames) #-- scalar context
+##  + if @attrNames is unspecified, it defaults to all numeric attribute names
+##  + like @ary[0,1,@attrNames]=($tok->text, $tok->tag, @attrNames)
+sub asArray {
+  my $tok = shift;
+  my $ary = [];
+  if (ref($tok) eq __PACKAGE__) {
+    ##-- fast implementation for hashed tokens
+    my @nkeys = grep {$_=~/^\d+$/} keys(%$tok);
+    @$ary[0,1,(map {$_+2} @nkeys)] = @$tok{'text','tag',@nkeys};
+  } else {
+    my %attrs = $tok->attributes;
+    delete(@attrs{ grep {$_ !~ /^\d+$/} keys(%attrs) });
+    @$ary[0,1,(map {$_+2} keys(%attrs))] = ($tok->text,$tok->tag,values(%attrs));
+  }
+  return wantarray ? @$ary : $ary;
+}
 
 ## $val = $tok->getAttribute($attr)
 ## $val = $tok->setAttribute($attr,$val)
@@ -139,111 +173,6 @@ sub fromCorpusXMLNode {
   return $tok;
 }
 
-
-########################################################################
-## class MUDL::Token::Enum
-##  + general hash-based token class, enumerated
-########################################################################
-
-package MUDL::Token::Enum;
-use MUDL::Object;
-use Carp;
-use utf8;
-our @ISA = qw(MUDL::Token);
-
-##======================================================================
-## Default object structure
-##  + hashref { _enums=>{$tokkey2enum, ...}, text=>$text, tag=>$tag, %attributes }
-
-sub new { return bless { @_[1..$#_] }, ref($_[0])||$_[0]; }
-
-##======================================================================
-## Accessors
-
-## $txt = $tok->text()
-## $txt = $tok->text($txt)
-sub text {
-  return defined($_[0]{text}) ? $_[0]{_enums}{text}{id2sym}[ $_[0]{text} ] : undef if ($#_ < 1);
-  $_[0]{text} = $_[0]{_enums}{text}->addSymbol($_[1]);
-  return $_[1];
-}
-
-## $tag = $tok->tag()
-## $tag = $tok->tag($tag)
-sub tag {
-  return defined($_[0]{tag}) ? $_[0]{_enums}{tag}{id2sym}[ $_[0]{tag} ] : undef if ($#_ < 1);
-  $_[0][2] = $_[0][0]{enums}[1]->addSymbol($_[1]);
-  return $_[1];
-}
-
-## @attributeNames = $tok->attributeNames()
-sub attributeNames { return grep { $_ ne 'text' && $_ ne 'tag' && $_ ne '_enums' } keys(%{$_[0]}); }
-
-## %attributes = $tok->attributes
-sub attributes {
-  return map { $_=>$_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ] } $_[0]->attributeNames;
-}
-
-## @attributeValues = $tok->attributeValues
-sub attributeValues {
-  return map { $_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ] } $_[0]->attributeNames;
-}
-
-## $val = $tok->getAttribute($attr)
-## $val = $tok->setAttribute($attr,$val)
-*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
-sub attribute {
-  return defined($_[0]{$_[1]}) ? $_[0]{_enums}{$_[1]}{id2sym}[ $_[0]{$_[1]} ] : undef if ($#_ <= 1);
-  $_[0]{$_[1]} = $_[0]{_enums}{$_[1]}->addSymbol($_[2]);
-  return $_[2];
-}
-
-##======================================================================
-## I/O: Native
-
-## $str = $tok->saveNativeStr()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-*saveTTString = \&saveNativeString;
-sub saveNativeString {
-  return join("\t",
-	      map {
-		(defined($_[0]{$_})
-		 ? $_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ]
-		 : qw())
-	      }
-	      (qw(text tag), sort { $a <=> $b } grep { /^\d+$/ } keys(%{$_[0]}))
-	     )."\n";
-}
-
-# $tok = $tok->loadNativeStr($str)
-*loadTTString = \&loadNativeString;
-sub loadNativeString {
-  my ($tok,$str) = @_;
-  $tok = $tok->new() if (!ref($tok));
-  my @fields = split(/\s*[\t\r\n]+\s*/,$str);
-  foreach (qw(text tag), 0..($#fields-2)) {
-    $tok->{_enums}{$_} = MUDL::Enum->new if (!defined($tok->{_enums}{$_}))
-  }
-  $tok->{text} = $tok->{_enums}{text}->addSymbol(shift(@fields)) if (@fields);
-  $tok->{tag}  = $tok->{_enums}{tag} ->addSymbol(shift(@fields)) if (@fields);
-  @$tok{0..$#fields} = map { $tok->{_enums}{$_}->addSymbol($fields[$_]) } 0..$#fields;
-  return $tok;
-}
-
-
-##======================================================================
-## I/O: LOB | Brown
-
-# not implemented
-
-
-##======================================================================
-## I/O: XML
-
-## $node = $token->toCorpusXMLNode()
-
-# not implemented
-
 ########################################################################
 ## class MUDL::Token::TT
 ##  + array-based token class for TT files
@@ -278,11 +207,30 @@ sub tag { return ($#_ > 0 ? $_[0][1]=$_[1] : $_[0][1]); }
 ## @attributeNames = $tok->attributeNames()
 sub attributeNames { return (0..$#{$_[0]}-2); }
 
+## @attributeValues = $tok->attributeValues
+sub attributeValues { return map { $_[0][$_+2] } 0..$#{$_[0]}-2; }
+
 ## %attributes = $tok->attributes
 sub attributes { return map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2; }
 
-## @attributeValues = $tok->attributeValues
-sub attributeValues { return map { $_[0][$_+2] } 0..$#{$_[0]}-2; }
+##  %tokHash = $tok->asHash #-- list context
+## \%tokHash = $tok->asHash #-- scalar context
+##  + like (text=>$tok->text, tag=>$tok->tag, $tok->attributes());
+sub asHash {
+  return (wantarray
+	  ? (text=>$_[0][0], tag=>$_[0][1], map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2)
+	  : {text=>$_[0][0], tag=>$_[0][1], map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2});
+}
+
+## @tokArray = $tok->asArray(\@attrNames) #-- list context
+## %tokArray = $tok->asArray(\@attrNames) #-- scalar context
+##  + if @attrNames is unspecified, it defaults to all numeric attribute names
+##  + like @ary[0,1,@attrNames]=($tok->text, $tok->tag, @attrNames)
+sub asArray {
+  return (wantarray
+	  ? (@{ $_[0] }[ 0, 1, ($#_ > 1 ? @_[1..$#_] : (2..$#{$_[0]})) ])
+	  : [@{ $_[0] }[ 0, 1, ($#_ > 1 ? @_[1..$#_] : (2..$#{$_[0]})) ]]);
+}
 
 ## $val = $tok->getAttribute($attr)
 ## $val = $tok->setAttribute($attr,$val)
@@ -350,110 +298,6 @@ sub fromCorpusXMLNode {
   push(@$tok, $_->textContent) foreach ($node->getChildrenByTagName('detail'));
   return $tok;
 }
-
-
-########################################################################
-## class MUDL::Token::TT::Enum
-##  + array-based token class for TT files using MUDL::Enum::Nary
-########################################################################
-package MUDL::Token::TT::Enum;
-use MUDL::Enum::Nary;
-use Carp;
-use utf8;
-our @ISA = qw(MUDL::Array MUDL::Token);
-
-##======================================================================
-## Default object structure
-##  + arrayref [ $enum_nary, $text, $tag, @details ]
-
-##-- init(%args)
-##  + additional args: enum=>$enum_nary
-sub init {
-  my ($tok,%args) = @_;
-  $tok->[0] = $args{enum} if (defined($args{enum}));
-  $tok->text($args{text}) if (defined($args{text}));
-  $tok->tag($args{tag})   if (defined($args{tag}));
-  $tok->attribute($_,$args{$_}) foreach (sort { $a<=>$b } grep { /^\d+$/ } keys(%args));
-  return $tok;
-}
-
-##======================================================================
-## Accessors
-
-## $txt = $tok->text()
-## $txt = $tok->text($txt)
-sub text {
-  return defined($_[0][1]) ? $_[0][0]{enums}[0]{id2sym}[$_[0][1]] : undef if ($#_ < 1);
-  $_[0][1] = $_[0][0]{enums}[0]->addSymbol($_[1]);
-  return $_[1];
-}
-
-## $tag = $tok->tag()
-## $tag = $tok->tag($tag)
-sub tag {
-  return defined($_[0][2]) ? $_[0][0]{enums}[1]{id2sym}[ $_[0][2] ] : undef if ($#_ < 1);
-  $_[0][2] = $_[0][0]{enums}[1]->addSymbol($_[1]);
-  return $_[1];
-}
-
-## @attributeNames = $tok->attributeNames()
-sub attributeNames { return 0..($#{$_[0]}-3); }
-
-## %attributes = $tok->attributes
-sub attributes {
-  return map { ($_=>$_[0][0]{enums}[$_+2]{id2sym}[$_[0][$_+3]]) } 0..($#{$_[0]}-3);
-}
-
-## @attributeValues = $tok->attributeValues
-sub attributeValues {
-  return map { $_[0][0]{enums}[$_+2]{id2sym}[$_[0][$_+3]] } 0..($#{$_[0]}-3);
-}
-
-## $val = $tok->getAttribute($attr)
-## $val = $tok->setAttribute($attr,$val)
-*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
-sub attribute {
-  return $_[0]->text($#_ > 1 ? $_[2] : qw()) if ($_[1] eq 'text');
-  return $_[0]->tag ($#_ > 1 ? $_[2] : qw()) if ($_[1] eq 'tag');
-  my $i = int($_[1]);
-  return $_[0][0]{enums}[$i+2]{id2sym}[ $_[0][$i+3] ] if ($#_ <= 1);
-  $_[0][$i+3]=$_[0][0]{enums}[$i+2]->addSymbol($_[2]);
-  return $_[2];
-}
-
-##======================================================================
-## I/O: Native
-
-## $str = $tok->saveNativeStr()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-*saveTTString = \&saveNativeString;
-sub saveNativeString {
-  return join("\t",
-	      map {
-		$_[0][0]{enums}[$_]{id2sym}[ $_[0][$_+1] ]
-	      } 0..($#{$_[0]}-1))."\n"
-}
-
-# $tok = $tok->loadNativeStr($str)
-*loadTTString = \&loadNativeString;
-sub loadNativeString {
-  my ($tok,$str) = @_;
-  $tok = $tok->new() if (!ref($tok));
-  my @fields = split(/\s*[\t\r\n]+\s*/, $str);
-  $tok->[0] = MUDL::Enum::Nary->new(nfields=>scalar(@fields)) if (!defined($tok->[0]));
-  @$tok[1..scalar(@fields)] = map { $tok->[0]{enums}[$_]->addSymbol($fields[$_]) } 0..$#fields;
-  return $tok;
-}
-
-##======================================================================
-## I/O: LOB
-
-# (not implemented)
-
-##======================================================================
-## I/O: XML
-
-# (not implemented)
 
 
 ########################################################################
