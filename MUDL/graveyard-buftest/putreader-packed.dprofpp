@@ -1,0 +1,23 @@
+# generated with:
+#  perl -d:DProf ./putreader-pdlbuf.perl ; dprofpp tmon.out > putreader-packed.dprofpp
+
+Total Elapsed Time = 0.613822 Seconds
+  User+System Time = 0.613822 Seconds
+Exclusive Times
+%Time ExclSec CumulS #Calls sec/call Csec/c  Name
+ 26.5   0.163  0.226    560   0.0003 0.0004  MUDL::CorpusIO::PackedBufWriter::p
+                                             utSentence
+ 9.12   0.056  0.056   9441   0.0000 0.0000  MUDL::Token::TT::asHash
+ 8.15   0.050  0.196     23   0.0022 0.0085  MUDL::Dist::BEGIN
+ 6.52   0.040  0.040      1   0.0400 0.0400  Storable::pretrieve
+ 6.52   0.040  0.361     21   0.0019 0.0172  MUDL::BEGIN
+ 6.52   0.040  0.088     31   0.0013 0.0028  PDL::NiceSlice::findslice
+ 4.89   0.030  0.030    122   0.0002 0.0002  Text::Balanced::_match_bracketed
+ 4.89   0.030  0.030    160   0.0002 0.0002  Exporter::export
+ 3.26   0.020  0.049     10   0.0020 0.0049  MUDL::CorpusIO::BEGIN
+ 3.26   0.020  0.019     10   0.0020 0.0019  MUDL::Object::BEGIN
+ 1.63   0.010  0.010      1   0.0100 0.0100  Storable::pstore
+ 1.63   0.010  0.010      3   0.0033 0.0033  MUDL::Token::BEGIN
+ 1.63   0.010  0.010      1   0.0100 0.0100  SelfLoader::_load_stubs
+ 1.63   0.010  0.010      4   0.0025 0.0025  XML::LibXML::Boolean::BEGIN
+ 1.63   0.010  0.010      8   0.0012 0.0012  MUDL::CorpusIO::TT::Bin::BEGIN

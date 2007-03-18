@@ -27,5 +27,5 @@ avg
 tmon.out
 *.dprofpp*
 *.save*
-graveyard*
+#graveyard*
 *.gp
