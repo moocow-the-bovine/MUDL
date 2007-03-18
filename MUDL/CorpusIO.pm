@@ -57,29 +57,18 @@ our %FORMATS =
    ##-- Lob
    lob => 'LOB',
    ##
-   ##-- aliases
+   ##-- TT: aliases
    native => 'TT',
    tnt => 'TT',
    ##
-   ##-- Buffered
+   ##-- Buffer: generic
    'cbuf.bin' => 'Buffer',
    'buffer'   => 'Buffer',
    ##
-   ##-- Buffered + Enumerated
-   #'ebuf.bin' => 'EBuffer',
-   #'ebuffer'  => 'EBuffer',
-   #'ebuftt.bin' => 'EBuffer::TT',
-   #'ebuffertt'=> 'EBuffer::TT',
+   ##-- Buffered + Indexed + Pdl-ized (TT, fixed width)
+   'pdltt.bin' => 'Buffer::PdlTT',
    ##
-   ##-- Buffered + Enumerated + Pdl-ized
-   'pdlbuf.bin' => 'PdlBuffer::Full',
-   'pdlbuffer'  => 'PdlBuffer::Full',
-   ##
-   ##-- Buffered + Enumerated + packed [OLD, many globals]
-   #'packed.bin' => 'PackedBuffer',
-   #'packed'     => 'PackedBuffer',
-   ##
-   ##-- Buffered + Enumerated + maybe-packed [NEW]
+   ##-- Buffered + Enumerated + maybe-packed (prefer PdlTT)
    'ptt.bin'  => 'Buffer::PackedTT',
    'packedtt' => 'Buffer::PackedTT',
    ##
@@ -240,7 +229,7 @@ sub putBuffer { $_[0]->putReader($_[1]->reader); }
 ########################################################################
 
 use MUDL::CorpusIO::TT;
-use MUDL::CorpusIO::TT::Bin; ##-- experimental
+#use MUDL::CorpusIO::TT::Bin; ##-- experimental, superceded by MUDL::Corpus::Buffer::PdlTT
 use MUDL::CorpusIO::Separated;
 #use MUDL::CorpusIO::LOB;
 #use MUDL::CorpusIO::Brown;
@@ -251,39 +240,21 @@ use MUDL::CorpusIO::FileList;
 ## I/O : Memory
 ########################################################################
 
-##-- OBSOLETE
+##-- OBSOLETE, DEPRECATED
 ##   + use MUDL::CorpusIO::BufReader, MUDL::CorpusIO::BufWriter
 ##   + defined in MUDL::Corpus::Buffer;
 package MUDL::CorpusIO::Corpus;      our @ISA=qw(MUDL::CorpusIO::BufReader MUDL::CorpusIO::BufWriter);
 package MUDL::CorpusReader::Corpus;  our @ISA=qw(MUDL::CorpusIO::BufReader);
 package MUDL::CorpusWriter::Corpus;  our @ISA=qw(MUDL::CorpusIO::BufWriter);
 
-##-- more aliases: MUDL::Corpus::Buffer
+##-- more aliases: MUDL::Corpus::Buffer (for compatibility)
+##   + for new buffer classes, just define reader/writer classes
+##     as directly named subclasses of MUDL::CorpusReader rsp. MUDL::CorpusWriter,
+##     e.g. MUDL::CorpusReader::SpiffyBuffer / MUDL::CorpusWriter::SpiffyBuffer
+##     and maybe add an extension entry to %MUDL::CorpusIO::FORMATS
 package MUDL::CorpusIO::Buffer;      our @ISA=qw(MUDL::CorpusIO::BufReader MUDL::CorpusIO::BufWriter);
 package MUDL::CorpusReader::Buffer;  our @ISA=qw(MUDL::CorpusIO::BufReader);
 package MUDL::CorpusWriter::Buffer;  our @ISA=qw(MUDL::CorpusIO::BufWriter);
-
-##-- more aliases: MUDL::Corpus::EBuffer
-package MUDL::CorpusIO::EBuffer;      our @ISA=qw(MUDL::CorpusIO::EBufReader MUDL::CorpusIO::EBufWriter);
-package MUDL::CorpusReader::EBuffer;  our @ISA=qw(MUDL::CorpusIO::EBufReader);
-package MUDL::CorpusWriter::EBuffer;  our @ISA=qw(MUDL::CorpusIO::EBufWriter);
-
-##-- more aliases: MUDL::Corpus::EBuffer::TT
-package MUDL::CorpusIO::EBuffer::TT;      our @ISA=qw(MUDL::CorpusIO::EBufTTReader MUDL::CorpusIO::EBufTTWriter);
-package MUDL::CorpusReader::EBuffer::TT;  our @ISA=qw(MUDL::CorpusIO::EBufTTReader);
-package MUDL::CorpusWriter::EBuffer::TT;  our @ISA=qw(MUDL::CorpusIO::EBufTTWriter);
-
-##-- even more aliases: MUDL::Corpus::Buffer::PdlFull
-package MUDL::CorpusIO::PdlBuffer::Full;       our @ISA=('MUDL::CorpusIO::PdlFullBufReader',
-							 'MUDL::CorpusIO::PdlFullBufWriter');
-package MUDL::CorpusReader::PdlBuffer::Full;   our @ISA=qw(MUDL::CorpusIO::PdlFullBufReader);
-package MUDL::CorpusWriter::PdlBuffer::Full;   our @ISA=qw(MUDL::CorpusIO::PdlFullBufWriter);
-
-##-- yup, more aliases: MUDL::Corpus::Buffer::Packed
-package MUDL::CorpusIO::PackedBuffer;       our @ISA=('MUDL::CorpusIO::PackedBufReader',
-							'MUDL::CorpusIO::PackedBufWriter');
-package MUDL::CorpusReader::PackedBuffer;   our @ISA=qw(MUDL::CorpusIO::PackedBufReader);
-package MUDL::CorpusWriter::PackedBuffer;   our @ISA=qw(MUDL::CorpusIO::PackedBufWriter);
 
 1;
 

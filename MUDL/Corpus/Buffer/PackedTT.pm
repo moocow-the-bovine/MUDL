@@ -15,11 +15,18 @@ use MUDL::Enum;
 use MUDL::Object;
 use Carp;
 
+use strict;
 our @ISA = qw(MUDL::Corpus::Buffer);
 
 ##======================================================================
 ## MUDL::Corpus::Buffer::PackedTT : Constructor
 ##======================================================================
+
+##-- globals: state flags
+our $STATE_UNKNOWN  = 0;                      ##-- mystery state
+our $STATE_UNPACKED = 1;                      ##-- all UNpacked
+our $STATE_INDEXED  = 2;                      ##-- all enumerated
+our $STATE_PACKED   = 4;                      ##-- all packed up (only useful with +INDEXED)
 
 ## $cb = $class_or_object->new(%args)
 ##   + %args:
@@ -27,29 +34,33 @@ our @ISA = qw(MUDL::Corpus::Buffer);
 ##      sents     => \@sents,   ##-- array of sentences
 ##      offset    => $n,        ##-- logical offset of 1st stored sentence, >= 0
 ##      fixedWidth=> $bool,     ##-- whether this is a fixed-width format (default=true)
-##      poffset   => $index,    ##-- physical index of 1st unpacked sentence
-##      eoffset   => $index,    ##-- physical index of 1st un-enumerated sentence
 ##      packas    => $template, ##-- pack template, default='ww' [see $pb->updatePackTemplate()]
+##      #edirty    => \@sentis,  ##-- indices of "enum-dirty" sentences (getSentence() returns) in the buffer
+##      #pdirty    => \@sentis,  ##-- indices of "pack-dirty" sentences (TT-expanded) in the buffer
+##      ##--
+##      state      => $bufstate, ##-- bitmask of $STATE_(PACKED|INDEXED|UNPACKED|UNKNOWN)
+##                               ##    "packed"   : all sentences +tt, +enumerated, +packed
+##                               ##    "indexed"  : all sentences +tt, +enumerated, ?packed
+##                               ##    "unpacked" : all sentences ?tt, ?enumerated, -packed
+##                               ##    "unknown"  : all sentences ?tt, ?enumerated, ?packed
 sub new {
   my $that = shift;
   my $pb=bless {
-		enums=>undef,
+		enums=>[],
 		sents=>[],
 		offset=>0,
 		fixedWidth=>1,
-		poffset=>0,
-		eoffset=>0,
 		packas=>'',
+		##
+		#poffset=>0,
+		#eoffset=>0,
+		##--
+		#pdirty=>[],
+		#edirty=>[],
+		##--
+		state=>$STATE_UNKNOWN, ##-- mystery state
 		@_
 	       }, ref($that)||$that;
-  ##-- create default enums
-  if (!defined($pb->{enums})) {
-    $pb->{enums} = [];
-#    $pb->{enums} = [
-#		    MUDL::Enum->new(), ##-- text
-#		    MUDL::Enum->new(), ##-- tag
-#		   ];
-  }
   return $pb;
 }
 
@@ -58,29 +69,30 @@ sub new {
 
 ## \@enums = $pb->updateEnums()
 ##  + fills $pb->{enums} based on pending data in $pb->{sents}
-##  + if $pb->{fixedWidth} is set and true, only the first pending token is checked
+##  + if $pb->{fixedWidth} is set and true, only the first pending token is checked for its width
+##  + sets 'INDEXED' state flag
 sub updateEnums {
   my $pb = shift;
-  #return $pb->{enums} if ($pb->{eoffset} > $#{$pb->{sents}}); ##-- skip this: update {packas}, etc.
+  return $pb->{enums} if ($pb->{state} & $STATE_INDEXED);
 
   my $enums    = $pb->{enums};
   my $nfields  = scalar @$enums;
   ##-- get maximum number of fields
-  my ($ts,$tok,$ntfields);
   my $isFixedWidth = $pb->{fixedWidth};
+  my ($ts,$tok,$ntfields);
  FILLENUMS_SENTENCE:
-  foreach (@{$pb->{sents}}[$pb->{eoffset}..$#{$pb->{sents}}]) {
+  foreach (@{$pb->{sents}}) {
     ##
-    ##-- check for pre-packed sentences
+    ##-- check for pre-packed sentences (?)
     next if (ref($ts) eq 'MUDL::Sentence::PackedTT');
-
-    ##-- force "alien" sentences to MUDL::Sentence::TT
+    ##
+    ##-- force "alien" sentences to MUDL::Sentence::TT (this should really happen in putSentence())
     $_ = MUDL::Sentence::TT->stealSentence($_) if (ref($_) ne 'MUDL::Sentence::TT');
-
+    ##
     ##-- count attributes, assuming we have MUDL::Token::TT objects
     foreach (@$_) {
       $nfields  = @$_ if (@$_ > $nfields);
-      last FILLENUMS_SENTENCE if ($isFixedWidth);
+      last FILLENUMS_SENTENCE if ($pb->{fixedWidth});
     }
   }
 
@@ -90,8 +102,16 @@ sub updateEnums {
     $enum   = $enums->[$attri] = MUDL::Enum->new if (!defined($enum=$enums->[$attri]));
     $sym2id = $enum->{sym2id};
     $id2sym = $enum->{id2sym};
-    foreach (@{$pb->{sents}}[$pb->{eoffset}..$#{$pb->{sents}}]) {
-      next if (ref($_) eq 'MUDL::Sentence::Buffered::PackedTT'); ##-- skip compatible sentences
+    foreach (@{$pb->{sents}}) {
+      ##
+      ##-- skip compatible sentences
+      next if (ref($_) eq 'MUDL::Sentence::PackedTT');
+      ##
+      ##-- force "alien" sentences to MUDL::Sentence::TT (only check this for variable-width formats)
+      ##    + we should probably really do this in putSentence()
+      $_ = MUDL::Sentence::TT->stealSentence($_) if (ref($_) ne 'MUDL::Sentence::TT');
+      ##
+      ##-- actually populate enums
       foreach (@$_) {
 	if (!exists($sym2id->{$_->[$attri]})) {
 	  $sym2id->{$_->[$attri]} = scalar(@$id2sym);
@@ -101,19 +121,20 @@ sub updateEnums {
     }
   }
 
-  ##-- update/set $pb->{eoffset}
-  $pb->{eoffset} = scalar(@{$pb->{sents}});
+  ##-- update state flag
+  $pb->{state} |= $STATE_INDEXED;
 
   return $enums;
 }
 
 ## $packas = $pb->updatePackTemplate()
 ##  + updates pack template $pb->{enums}[$_]{packas}, $pb->{packas} based on $pb->{enums}[$_]->size
-##  + enums should have already been filled
+##  + enums should have already been filled (called auto-magically)
 sub updatePackTemplate {
   my $pb = shift;
+  $pb->updateEnums() if (!($pb->{state} & $STATE_INDEXED)); ##-- sanity check
 
-  my ($enum);
+  my ($enum,$esize);
   foreach $enum (@{$pb->{enums}}) {
     ##-- update/set $enum->{packas}
     $esize = scalar(@{$enum->{id2sym}});
@@ -132,17 +153,24 @@ sub updatePackTemplate {
 
 ## $pb = $pb->packSentences()
 ##  + packs sentences in $pb->{sents}
+##  + does nothing if state is already 'packed'
+##  + sets 'packed' state bit
 sub packSentences {
   my $pb = shift;
+  return $pb if ($pb->{state} & $STATE_PACKED);
 
-  ##-- create & populate enums
+  ##-- create & populate enums, pack template
   my $enums  = $pb->updateEnums();
   my $packas = $pb->updatePackTemplate();
 
-  ##-- pack sentences in the buffer
+  ##-- pack all "pack-dirty" sentences in the buffer
   my ($tok,$val);
-  foreach (@{$pb->{sents}}[$pb->{poffset}..$#{$pb->{sents}}]) {
-    next if (ref($_) eq 'MUDL::Sentence::PackedTT');           ##-- skip compatible sentences
+  foreach (@{$pb->{sents}}) {
+    ##
+    ##-- skip compatible sentences
+    next if (ref($_) eq 'MUDL::Sentence::PackedTT');
+    ##
+    ##-- pack it up...
     foreach (@$_) {
       $tok = $_;
       $_ = pack($packas,
@@ -154,22 +182,25 @@ sub packSentences {
     bless($_,'MUDL::Sentence::PackedTT');
   }
 
-  ##-- update 'poffset'
-  $pb->{poffset} = scalar(@{$pb->{sents}});
+  ##-- update state flag
+  $pb->{state} |=  $STATE_PACKED;
+  $pb->{state} &= ~$STATE_UNPACKED;
 
   return $pb;
 }
 
 ## $pb = $pb->unpackSentences()
 ##  + unpacks all packed sentences in $pb->{sents}
+##  + does nothing if state is already $STATE_UNPACKED
 sub unpackSentences {
   my $pb = shift;
+  return $pb if ($pb->{state} & $STATE_UNPACKED);
 
   my ($tok);
   my $packas = $pb->{packas};
   my $enums  = $pb->{enums};
   foreach (@{$pb->{sents}}) {
-    next if (ref($_) eq 'MUDL::Sentence::TT');
+    next if (ref($_) eq 'MUDL::Sentence::TT'); ##-- already unpacked
     foreach (@$_) {
       $_  = $tok = bless [unpack($packas,$_)], 'MUDL::Token::TT';
       @$_ = map { $enums->[$_]{id2sym}[$tok->[$_]] } (0..$#$enums);
@@ -177,10 +208,33 @@ sub unpackSentences {
     bless($_, 'MUDL::Sentence::TT');
   }
 
-  $pb->{poffset} = 0;
+  ##-- set state to 'unpacked'
+  $pb->{state} = $STATE_UNPACKED;
+
   return $pb;
 }
 
+##======================================================================
+## state-field accessors
+
+## \%stateHash = $pb->state()
+## \%stateHash = $pb->state(\%stateHash)
+##   + get/set boolean hash of state bits: only use this if you know what you're doing
+our %STATE_NAMES = (packed=>$STATE_PACKED,indexed=>$STATE_INDEXED,unpacked=>$STATE_UNPACKED);
+sub state {
+  my $pb    = shift;
+  my $state = $pb->{state}; 
+ if (@_) {
+    my $sh    = $_[1];
+     foreach (keys(%STATE_NAMES)) {
+       next if (!defined($sh->{$_})); ##-- not defined: skip
+       if ($sh->{$_})  { $state |=  $STATE_NAMES{$_}; }
+       else            { $state &= ~$STATE_NAMES{$_}; }
+     }
+    $pb->{state} = $state;
+  }
+  return { map { $_=>($state&$STATE_NAMES{$_}) } keys(%STATE_NAMES) };
+}
 
 ##======================================================================
 ## accessors
@@ -192,26 +246,20 @@ sub clear {
   my $cb = shift;
   $cb->{enums} = [];
   @{$cb->{sents}} = qw();
-  $cb->{offset} = 0;
-  $cb->{eoffset} = 0;
-  $cb->{poffset} = 0;
-  $cb->{packas}  = '';
+  $cb->{offset}   = 0;
+  $cb->{packas}   = '';
+  $cb->{state}    = $STATE_UNKNOWN;
   return $cb;
 }
 
 ## $cb = $cb->flush()
 ##   + clear buffered data, update offset
 sub flush {
-  my $cb = shift;
-  $cb->{offset}  += @{$cb->{sents}};
-
-  $cb->{eoffset} -= @{$cb->{sents}};
-  $cb->{eoffset}  = 0 if ($cb->{eoffset} < 0);
-
-  $cb->{poffset} -= @{$cb->{sents}};
-  $cb->{poffset}  = 0 if ($cb->{poffset} < 0);
-
-  @{$cb->{sents}} = qw();
+  my $cb     = shift;
+  my $nsents = @{$cb->{sents}};
+  $cb->{offset}    += $nsents;
+  @{$cb->{sents}}   = qw();
+  $cb->{state}      = $STATE_UNKNOWN;
   return $cb;
 }
 
@@ -273,14 +321,14 @@ sub writer {
 sub STORABLE_freeze {
   my ($obj,$cloning) = @_;
   $obj->packSentences();
-  return ('',[%$obj]);
+  return ('',{%$obj});
 }
 
 ## ($serialized_string, @other_refs) = STORABLE_thaw($obj,$cloning_flag)
 ##  + does NOT implicitly call unpackSentences()
 sub STORABLE_thaw {
-  my ($obj,$cloning,$str,$ar) = @_;
-  %$obj = @$ar;
+  my ($obj,$cloning,$str,$hr) = @_;
+  %$obj = %$hr;
   return $obj;
 }
 
@@ -335,12 +383,12 @@ sub new {
 #(inherited)
 
 ## \@sentence = $cr->getSentence();
-##   + may call $buf->unpackSentences()
+##   + may call $buf->unpackSentences() if there are any 
 sub getSentence {
-  my $cr = shift;
+  my $cr   = shift;
   my $ppos = $cr->{rpos}-$cr->{buffer}{offset};
   return undef if (!defined($cr->{buffer}) || $ppos > $#{$cr->{buffer}{sents}});
-  $cr->{buffer}->unpackSentences() if ($ppos <= $cr->{buffer}{poffset});
+  $cr->{buffer}->unpackSentences() if (! ($cr->{buffer}{state} & $MUDL::Corpus::Buffer::PackedTT::STATE_UNPACKED));
 
   my $s = $cr->{buffer}{sents}[$ppos];
   $cr->{rpos}++;
@@ -411,6 +459,10 @@ sub new {
 
 ## undef = $cw->putSentence(\@sent);
 sub putSentence {
+  ##
+  ##-- force "alien" sentences to MUDL::Sentence::TT ... elsewhere
+  #$_[1] = MUDL::Sentence::TT->stealSentence($_[1]) if (ref($_[1]) ne 'MUDL::Sentence::TT');
+
   push(@{$_[0]{buffer}{sents}},$_[1]);
   return $_[0];
 }

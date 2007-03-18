@@ -18,9 +18,15 @@ use Benchmark qw(cmpthese timethese);
 BEGIN {
   our $cbase = "buftest";
   our $cfile = "${cbase}.ttt";
-  our @exts  = (qw(ttt ttt.bin ttt.cbuf.bin ttt.ebuf.bin ttt.ebuftt.bin ttt.pdlbuf.bin),
-		qw(ttt.packed.bin),
-		qw(ttt.ptt.bin),
+  our @exts  = ('ttt',
+		#'ttt.bin',
+		'ttt.cbuf.bin',
+		#'ttt.ebuf.bin',
+		#'ttt.ebuftt.bin',
+		#'ttt.pdlbuf.bin',
+		#'ttt.packed.bin',
+		'ttt.ptt.bin',
+		'ttt.pdltt.bin',
 		#qw(ttt.pbuf2.bin);
 	       );
   our %extids = map { $exts[$_]=>$_ } (0..$#exts);
@@ -36,50 +42,6 @@ sub create_corpus_buffer {
 }
 #create_corpus_buffer;
 
-#use MUDL::Corpus::EBuffer;
-sub create_corpus_ebuffer {
-  our $cb  = load("$cfile.buf.bin");
-  our $ebw = MUDL::CorpusIO->fileWriter("$cfile.ebuf.bin");
-  our $eb = $ebw->{buffer};
-  $ebw->putReader($cb->reader);
-  $ebw->flush;
-}
-#create_corpus_ebuffer();
-
-#use MUDL::Corpus::EBuffer;
-sub create_corpus_ebuffer_tt {
-  our $cb  = load("$cfile.buf.bin");
-  our $ebw = MUDL::CorpusIO->fileWriter("$cfile.ebuftt.bin");
-  our $eb = $ebw->{buffer};
-  $ebw->putReader($cb->reader);
-  $ebw->flush;
-}
-#create_corpus_ebuffer_tt();
-
-use MUDL::Corpus::Buffer::PdlFull;
-sub create_corpus_buffer_pdlfull {
-  our $cb = load("$cfile.buf.bin");
-  our $pbw = MUDL::CorpusIO->fileWriter("$cfile.pdlbuf.bin");
-  our $pb = $pbw->{buffer};
-  #$s = $cb->{sents}[0];
-  #$pbw->putSentence($s);
-  our $cbr=$cb->reader;
-  $pbw->putReader($cbr);
-  $pbw->flush;
-}
-#create_corpus_buffer_pdlfull();
-
-#use MUDL::Corpus::Buffer::Packed; ##-- OLD
-sub create_corpus_packed {
-  our $eb   = load("$cfile.ebuf.bin");
-  our $pkbw = MUDL::CorpusIO->fileWriter("$cfile.packed.bin",
-					 buffer=>($pkb=MUDL::Corpus::Buffer::Packed->new(enums=>$eb->{enums})));
-  our $pkb  = $pkbw->{buffer};
-  $pkbw->putReader($eb->reader);
-  $pkbw->flush;
-}
-#create_corpus_packed();
-
 use MUDL::Corpus::Buffer::PackedTT;
 sub create_corpus_ptt {
   our $cb = load("$cfile.cbuf.bin");
@@ -88,6 +50,22 @@ sub create_corpus_ptt {
   $pttbw->flush;
 }
 #create_corpus_ptt;
+
+use MUDL::Corpus::Buffer::PdlTT;
+sub create_corpus_pdltt {
+  our $cb = load("$cfile.cbuf.bin");
+  our $pdlttw = MUDL::CorpusIO->fileWriter("$cfile.pdltt.bin");
+  our $pdlb   = $pdlttw->{buffer};
+  $pdlttw->putReader($cb->reader);
+  $pdlttw->flush;
+
+  $pdlb = load("$cfile.pdltt.bin");
+  #$pdlb->unpackPdls();
+  our $pdlbr = $pdlb->reader;
+  our $s     = $pdlbr->getSentence;
+  $ttw->putSentence($s);
+}
+#create_corpus_pdltt;
 
 use MUDL::CorpusIO::TT::Bin;
 sub create_corpus_binio {
@@ -215,6 +193,8 @@ BEGIN {
   *ADJUSTY=\&ADJUSTY_VS_TTT;
 }
 
+BEGIN { our @DEFAULT_PLOT_EXTS = @exts; }
+
 
 ## plotcmp($file,%OPTIONS)
 ##  + %OPTIONS:
@@ -222,6 +202,8 @@ BEGIN {
 ##     exts     => \@exts,    ##-- default: all
 ##     adjusty  => \%lab2sub, ##-- y adjustment subs: default %ADJUSTY; sub called as &sub($ext,$lab,$fields)
 ##                            ##   + default: ADJUSTY()
+##     adjustx  => $gpstr,    ##-- gnuplot function body: given ($lid,$xid)
+##                            ##   + should return x-adjustment for $xid (default: '0.1*xid')
 ##     logscale => $xy,       ##-- 'x' or 'y' or 'xy': default none
 ##     with     => $how,      ##-- how to plot (default: 'i')
 sub plotcmp {
@@ -229,7 +211,7 @@ sub plotcmp {
   our ($benches);
 
   ##-- get labels
-  my ($labels);
+  my ($labels); 
   $labels = [keys %$benches] if (!defined($labels=$opts{labels}));
   my %labids = map { ($labels->[$_]=>$_) } (0..$#$labels);
 
@@ -245,7 +227,7 @@ sub plotcmp {
       $exts = [sort keys %xh];
     }
     else {
-      $exts = [qw(ttt ttt.cbuf.bin ttt.ptt.bin ttt.pdlbuf.bin)];
+      $exts = [@DEFAULT_PLOT_EXTS];
     }
   }
   my %xids = map { ($exts->[$_]=>$_) } (0..$#$exts);
@@ -292,9 +274,16 @@ sub plotcmp {
 
   ##-- commands: scale, style
   my @cmds = qw();
-  push(@cmds, "set logscale $opts{logscale};\n") if (defined($opts{logscale}));
+  if (defined($opts{logscale})) {
+    push(@cmds, ($opts{logscale}
+		 ? "set logscale $opts{logscale};\n"
+		 : "unset logscale;\n"));
+  }
   push(@cmds, "set style data " .  ($opts{with} ? $opts{with} : 'i') . ";\n");
   push(@cmds, "set xrange [-.1:".scalar(@$labels)."];\n");
+  push(@cmds, ("adjustx(lid,xid) = lid+("
+	       .(defined($opts{adjustx}) ? $opts{adjustx} : "0.1*xid")
+	       .");\n"));
 
   ##-- commands: set x-tics: by label
   push(@cmds, 'set xtics ('.join(", ", (map {"\"$labels->[$_]\" $_"} 0..$#$labels)).");\n");
@@ -305,7 +294,7 @@ sub plotcmp {
   push(@cmds, "plot \\\n");
   foreach $xid (0..$#$exts) {
     $ext = $exts->[$xid];
-    push(@cmds, "  '-' using (\$0+$xid/10.0):1 title '$ext'".($xid==$#$exts ? ";" : ", \\")."\n");
+    push(@cmds, "  '-' using (adjustx(\$0,$xid)):1 title '$ext'".($xid==$#$exts ? ";" : ", \\")."\n");
   }
 
   if (!defined($file)) { $file = '|gnuplot -persist'; }
@@ -361,6 +350,7 @@ sub bench_filesize {
 }
 bench_filesize;
 
+#ttt.pdltt.bin     79969  (- 47.55% / + 90.67%)
 #ttt.ptt.bin      100950  (+ 33.79% / - 51.04%)
 #ttt              152479  (+  0.00% / -  0.00%)
 #ttt.pdlbuf.bin   155978  (+  2.29% / -  2.24%)
@@ -382,10 +372,11 @@ BEGIN {
      'ttt.cbuf.bin' => sub { return MUDL::Corpus::Buffer->loadFile("$cfile.cbuf.bin")->reader; },
      #'ttt.pbuf2.bin' => sub { return MUDL::Corpus::Buffer::Pdl2->loadFile("$cfile.pbuf2.bin")->reader; },
      #'ttt.ebuf.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.ebuf.bin"); },
-     'ttt.ebuftt.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.ebuftt.bin"); },
-     'ttt.pdlbuf.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.pdlbuf.bin"); },
+     #'ttt.ebuftt.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.ebuftt.bin"); },
+     #'ttt.pdlbuf.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.pdlbuf.bin"); },
      #'ttt.packed.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.packed.bin"); },
      'ttt.ptt.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.ptt.bin"); },
+     'ttt.pdltt.bin'  => sub { return MUDL::CorpusIO->fileReader("$cfile.pdltt.bin"); },
     );
 }
 
@@ -400,15 +391,17 @@ sub bench_reader_to_tt {
   $cw->putReader($cr);
   $cw->flush();
 }
+#bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.pdltt.bin"));
 
 BEGIN {
   our %bench_to_tt_subs =
     (
-     'ttt'     => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.tmp.ttt")); },
-     'ttt.bin' => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.tmp.ttt.bin")); },
-     'ttt.cbuf.bin' => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.tmp.cbuf.bin")); },
+     'ttt'     => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile")); },
+     'ttt.bin' => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.bin")); },
+     'ttt.cbuf.bin' => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.cbuf.bin")); },
      #'ttt.pdlbuf.bin'=>sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.tmp.pdlbuf.bin")); },#busted!
-     'ttt.ptt.bin'  => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.tmp.ptt.bin")); },
+     'ttt.ptt.bin'  => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.ptt.bin")); },
+     'ttt.pdltt.bin'  => sub { bench_reader_to_tt(MUDL::CorpusIO->fileReader("$cfile.pdltt.bin")); },
     );
 }
 
@@ -417,7 +410,7 @@ sub benchall_reader_to_tt {
   cmpthese($ttr);
   store_timeresults($ttr,"toTT");
 }
-benchall_reader_to_tt();
+#benchall_reader_to_tt();
 cmpbench('toTT');
 
 
@@ -452,8 +445,9 @@ BEGIN {
      'ttt.cbuf.bin' => sub { bench_putreader_ttbuf(MUDL::CorpusIO->fileWriter("$cfile.tmp.cbuf.bin")); },
      #'ttt.ebuf.bin'  => sub { bench_putreader(MUDL::CorpusIO->fileWriter("$cfile.tmp.ebuf.bin")); },
      #'ttt.ebuftt.bin'  => sub { bench_putreader_ttbuf(MUDL::CorpusIO->fileWriter("$cfile.tmp.ebuftt.bin")); },
-     'ttt.pdlbuf.bin'  => sub { bench_putreader_ttbuf(MUDL::CorpusIO->fileWriter("$cfile.tmp.pdlbuf.bin")); },
+     #'ttt.pdlbuf.bin'  => sub { bench_putreader_ttbuf(MUDL::CorpusIO->fileWriter("$cfile.tmp.pdlbuf.bin")); },
      'ttt.ptt.bin'  => sub { bench_putreader_ttbuf(MUDL::CorpusIO->fileWriter("$cfile.tmp.ptt.bin")); },
+     'ttt.pdltt.bin'  => sub { bench_putreader_ttbuf(MUDL::CorpusIO->fileWriter("$cfile.tmp.ptt.bin")); },
 #     'ttt.packed.bin'  =>
 #     sub {
 #       bench_putreader(MUDL::CorpusIO->fileWriter
@@ -552,17 +546,47 @@ sub bench_get_sent_pdls_pttreader {
 }
 #bench_get_sent_pdls_pttreader(load("$cfile.ptt.bin")->reader);
 
+sub bench_get_sent_pdls_pdltt_1 {
+  my $pdlr = shift;
+  my $buf  = $pdlr->{buffer};
+  $buf->packPdls();            ##-- ensure sentences are packed (they ought to be)
+  my @begins = $buf->{begins}->list;
+  my @ends   = ($buf->{ends}-1)->list;
+  my $txtpdl = $buf->{pdls}[0];
+  return ($buf->{enums}[0],[
+			    map {$txtpdl->slice("$begins[$_]:$ends[$_]")} (0..$#begins)
+			   ]);
+}
+#($e1,$ps1)=bench_get_sent_pdls_pdltt_1(load("$cfile.pdltt.bin")->reader);
+
+sub bench_get_sent_pdls_pdltt_2 {
+  my $pdlr = shift;
+  my $buf  = $pdlr->{buffer};
+  my $fpdl = $buf->fullPdl();
+  my $txtpdl = $fpdl->slice("(0),:");
+  my @begins = $buf->{begins}->list;
+  my @ends   = ($buf->{ends}-1)->list;
+  return ($buf->{enums}[0],[
+			    map {$txtpdl->slice("$begins[$_]:$ends[$_]")} (0..$#begins)
+			   ]);
+}
+#($e2,$ps2)=bench_get_sent_pdls_pdltt_2(load("$cfile.pdltt.bin")->reader);
+
+
 BEGIN {
   our %get_sent_pdls_subs =
     (
      'ttt'     => sub { bench_get_sent_pdls_ttreader(MUDL::CorpusIO->fileReader("$cfile")); },
-     'ttt.bin' => sub { bench_get_sent_pdls_ttreader(MUDL::CorpusIO->fileReader("$cfile.bin")); },
+     #'ttt.bin' => sub { bench_get_sent_pdls_ttreader(MUDL::CorpusIO->fileReader("$cfile.bin")); },
      'ttt.cbuf.bin' => sub { bench_get_sent_pdls_ttreader(load("$cfile.cbuf.bin")->reader); },
      'ttt.ptt.bin'  => sub { bench_get_sent_pdls_pttreader(load("$cfile.ptt.bin")->reader); },
+     'ttt.pdltt.bin'  => sub { bench_get_sent_pdls_pdltt_1(load("$cfile.pdltt.bin")->reader); },
+     #'ttt.pdltt.bin_2'  => sub { bench_get_sent_pdls_pdltt_2(load("$cfile.pdltt.bin")->reader); }, #- slower!
+     ##-- old
      #'ttt.prebuf.bin' => sub { $_cbr->reset; bench_get_sent_pdls_ttreader($_cbr); },
      #'ttt.ebuf.bin'  => sub { bench_get_sent_pdls_ebuffer(load("$cfile.ebuf.bin")); },
      #'ttt.ebuftt.bin'  => sub { bench_get_sent_pdls_ebuffer_tt(load("$cfile.ebuftt.bin")); },
-     'ttt.pdlbuf.bin' => sub { bench_get_sent_pdls_pdlbuffer(load("$cfile.pdlbuf.bin")); },
+     #'ttt.pdlbuf.bin' => sub { bench_get_sent_pdls_pdlbuffer(load("$cfile.pdlbuf.bin")); },
      #'ttt.packed.bin' => sub { bench_get_sent_pdls_packed(load("$cfile.packed.bin")); },
     );
 
@@ -576,6 +600,87 @@ sub bench_get_sent_pdls {
 #bench_get_sent_pdls();
 cmpbench('getPdls');
 
+
+##----------------------------------------------------------------------
+## Bench: Subs: Process: get corpus as one monster pdl
+##----------------------------------------------------------------------
+
+## ($enums,$pdl) = bench_get_sent_pdls_ttreader($reader)
+sub bench_get_full_pdl_rdr_tt {
+  my $cr = shift;
+  my $sents = [];
+  my ($s);
+  push(@$sents,$s) while (defined($s=$cr->getSentence));
+  my @enums  = map { bench_get_enum_ttsents($sents,$_) } (0..$#{$sents->[0][0]});
+  my @sym2id = map { $_->{sym2id} } @enums;
+  my ($tok);
+  my $pdl    = pdl(long,
+		   map {
+		     map {
+		       $tok=$_;
+		       [map { $sym2id[$_]{$tok->[$_]} } (0..$#$_)]
+		     } @$_
+		   } @$sents);
+  return (\@enums,$pdl);
+}
+#($e,$p)=bench_get_full_pdl_rdr_tt(MUDL::CorpusIO->fileReader("$cfile"));
+#($e,$p)=bench_get_full_pdl_rdr_tt(MUDL::CorpusIO->fileReader("$cfile.cbuf.bin"));
+
+sub bench_get_full_pdl_buf_tt {
+  my $buf    = shift;
+  my $sents  = $buf->{sents};
+  my @enums  = map { bench_get_enum_ttsents($sents,$_) } (0..$#{$sents->[0][0]});
+  my @sym2id = map { $_->{sym2id} } @enums;
+  my ($tok);
+  my $pdl    = pdl(long,
+		   map {
+		     map {
+		       $tok=$_;
+		       [map { $sym2id[$_]{$tok->[$_]} } (0..$#$_)]
+		     } @$_
+		   } @$sents);
+  return (\@enums,$pdl);
+}
+#($e,$p)=bench_get_full_pdl_buf_tt(load("$cfile.cbuf.bin"));
+
+sub bench_get_full_pdl_buf_ptt {
+  my $buf  = shift;
+  $buf->packSentences();      ##-- ensure sentences are packed (they ought to be)
+  my $packas = $buf->{packas};
+  return ($buf->{enums},
+	  pdl(long,
+	      map {
+		map { [unpack($packas,$_)] } @$_
+	      } @{$buf->{sents}})
+	 );
+}
+#($e,$p)=bench_get_full_pdl_buf_ptt(load("$cfile.ptt.bin"));
+
+sub bench_get_full_pdl_buf_pdltt {
+  my $buf = shift;
+  return ($buf->{enums},$buf->fullPdl);
+}
+#($e,$p)=bench_get_full_pdl_buf_pdltt(load("$cfile.pdltt.bin"));
+
+
+BEGIN {
+  our %get_full_pdl_subs =
+    (
+     'ttt'          => sub { bench_get_full_pdl_rdr_tt   (MUDL::CorpusIO->fileReader("$cfile")); },
+     'ttt.cbuf.bin' => sub { bench_get_full_pdl_buf_tt   (load("$cfile.cbuf.bin")); },
+     'ttt.ptt.bin'  => sub { bench_get_full_pdl_buf_ptt  (load("$cfile.ptt.bin")); },
+     'ttt.pdltt.bin'=> sub { bench_get_full_pdl_buf_pdltt(load("$cfile.pdltt.bin")); },
+    );
+}
+
+
+sub bench_get_full_pdl {
+  $ttr = timethese(-3,\%get_full_pdl_subs);
+  cmpthese($ttr);
+  store_timeresults($ttr,"get1Pdl");
+}
+#bench_get_full_pdl();
+cmpbench('get1Pdl');
 
 ##----------------------------------------------------------------------
 ## Bench: Subs: I/O: churn
