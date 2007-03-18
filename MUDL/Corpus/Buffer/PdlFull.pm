@@ -612,8 +612,8 @@ sub attribute {
 ########################################################################
 
 package MUDL::CorpusIO::PdlFullBufReader;
-use MUDL::Corpus::EBuffer;
-use MUDL::EToken;
+use MUDL::Corpus::Buffer;
+#use MUDL::EToken;
 use PDL;
 use strict;
 our @ISA = qw(MUDL::CorpusIO::EBufReader);

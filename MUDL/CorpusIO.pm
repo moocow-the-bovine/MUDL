@@ -66,18 +66,18 @@ our %FORMATS =
    'buffer'   => 'Buffer',
    ##
    ##-- Buffered + Enumerated
-   'ebuf.bin' => 'EBuffer',
-   'ebuffer'  => 'EBuffer',
-   'ebuftt.bin' => 'EBuffer::TT',
-   'ebuffertt'=> 'EBuffer::TT',
+   #'ebuf.bin' => 'EBuffer',
+   #'ebuffer'  => 'EBuffer',
+   #'ebuftt.bin' => 'EBuffer::TT',
+   #'ebuffertt'=> 'EBuffer::TT',
    ##
    ##-- Buffered + Enumerated + Pdl-ized
    'pdlbuf.bin' => 'PdlBuffer::Full',
    'pdlbuffer'  => 'PdlBuffer::Full',
    ##
    ##-- Buffered + Enumerated + packed [OLD, many globals]
-   'packed.bin' => 'PackedBuffer',
-   'packed'     => 'PackedBuffer',
+   #'packed.bin' => 'PackedBuffer',
+   #'packed'     => 'PackedBuffer',
    ##
    ##-- Buffered + Enumerated + maybe-packed [NEW]
    'ptt.bin'  => 'Buffer::PackedTT',

@@ -6,7 +6,7 @@ use MUDL;
 use MUDL::CmdUtils;
 use MUDL::CorpusIO;
 use MUDL::Token;
-use MUDL::PToken;
+#use MUDL::PToken;
 use PDL;
 use Benchmark qw(cmpthese timethese);
 
@@ -36,7 +36,7 @@ sub create_corpus_buffer {
 }
 #create_corpus_buffer;
 
-use MUDL::Corpus::EBuffer;
+#use MUDL::Corpus::EBuffer;
 sub create_corpus_ebuffer {
   our $cb  = load("$cfile.buf.bin");
   our $ebw = MUDL::CorpusIO->fileWriter("$cfile.ebuf.bin");
@@ -46,7 +46,7 @@ sub create_corpus_ebuffer {
 }
 #create_corpus_ebuffer();
 
-use MUDL::Corpus::EBuffer;
+#use MUDL::Corpus::EBuffer;
 sub create_corpus_ebuffer_tt {
   our $cb  = load("$cfile.buf.bin");
   our $ebw = MUDL::CorpusIO->fileWriter("$cfile.ebuftt.bin");
@@ -69,7 +69,7 @@ sub create_corpus_buffer_pdlfull {
 }
 #create_corpus_buffer_pdlfull();
 
-use MUDL::Corpus::Buffer::Packed; ##-- OLD
+#use MUDL::Corpus::Buffer::Packed; ##-- OLD
 sub create_corpus_packed {
   our $eb   = load("$cfile.ebuf.bin");
   our $pkbw = MUDL::CorpusIO->fileWriter("$cfile.packed.bin",
@@ -211,8 +211,8 @@ sub ADJUSTY_VS_TTT {
   return $fields->{ips}/$fields->{base_ips};
 }
 BEGIN {
-  *ADJUSTY=\&ADJUSTY_PLAIN;
-  #*ADJUSTY=\&ADJUSTY_VS_TTT;
+  #*ADJUSTY=\&ADJUSTY_PLAIN;
+  *ADJUSTY=\&ADJUSTY_VS_TTT;
 }
 
 
