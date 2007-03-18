@@ -10,7 +10,7 @@ package MUDL::Corpus::Buffer;
 use MUDL::CorpusIO;
 use MUDL::Object;
 use Carp;
-
+use strict;
 our @ISA = qw(MUDL::Object);
 
 ##======================================================================
@@ -78,8 +78,7 @@ sub fromReader {
   my ($cb,$cr,%args) = @_;
   $cb = $cb->new(%args) if (!ref($cb));
   my $bw = $cb->writer(%args);
-  my ($s);
-  $bw->putSentence($s) while (defined($s=$cr->getSentence));
+  $bw->putReader($cr);
   return $cb;
 }
 
@@ -90,7 +89,7 @@ sub toWriter {
   my ($cb,$cw,%args) = @_;
   my $br = $cb->reader(%args);
   my ($s);
-  $cw->putSentence($s) while (defined($s=$br->getSentence));
+  $cw->putReader($br);
   return $cb;
 }
 
@@ -106,8 +105,7 @@ sub fromFile {
   $cb = $cb->new() if (!ref($cb));
   my $bw = $cb->writer;
   my $fr = MUDL::CorpusIO->fileReader($file,%args);
-  my ($s);
-  $bw->putSentence($s) while (defined($s=$fr->getSentence));
+  $bw->putReader($fr);
   return $cb;
 }
 
@@ -118,8 +116,7 @@ sub toFile {
   my ($cb,$file,%args) = @_;
   my $br = $cb->reader;
   my $fw = MUDL::CorpusIO->fileWriter($file,%args);
-  my ($s);
-  $fw->putSentence($s) while (defined($s=$br->getSentence));
+  $fw->putReader($br);
   $fw->flush();
   return $cb;
 }
@@ -135,12 +132,15 @@ sub toFile {
 
 package MUDL::CorpusIO::BufReader;
 use MUDL::CorpusIO;
+use strict;
 our @ISA = qw(MUDL::CorpusReader);
 
 ## $cr = MUDL::CorpusIO::BufReader->new(buffer=>$buffer,%args)
 ##  + structure:
 ##    buffer=> $corpus_buffer, ##-- underlying buffer (alias='corpus')
 ##    rpos  => $buffer_index,  ##-- logical read position in underlying buffer
+##    ntoks => $ntoks,         ##-- track number of tokens read
+##    nsents=> $nsents,        ##-- track number of sentences read
 ##
 sub new {
   my ($that,%args) = @_;
@@ -150,6 +150,7 @@ sub new {
 		buffer=>undef,
 		rpos=>0,
 		nsents=>0,
+		ntoks=>0,
 		##
 		##--loadArgs=>[], ##-- args for loadGenericFile if called on buffer
 		%args
@@ -237,6 +238,7 @@ sub nTokens { return $_[0]{ntoks}; }
 package MUDL::CorpusIO::BufWriter;
 use MUDL::CorpusIO;
 use Carp;
+use strict;
 our @ISA = qw(MUDL::CorpusWriter);
 
 ## $cr = MUDL::CorpusIO::BufWriter->new(buffer=>$buffer,%args)
@@ -281,17 +283,12 @@ sub buffer {
 
 ## undef = $cw->putSentence(\@sent);
 sub putSentence {
-  my ($cw,$s) = @_;
-
-  #if (!defined($cw->{wpos})) {
-  #  push(@{$cw->{buffer}{sents}}, $s);
-  #} else {
-  #  splice(@{$cw->{buffer}{sents}}, $cw->{wpos}++ - $cw->{buffer}{offset}, $cw->{clobber}, $s);
-  #}
+  #my ($cw,$s) = @_;
+  #push(@{$cw->{buffer}{sents}}, $s);
+  #return $cw;
   ##--
-  push(@{$cw->{buffer}{sents}}, $s);
-
-  return $cw;
+  push(@{$_[0]{buffer}{sents}}, $_[1]);
+  return $_[0];
 }
 
 
@@ -370,7 +367,7 @@ Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
+Copyright (c) 2004-2007, Bryan Jurish.  All rights reserved.
 
 This package is free software.  You may redistribute it
 and/or modify it under the same terms as Perl itself.
