@@ -24,28 +24,56 @@ our @ISA = qw(MUDL::Token);
 
 ## $tok = $class->new(_enums=>\%attr2enum, text=>$text, tag=>$tag, %attributes);
 ##   + _enums is REQUIRED
-sub new { return bless { @_[1..$#_] }, ref($_[0])||$_[0]; }
+#sub new { return bless { @_[1..$#_] }, ref($_[0])||$_[0]; }
+sub new {
+  my ($that,%args) = @_;
+  return bless {
+		_enums=>$args{_enums},
+		map { ($_=>$args{_enums}{$_}->addSymbol($args{$_})) } grep { $_ ne '_enums' } keys(%args)
+	       }, ref($that)||$that;
+}
 
 ## $etok = $class_or_obj->newFomToken($tok, %argsToNew)
-sub newFromToken { return $_[0]->new(@_[2..$#_])->fromToken($_[1]); }
+##  + alwys creates a new EToken
+sub newFromToken { return $_[0]->fromToken(@_[1..$#_]); }
 
-## $etok = $etok->fromToken($tok)
+## $etok = $class_or_obj->fromToken($tok,%argsToNew)
+##  + just returns $tok if its compatible
 sub fromToken {
-  if (UNIVERSAL::isa($_[1],__PACKAGE__)) {
-    $_[0]{_enums}=$_[1]{_enums} if (!defined($_[0]{_enums}));
-    $_[1]{_enums}=$_[0]{_enums} if (!defined($_[1]{_enums}));
-    %{$_[0]}=%{$_[1]} if ( (!defined($_[0]{_enums}) && !defined($_[1]{_enums})) || $_[0]{_enums} eq $_[1]{_enums} );
+  my ($etok,$tok,%args) = @_;
+  if (!ref($etok)) {
+    if (UNIVERSAL::isa($tok,__PACKAGE__)) {
+      ##-- special case: class method called on compatible EToken object as source: NO COPY!
+      return $tok
+	if ( (!defined($args{_enums}) && defined($tok->{_enums}))
+	     ||
+	     ( defined($args{_enums}  && defined($tok->{_enums}) && $args{_enums} eq $tok->{_enums})) );
+    }
+    $etok = $etok->new(%args);
+  }
+  if (UNIVERSAL::isa($tok,__PACKAGE__)) {
+    ##-- special case: object method called on compatible EToken object as source: just copy
+    @$etok{keys %$tok} = values(%$tok)
+      if ( (!defined($etok->{_enums}) && !defined($tok->{_enums}))
+	   || (defined($etok->{_enums}) && defined($tok->{_enums}) && $etok->{_enums} eq $tok->{_enums}));
   } else {
-    $_[0]{_enums}={} if (!defined($_[0]{_enums}));
-    my $srcHash = $_[1]->asHash;
-    my ($key,$val);
+    ##-- general case: class or object method called on any MUDL::Token source object: general typecast
+    $etok->{_enums}={} if (!defined($etok->{_enums}));
+    my $srcHash = $tok->asHash;
+    my ($key,$val,$enum,$vali);
     while (($key,$val)=each(%$srcHash)) {
       next if (!defined($val));
-      $_[0]{_enums}{$key} = MUDL::Enum->new() if (!defined($_[0]{_enums}{$key}));
-      $_[0]{$key} = $_[0]{_enums}{$key}->addSymbol($val);
+      $enum=$etok->{_enums}{$key} = MUDL::Enum->new() if (!defined($enum=$etok->{_enums}{$key}));
+      ##
+      #$etok->{$key} = $etok->{_enums}{$key}->addSymbol($val);
+      if (!defined($vali=$enum->{sym2id}{$val})) {
+	$vali = $enum->{sym2id}{$val} = scalar(@{$enum->{id2sym}});
+	push(@{$enum->{id2sym}},$val);
+      }
+      $etok->{$key} = $vali;
     }
   }
-  return $_[0];
+  return $etok;
 }
 
 
@@ -56,7 +84,16 @@ sub fromToken {
 ## $txt = $tok->text($txt)
 sub text {
   return defined($_[0]{text}) ? $_[0]{_enums}{text}{id2sym}[ $_[0]{text} ] : undef if ($#_ < 1);
-  $_[0]{text} = $_[0]{_enums}{text}->addSymbol($_[1]);
+  #$_[0]{text} = $_[0]{_enums}{text}->addSymbol($_[1]);
+  #return $_[1];
+  ##--
+  my $enum = $_[0]{_enums}{text};
+  my ($id);
+  if (!defined($id=$enum->{sym2id}{$_[1]})) {
+    $id = $enum->{sym2id}{$_[1]} = scalar(@{$enum->{id2sym}});
+    push(@{$enum->{id2sym}},$_[1]);
+  }
+  $_[0]{text}=$id;
   return $_[1];
 }
 
@@ -64,7 +101,16 @@ sub text {
 ## $tag = $tok->tag($tag)
 sub tag {
   return defined($_[0]{tag}) ? $_[0]{_enums}{tag}{id2sym}[ $_[0]{tag} ] : undef if ($#_ < 1);
-  $_[0][2] = $_[0][0]{enums}[1]->addSymbol($_[1]);
+  #$_[0]{tag} = $_[0]{enums}{tag}->addSymbol($_[1]);
+  #return $_[1];
+  ##--
+  my $enum = $_[0]{_enums}{tag};
+  my ($id);
+  if (!defined($id=$enum->{sym2id}{$_[1]})) {
+    $id = $enum->{sym2id}{$_[1]} = scalar(@{$enum->{id2sym}});
+    push(@{$enum->{id2sym}},$_[1]);
+  }
+  $_[0]{tag}=$id;
   return $_[1];
 }
 
@@ -74,12 +120,16 @@ sub attributeNames { return grep { !exists($skipAttributeNames{$_}) } keys(%{$_[
 
 ## @attributeValues = $tok->attributeValues
 sub attributeValues {
-  return map { $_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ] } $_[0]->attributeNames;
+  return
+    map { $_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ] }
+    grep { !exists($skipAttributeNames{$_}) } keys(%{$_[0]});
 }
 
 ## %attributes = $tok->attributes
 sub attributes {
-  return map { $_=>$_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ] } $_[0]->attributeNames;
+  return
+    map { $_=>$_[0]{_enums}{$_}{id2sym}[ $_[0]{$_} ] } 
+    grep { !exists($skipAttributeNames{$_}) } keys(%{$_[0]});
 }
 
 ##  %tokHash = $tok->asHash #-- list context
@@ -96,7 +146,16 @@ sub asHash {
 *getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
 sub attribute {
   return defined($_[0]{$_[1]}) ? $_[0]{_enums}{$_[1]}{id2sym}[ $_[0]{$_[1]} ] : undef if ($#_ <= 1);
-  $_[0]{$_[1]} = $_[0]{_enums}{$_[1]}->addSymbol($_[2]);
+  #$_[0]{$_[1]} = $_[0]{_enums}{$_[1]}->addSymbol($_[2]);
+  #return $_[2];
+  ##--
+  my $enum = $_[0]{_enums}{$_[1]};
+  my ($id);
+  if (!defined($id=$enum->{sym2id}{$_[2]})) {
+    $id = $enum->{sym2id}{$_[2]} = scalar(@{$enum->{id2sym}});
+    push(@{$enum->{id2sym}},$_[2]);
+  }
+  $_[0]{$_[1]}=$id;
   return $_[2];
 }
 
@@ -162,35 +221,55 @@ our @ISA = qw(MUDL::Token::TT MUDL::EToken);
 sub new {
   my ($that,%args) = @_;
   my $tok = bless [
-		   $args{_enums},
-		   $args{text},
-		   $args{tag},
+		   _enums=>$args{_enums},
+		   (defined($args{text}) ? $args{_enums}{text}->addSymbol($args{text}) : undef),
+		   (defined($args{tag})  ? $args{_enums}{tag} ->addSymbol($args{tag})  : undef),
 		  ], ref($that)||$that;
-  $tok->[$_+3] = $args{$_} foreach (sort { $a<=>$b } grep { /^\d+$/ } keys(%args));
+  $tok->[$_+3] = $tok->[0][$_+2]{sym2id}{$args{$_}} foreach (sort { $a<=>$b } grep { /^\d+$/ } keys(%args));
   return $tok;
 }
 
 
 ## $etok = $class_or_obj->newFomToken($tok, %argsToNew)
+##  + always creates a new token
 # (inherited)
 
-## $etok = $etok->fromToken($tok)
+## $etok = $class_or_obj->fromToken($tok,%args)
 sub fromToken {
-  if (UNIVERSAL::isa($_[1],__PACKAGE__)) {
-    $_[0][0]=$_[1][0] if (!defined($_[0][0]));
-    $_[1][0]=$_[0][0] if (!defined($_[1][0]));
-    @{$_[0]}=@{$_[1]} if ( (!defined($_[0][0]) && !defined($_[1][0])) || $_[0][0] eq $_[1][0] );
+  my ($etok,$tok,%args) = @_;
+  if (!ref($etok)) {
+    if (UNIVERSAL::isa($tok,__PACKAGE__)) {
+      ##-- special case: class method called on compatible EToken::TT source object: NO COPY!
+      return $tok
+	if ( (!defined($args{_enums}) && defined($tok->[0]))
+	     ||
+	     ( defined($args{_enums}  && defined($tok->[0]) && $args{_enums} eq $tok->[0])) );
+    }
+    $etok = $etok->new(%args); ##-- need a new token
+  }
+  if (UNIVERSAL::isa($tok,__PACKAGE__)) {
+    ##-- special case: object method called on compatible EToken::TT source object: just copy
+    @$etok[1..$#$tok]=@$tok[1..$#$tok]
+      if ( (!defined($etok->[0]) && !defined($tok->[0]))
+	   || (defined($etok->[0]) && defined($tok->[0]) && $etok->[0] eq $tok->[0]));
   } else {
-    $_[0][0]=[] if (!defined($_[0][0]));
-    my $srcArray = $_[1]->asArray;
-    my ($i,$val);
+    ##-- general case: class or object method called on any MUDL::Token source object: general typecast
+    $etok->[0]=[] if (!defined($etok->[0]));
+    my $srcArray = $tok->asArray;
+    my ($i,$enum,$val,$vali);
     foreach $i (0..$#$srcArray) {
       next if (!defined($val=$srcArray->[$i]));
-      $_[0][0][$i] = MUDL::Enum->new() if (!defined($_[0][0][$i]));
-      $_[0][$i+1]  = $_[0][0][$i]->addSymbol($val);
+      $enum = $etok->[0][$i] = MUDL::Enum->new() if (!defined($enum=$etok->[0][$i]));
+      ##
+      #$etok->[$i+1]  = $etok->[0][$i]->addSymbol($val);
+      if (!defined($vali=$enum->{sym2id}{$val})) {
+	$vali = $enum->{sym2id}{$val} = scalar(@{$enum->{id2sym}});
+	push(@{$enum->{id2sym}},$val);
+      }
+      $etok->[$i+1] = $vali;
     }
   }
-  return $_[0];
+  return $etok;
 }
 
 
@@ -201,7 +280,15 @@ sub fromToken {
 ## $txt = $tok->text($txt)
 sub text {
   return defined($_[0][1]) ? $_[0][0][0]{id2sym}[$_[0][1]] : undef if ($#_ < 1);
-  $_[0][1] = $_[0][0][0]->addSymbol($_[1]);
+  #$_[0][1] = $_[0][0][0]->addSymbol($_[1]);
+  #return $_[1]
+  ##--
+  my ($id);
+  if (!defined($id=$_[0][0][0]{sym2id}{$_[1]})) {
+    $id = $_[0][0][0]{sym2id}{$_[1]} = scalar(@{$_[0][0][0]{id2sym}});
+    push(@{$_[0][0][0]{id2sym}},$id);
+  }
+  $_[0][1] = $id;
   return $_[1];
 }
 
@@ -209,7 +296,15 @@ sub text {
 ## $tag = $tok->tag($tag)
 sub tag {
   return defined($_[0][2]) ? $_[0][0][1]{id2sym}[ $_[0][2] ] : undef if ($#_ < 1);
-  $_[0][2] = $_[0][0][1]->addSymbol($_[1]);
+  #$_[0][2] = $_[0][0][1]->addSymbol($_[1]);
+  #return $_[1]
+  ##--
+  my ($id);
+  if (!defined($id=$_[0][0][1]{sym2id}{$_[1]})) {
+    $id = $_[0][0][1]{sym2id}{$_[1]} = scalar(@{$_[0][0][1]{id2sym}});
+    push(@{$_[0][0][1]{id2sym}},$id);
+  }
+  $_[0][2] = $id;
   return $_[1];
 }
 
@@ -255,9 +350,17 @@ sub asArray {
 sub attribute {
   return $_[0]->text($#_ > 1 ? $_[2] : qw()) if ($_[1] eq 'text');
   return $_[0]->tag ($#_ > 1 ? $_[2] : qw()) if ($_[1] eq 'tag');
-  my $i = int($_[1]);
-  return $_[0][0][$i+2]{id2sym}[ $_[0][$i+3] ] if ($#_ <= 1);
-  $_[0][$i+3]=$_[0][0][$i+2]->addSymbol($_[2]);
+  my $i = int($_[1])+2;
+  return $_[0][0][$i]{id2sym}[ $_[0][$i+1] ] if ($#_ <= 1);
+  #$_[0][$i+1]=$_[0][0][$i]->addSymbol($_[2]);
+  #return $_[2];
+  ##--
+  my ($id);
+  if (!defined($id=$_[0][0][$i]{sym2id}{$_[2]})) {
+    $id = $_[0][0][$i]{sym2id}{$_[2]} = scalar(@{$_[0][0][$i]{id2sym}});
+    push(@{$_[0][0][$i]{id2sym}},$id);
+  }
+  $_[0][$i+1]=$id;
   return $_[2];
 }
 

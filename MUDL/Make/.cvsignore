@@ -19,7 +19,13 @@
 mic
 
 tmp
-tmp*.mak
 _Inline
 plots
 avg
+
+*.dat
+tmon.out
+*.dprofpp
+*.save*
+graveyard*
+*.gp

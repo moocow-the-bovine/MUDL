@@ -75,6 +75,14 @@ our %FORMATS =
    'pdlbuf.bin' => 'PdlBuffer::Full',
    'pdlbuffer'  => 'PdlBuffer::Full',
    ##
+   ##-- Buffered + Enumerated + packed [OLD, many globals]
+   'packed.bin' => 'PackedBuffer',
+   'packed'     => 'PackedBuffer',
+   ##
+   ##-- Buffered + Enumerated + maybe-packed [NEW]
+   'ptt.bin'  => 'Buffer::PackedTT',
+   'packedtt' => 'Buffer::PackedTT',
+   ##
    ##-- default
    #DEFAULT => 'XML',
    DEFAULT => 'TT',
@@ -170,6 +178,25 @@ MUDL::Object->import('dummy');
 ## $n = $cr->nTokens()
 *nTokens = *nToks = *ntoks = dummy('nTokens');
 
+## $buf = $cr->getBuffer()
+## $buf = $cr->getBuffer($to_buffer)
+sub getBuffer {
+  if (defined($_[1])) {
+    $_[1]->writer->putReader($_[0]);
+    return $_[1];
+  }
+  return MUDL::Corpus::Buffer->new(sents=>$_[0]->getSentences);
+}
+
+## \@sents = $cr->getSentences()
+sub getSentences {
+  my $sents=[];
+  my ($s);
+  push(@$sents,$s) while (defined($s=$_[0]->getSentence));
+  return $sents;
+}
+
+
 ########################################################################
 ## I/O : Abstract: Corpus Writer
 ########################################################################
@@ -191,6 +218,10 @@ sub putReader {
   my ($s);
   $cw->putSentence($s) while (defined($s=$cr->getSentence));
 }
+
+## undef = $cw->putBuffer($corpusBuffer)
+sub putBuffer { $_[0]->putReader($_[1]->reader); }
+
 
 ## undef = $cw->putToken($text_or_hashref);
 *putToken = dummy('putToken');
@@ -247,6 +278,12 @@ package MUDL::CorpusIO::PdlBuffer::Full;       our @ISA=('MUDL::CorpusIO::PdlFul
 							 'MUDL::CorpusIO::PdlFullBufWriter');
 package MUDL::CorpusReader::PdlBuffer::Full;   our @ISA=qw(MUDL::CorpusIO::PdlFullBufReader);
 package MUDL::CorpusWriter::PdlBuffer::Full;   our @ISA=qw(MUDL::CorpusIO::PdlFullBufWriter);
+
+##-- yup, more aliases: MUDL::Corpus::Buffer::Packed
+package MUDL::CorpusIO::PackedBuffer;       our @ISA=('MUDL::CorpusIO::PackedBufReader',
+							'MUDL::CorpusIO::PackedBufWriter');
+package MUDL::CorpusReader::PackedBuffer;   our @ISA=qw(MUDL::CorpusIO::PackedBufReader);
+package MUDL::CorpusWriter::PackedBuffer;   our @ISA=qw(MUDL::CorpusIO::PackedBufWriter);
 
 1;
 

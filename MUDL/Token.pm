@@ -1,5 +1,5 @@
 ##-*- Mode: CPerl -*-
-
+##
 ## File: MUDL::Token.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
@@ -12,17 +12,50 @@
 ########################################################################
 
 package MUDL::Token;
+use MUDL::Token::Base; ##-- required API
 use MUDL::Object;
 use Carp;
 use utf8;
-our @ISA = qw(MUDL::Object);
+use strict;
+our @ISA = qw(MUDL::Token::Base);
 
 ##======================================================================
-## Default object structure
-##  + hashref { text=>$text, tag=>$tag, %attributes }
+## Constructors
 
 ## $tok = $class->new(text=>$text, tag=>$tag, %attributes);
+##  + object structure: hashref { text=>$text, tag=>$tag, %attributes }
 sub new { return bless { @_[1..$#_] }, ref($_[0])||$_[0]; }
+
+## $tok = $class_or_obj->newFromToken($srcTok,@args_to_new)
+##  + general typecasting method
+sub newFromToken {
+  return bless({%{$_[1]},@_[2..$#_]},ref($_[0])||$_[0]) if (ref($_[1]) eq (ref($_[0])||$_[0]));
+  return $_[0]->new($_[1]->asHash,@_[2..$#_]);
+}
+
+## $tok = $class_or_obj->fromToken($srcTok)
+##  + general typecasting method, may just return $srcTok
+#inherited
+
+## $tok_or_newTok =   $tok->fromHash(\%srcHash)
+##  + general constructor; \%srcHash has structure of args to 'new()' method
+##  + OPTIONAL: default just calls new()
+sub fromHash {
+  if (ref($_[0])) {
+    ##-- just adopt hash values
+    %{$_[0]} = %{$_[1]};
+    return $_[0];
+  }
+  return bless { @_[1..$#_] }, $_[0];
+}
+
+## $tok_or_newTok =   $tok->fromArray(\@srcArray)
+## $tok_or_newTok =   $tok->fromArray(\@srcArray,\@srcAttributeNames)
+##  + general constructor
+##    - \@srcArray has structure of a TT token: [ $val_attr1, ..., $val_attrN ]
+##    - if \@srcAttributeNames is unspecified, it defaults to ['text','tag',0..$#$srcArray]
+##  + OPTIONAL: default calls fromHash()
+#(inherited)
 
 ##======================================================================
 ## Accessors
@@ -35,51 +68,42 @@ sub text { return (exists($_[1]) ? $_[0]{text}=$_[1] : $_[0]{text}); }
 ## $tag = $tok->tag($tag)
 sub tag { return (exists($_[1]) ? $_[0]{tag}=$_[1] : $_[0]{tag}); }
 
+## $n = $tok->nfields()
+sub nfields { return scalar(keys(%{$_[0]})); }
+
 ## @attributeNames = $tok->attributeNames()
-sub attributeNames { return grep { $_ ne 'text' && $_ ne 'tag' } keys(%{$_[0]}); }
+our %skipAttributeNames = (text=>undef,tag=>undef);
+sub attributeNames { return grep { !exists($skipAttributeNames{$_}) } keys(%{$_[0]}); }
 
 ## @attributeValues = $tok->attributeValues
-sub attributeValues { return map { $_[0]{$_} } $_[0]->attributeNames; }
+sub attributeValues { return map { $_[0]{$_} } grep { !exists($skipAttributeNames{$_}) } keys(%{$_[0]}); }
 
 ## %attributes = $tok->attributes
-sub attributes { return map { $_=>$_[0]{$_} } $_[0]->attributeNames; }
+sub attributes { return map { $_=>$_[0]{$_} } grep { !exists($skipAttributeNames{$_}) } keys(%{$_[0]}); }
 
 ##  %tokHash = $tok->asHash #-- list context
 ## \%tokHash = $tok->asHash #-- scalar context, may be dangerous to change
 ##  + like (text=>$tok->text, tag=>$tok->tag, $tok->attributes());
-sub asHash {
-  return (ref($_[0]) eq __PACKAGE__ ##-- fast implementation for hashed tokens
-	  ? (wantarray
-	     ? %{$_[0]}
-	     : $_[0])
-	  : (wantarray
-	     ? (text=>$_[0]->text, tag=>$_[0]->tag, $_[0]->attributes)   ##-- default
-	     : {text=>$_[0]->text, tag=>$_[0]->tag, $_[0]->attributes}));
-}
+sub asHash { return wantarray ? %{$_[0]} : $_[0]; }
 
-
-## @tokArray = $tok->asArray(\@attrNames) #-- list context
-## %tokArray = $tok->asArray(\@attrNames) #-- scalar context
+##  @tokArray = $tok->asArray()            #-- list context
+##  @tokArray = $tok->asArray(\@attrNames) #-- list context, given names
+## \@tokArray = $tok->asArray()            #-- scalar context
+## \@tokArray = $tok->asArray(\@attrNames) #-- scalar context, given names
 ##  + if @attrNames is unspecified, it defaults to all numeric attribute names
 ##  + like @ary[0,1,@attrNames]=($tok->text, $tok->tag, @attrNames)
+##  + OPTIONAL: default calls asHash()
 sub asArray {
-  my $tok = shift;
+  my ($tok,$attrNames) = @_;
+  $attrNames = ['text','tag',grep {defined($_) && $_ =~ /^\d+$/} keys(%$tok)] if (!defined($attrNames));
   my $ary = [];
-  if (ref($tok) eq __PACKAGE__) {
-    ##-- fast implementation for hashed tokens
-    my @nkeys = grep {$_=~/^\d+$/} keys(%$tok);
-    @$ary[0,1,(map {$_+2} @nkeys)] = @$tok{'text','tag',@nkeys};
-  } else {
-    my %attrs = $tok->attributes;
-    delete(@attrs{ grep {$_ !~ /^\d+$/} keys(%attrs) });
-    @$ary[0,1,(map {$_+2} keys(%attrs))] = ($tok->text,$tok->tag,values(%attrs));
-  }
+  @$ary[map {defined($attrNames->[$_]) ? $_ : qw()} (0..$#$attrNames)] = @$tok{@$attrNames};
   return wantarray ? @$ary : $ary;
 }
 
 ## $val = $tok->getAttribute($attr)
 ## $val = $tok->setAttribute($attr,$val)
-*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
+#*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
 sub attribute {
   return ($#_ > 1
 	  ? $_[0]{$_[1]}=$_[2]
@@ -87,464 +111,42 @@ sub attribute {
 }
 
 ##======================================================================
-## I/O: Native
+## I/O: Native (TT)
 
 ## $str = $tok->saveNativeStr()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-*saveTTString = \&saveNativeString;
-sub saveNativeString {
-  return join("\t",
-	      (grep {
-		defined($_)
-	      }
-	       @{$_[0]}{qw(text tag)},
-	       (map { $_[0]{$_} } (sort { $a <=> $b } grep { /^\d+$/ } keys(%{$_[0]}))))
-	     )."\n";
-}
+## $str = $tok->saveNativeStr(\@attributeNames)
+##  + OPTIONAL: default calls $tok->asArray(\@attrNames)
+#*saveTTString = \&saveNativeString;
+#inherited
 
-# $tok = $tok->loadNativeStr($str)
-*loadTTString = \&loadNativeString;
-sub loadNativeString {
-  my ($tok,$str) = @_;
-  $tok = $tok->new() if (!ref($tok));
-  my @fields = split(/\s*\t+\s*/,$str);
-  @$tok{qw(text tag),0..($#fields-2)} = @fields;
-  return $tok;
-}
+## $tok_or_newtok = $tok->loadNativeStr($str)
+## $tok_or_newtok = $tok->loadNativeStr($str,\@attrNames)
+##  + OPTIONAL: default calls $tok->fromArray(\@attrNames)
+#*loadTTString = \&loadNativeString;
+#inherited
 
 
 ##======================================================================
 ## I/O: LOB | Brown
 
 ## $str = $tok->saveSepString($sep)
-##  + only saves 'text', 'tag', and numerically keyed attributes
-sub saveSepString {
-  return join((defined($_[1]) ? $_[1] : '/'),
-	      (grep {
-		defined($_)
-	      }
-	       @{$_[0]}{qw(text tag)},
-	       (map { $_[0]{$_} } (sort { $a <=> $b } grep { /^\d+$/ } keys(%{$_[0]}))))
-	     );
-}
-*saveBrownString = \&saveSepString;
-sub saveLobString { $_[0]->saveSepString('_',@_[1..$#_]); }
+## $str = $tok->saveSepString($sep,\@attrNames)
+##  + OPTIONAL: default calls $_[0]->asArray(\@attrNames)
+#inherited
 
 ## $tok = $tok->loadSepString($sepre,$str)
-sub loadSepString {
-  my ($tok,$sepre,$str) = @_;
-  $tok = $tok->new() if (!ref($tok));
-  my @fields = split(/\Q$sepre\E/,$str);
-  @$tok{qw(text tag),0..($#fields-2)} = @fields;
-  return $tok;
-}
-sub loadBrownString { $_[0]->loadSepString('/', @_[1..$#_]); }
-sub loadLobString   { $_[0]->loadSepString('_', @_[1..$#_]); }
-
+## $tok = $tok->loadSepString($sepre,$str,\@attrNames)
+##  + OPTIONAL: default calls $_[0]->fromArray(\@attrNames)
+#inherited
 
 ##======================================================================
 ## I/O: XML
 
 ## $node = $token->toCorpusXMLNode()
-sub toCorpusXMLNode {
-  my $node = XML::LibXML::Element->new('token');
-  $node->appendTextChild('text',$_[0]->text);
-  $node->appendTextChild('tag',$_[0]->tag);
-  my ($a,$anode);
-  foreach $a ($_[0]->attributeNames) {
-    $anode = XML::LibXML::Element->new('detail');
-    $anode->setAttribute('key',$a);
-    $anode->appendText($_[0]->attribute($a));
-    $node->appendChild($anode);
-  }
-  return $node;
-}
+#inherited
 
 ## $tok = $tok->fromCorpusXMLNode($node)
-sub fromCorpusXMLNode {
-  my ($tok,$node) = @_;
-  $tok = $tok->new if (!ref($tok));
-  $tok->text(join('', map { $_->textContent } $node->getChildrenByTagName('text')));
-  $tok->tag(join('', map { $_->textContent } $node->getChildrenByTagName('tag')));
-  my $akey=0;
-  foreach my $anode ($node->getChildrenByTagName('detail')) {
-    $tok->attribute($akey++,$anode->textContent);
-  }
-  return $tok;
-}
-
-########################################################################
-## class MUDL::Token::TT
-##  + array-based token class for TT files
-########################################################################
-package MUDL::Token::TT;
-use Carp;
-use utf8;
-our @ISA = qw(MUDL::Array MUDL::Token);
-
-##======================================================================
-## Default object structure
-##  + arrayref [$text,$tag,@details]
-
-##-- init(%args)
-sub init {
-  my ($tok,%args) = @_;
-  @$tok = @args{qw(text tag), sort { $a<=>$b } grep { /^\d+$/ } keys(%args)};
-  return $tok;
-}
-
-##======================================================================
-## Accessors
-
-## $txt = $tok->text()
-## $txt = $tok->text($txt)
-sub text { return ($#_ > 0 ? $_[0][0]=$_[1] : $_[0][0]); }
-
-## $tag = $tok->tag()
-## $tag = $tok->tag($tag)
-sub tag { return ($#_ > 0 ? $_[0][1]=$_[1] : $_[0][1]); }
-
-## @attributeNames = $tok->attributeNames()
-sub attributeNames { return (0..$#{$_[0]}-2); }
-
-## @attributeValues = $tok->attributeValues
-sub attributeValues { return map { $_[0][$_+2] } 0..$#{$_[0]}-2; }
-
-## %attributes = $tok->attributes
-sub attributes { return map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2; }
-
-##  %tokHash = $tok->asHash #-- list context
-## \%tokHash = $tok->asHash #-- scalar context
-##  + like (text=>$tok->text, tag=>$tok->tag, $tok->attributes());
-sub asHash {
-  return (wantarray
-	  ? (text=>$_[0][0], tag=>$_[0][1], map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2)
-	  : {text=>$_[0][0], tag=>$_[0][1], map { $_=>$_[0][$_+2] } 0..$#{$_[0]}-2});
-}
-
-## @tokArray = $tok->asArray(\@attrNames) #-- list context
-## %tokArray = $tok->asArray(\@attrNames) #-- scalar context
-##  + if @attrNames is unspecified, it defaults to all numeric attribute names
-##  + like @ary[0,1,@attrNames]=($tok->text, $tok->tag, @attrNames)
-sub asArray {
-  return (wantarray
-	  ? (@{ $_[0] }[ 0, 1, ($#_ > 1 ? @_[1..$#_] : (2..$#{$_[0]})) ])
-	  : [@{ $_[0] }[ 0, 1, ($#_ > 1 ? @_[1..$#_] : (2..$#{$_[0]})) ]]);
-}
-
-## $val = $tok->getAttribute($attr)
-## $val = $tok->setAttribute($attr,$val)
-*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
-sub attribute {
-  
-  return ($_[1] eq 'text'
-	  ? $_[0]->text($#_ > 1 ? $_[2] : qw())
-	  : ($_[1] eq 'tag'
-	     ? $_[0]->tag($#_ > 1 ? $_[2] : qw())
-	     : ($#_ > 1
-		? $_[0][int($_[1])+2]=$_[2]
-		: $_[0][int($_[1])+2])));
-}
-
-##======================================================================
-## I/O: Native
-
-## $str = $tok->saveNativeStr()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-*saveTTString = \&saveNativeString;
-sub saveNativeString { return join("\t", @{$_[0]})."\n"; }
-
-# $tok = $tok->loadNativeStr($str)
-*loadTTString = \&loadNativeString;
-sub loadNativeString {
-  $_[0] = $_[0]->new if (!ref($_[0]));
-  @{$_[0]} = split(/\s*[\t\r\n]+\s*/, $_[1]);
-  return $_[0];
-}
-
-##======================================================================
-## I/O: LOB
-
-## $str = $tok->saveLobString()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-sub saveLobString { return join('_', @{$_[0]}); }
-
-# $tok = $tok->loadLobString($str)
-sub loadLobString {
-  $_[0] = $_[0]->new if (!ref($_[0]));
-  @{$_[0]} = grep { defined($_) } split(/_/, $_[1]);
-  return $_[0];
-}
-
-##======================================================================
-## I/O: XML
-
-## $node = $token->toCorpusXMLNode()
-sub toCorpusXMLNode {
-  my $node = XML::LibXML::Element->new('token');
-  $node->appendTextChild('text',$_[0][0]);
-  $node->appendTextChild('tag',$_[0][1]) if (defined($_[0][1]));
-  $node->appendTextChild('detail',$_) foreach (@{$_[0]}[2..$#{$_[0]}]);
-  return $node;
-}
-
-## $tok = $tok->fromCorpusXMLNode($node)
-sub fromCorpusXMLNode {
-  my ($tok,$node) = @_;
-  $tok = $tok->new if (!ref($tok));
-  @$tok = qw();
-  $tok->[0] = join('', map { $_->textContent } $node->getChildrenByTagName('text'));
-  $tok->[1] = join('', map { $_->textContent } $node->getChildrenByTagName('tag'));
-  push(@$tok, $_->textContent) foreach ($node->getChildrenByTagName('detail'));
-  return $tok;
-}
-
-
-########################################################################
-## class MUDL::Token::XML
-##  + node-based token class for XML files
-########################################################################
-package MUDL::Token::XML;
-use XML::LibXML;
-use Carp;
-use utf8;
-our @ISA = qw(MUDL::Token XML::LibXML::Element);
-
-##-- new
-sub new {
-  my $that = shift;
-  my $tok = bless XML::LibXML::Element->new('token'), ref($that)||$that;
-  my ($k,$v);
-  while (($k,$v)=splice(@_,0,2)) {
-    $tok->appendTextChild($k,$v) if (defined($v));
-  }
-  return $tok;
-}
-
-##======================================================================
-## Accessors
-
-## $txt = $tok->text()
-## $txt = $tok->text($txt)
-sub text {
-  my $tok = shift;
-  if (@_) {
-    $tok->removeChild($_) foreach ($tok->getChildrenByTagName('text'));
-    $tok->appendTextChild('text',$_[1]);
-    return $_[1];
-  }
-  my $old = ($tok->getChildrenByTagName('text'))[0];
-  return $old ? $old->textContent : '';
-}
-
-## $tag = $tok->tag()
-## $tag = $tok->tag($tag)
-sub tag {
-  my $tok = shift;
-  if (@_) {
-    $tok->removeChild($_) foreach ($tok->getChildrenByTagName('tag'));
-    $tok->appendTextChild('tag',$_[1]);
-    return $_[1];
-  }
-  my $old = ($tok->getChildrenByTagName('tag'))[0];
-  return $old ? $old->textContent : '';
-}
-
-## @attributeNames = $tok->attributeNames()
-sub attributeNames { return map { $_->nodeName } $_[0]->childNodes; }
-
-## %attributes = $tok->attributes
-sub attributes {
-  return map { $_ => $_[0]->attribute($_) } $_[0]->attributeNames;
-}
-
-
-## $val = $tok->getAttribute($attr)
-## $val = $tok->setAttribute($attr,$val)
-*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
-sub attribute {
-  my ($tok,$name) = splice(@_,0,2);
-  if ($name eq 'text')   { return $tok->text(@_); }
-  elsif ($name eq 'tag') { return $tok->tag(@_); }
-
-  my $old = ($tok->getChildrenByTagName('detail'))[$_[0]];
-  if (@_) {
-    if ($old) {
-      my $new = $old->cloneNode(0);
-      $tok->replaceChild($new, $old);
-      $new->appendText($_[1]);
-    }
-    else {
-      $tok->appendTextChild('detail', $_[1]);
-    }
-    return $_[1];
-  }
-
-  return $old ? $old->textContent : undef;
-}
-
-
-##======================================================================
-## I/O: Native
-
-## $str = $tok->saveNativeStr()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-*saveTTString = \&saveNativeString;
-sub saveNativeString {
-  return join("\t",
-	      (grep {
-		defined($_)
-	      }
-	       $_[0]->text,
-	       $_[0]->tag,
-	       (map { $_->textContent } $_[0]->getChildrenByTagName('detail'))),
-	     )."\n";
-}
-
-# $tok = $tok->loadNativeStr($str)
-*loadTTString = \&loadNativeString;
-sub loadNativeString {
-  my ($tok,$str) = @_;
-  $tok = $tok->new() if (!ref($tok));
-  my @fields = split(/\s*\t+\s*/,$str);
-  $tok->text($fields[0]) if (@fields > 0);
-  $tok->tag($fields[1]) if (@fields > 1);
-  $tok->appendTextChild('detail', $_) foreach (@fields[2..$#fields]);
-  return $tok;
-}
-
-##======================================================================
-## I/O: Lob
-
-## $str = $tok->saveLobString()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-sub saveLobString {
-  return join('_',
-	      (grep {
-		defined($_)
-	      }
-	       $_[0]->text,
-	       $_[0]->tag,
-	       (map { $_->textContent } $_[0]->getChildrenByTagName('detail'))),
-	     );
-}
-
-# $tok = $tok->loadLobString($str)
-sub loadLobString {
-  my ($tok,$str) = @_;
-  $tok = $tok->new() if (!ref($tok));
-  my @fields = grep { defined($_) } split(/_/,$str);
-  $tok->text($fields[0]) if (@fields > 0);
-  $tok->tag($fields[1]) if (@fields > 1);
-  $tok->appendTextChild('detail', $_) foreach (@fields[2..$#fields]);
-  return $tok;
-}
-
-##======================================================================
-## I/O: XML
-
-## $node = $token->toCorpusXMLNode()
-sub toCorpusXMLNode { return $_[0]; }
-
-## $tok = $tok->fromCorpusXMLNode($node)
-sub fromCorpusXMLNode { return bless($_[1], $_[0]||ref($_[0])); }
-
-
-
-########################################################################
-## class MUDL::Token::Raw
-##  + scalar-based token class for raw-text tokens
-########################################################################
-package MUDL::Token::Raw;
-use Carp;
-use utf8;
-our @ISA = qw(MUDL::Scalar MUDL::Token);
-
-##======================================================================
-## Default object structure
-##  + scalar-ref \$text
-
-##-- init(%args)
-sub init {
-  my ($tok,%args) = @_;
-  $$tok = $args{text};
-  return $tok;
-}
-
-##======================================================================
-## Accessors
-
-## $txt = $tok->text()
-## $txt = $tok->text($txt)
-sub text { return ($#_ > 0 ? ${$_[0]}=$_[1] : ${$_[0]}); }
-
-## $tag = $tok->tag()
-## $tag = $tok->tag($tag)
-sub tag { return undef; }
-
-## @attributeNames = $tok->attributeNames()
-sub attributeNames { return qw(); }
-
-## %attributes = $tok->attributes()
-sub attributes { return qw(); }
-
-## $val = $tok->getAttribute($attr)
-## $val = $tok->setAttribute($attr,$val)
-*getAttribute = *getAttr = *getattr = *get = *setAttribute = *setAttr = *setattr = *set = \&attribute;
-sub attribute {
-  return ($_[1] eq 'text'
-	  ? $_[0]->text($_[2])
-	  : undef);
-}
-
-##======================================================================
-## I/O: Native
-
-## $str = $tok->saveNativeStr()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-*saveTTString = \&saveNativeString;
-sub saveNativeString { return ${$_[0]}."\n"; }
-
-# $tok = $tok->loadNativeStr($str)
-*loadTTString = \&loadNativeString;
-sub loadNativeString {
-  $_[0] = $_[0]->new if (!ref($_[0]));
-  (${$_[0]} = $_[1]) =~ s/^([^\t\r\n]*\S)\s*[\t\r\n]/$1/;
-  return $_[0];
-}
-
-##======================================================================
-## I/O: Lob
-
-## $str = $tok->saveLobString()
-##  + only saves 'text', 'tag', and numerically keyed attributes
-sub saveLobeString { return ${$_[0]}; }
-
-# $tok = $tok->loadLobString($str)
-sub loadLobString {
-  $_[0] = $_[0]->new if (!ref($_[0]));
-  (${$_[0]} = $_[1]) =~ s/^([^\s\_]*\S)[\s\_]/$1/;
-  return $_[0];
-}
-
-
-##======================================================================
-## I/O: XML
-
-## $node = $token->toCorpusXMLNode()
-sub toCorpusXMLNode {
-  my $node = XML::LibXML::Element->new('token');
-  $node->appendTextChild('text',${$_[0]});
-  return $node;
-}
-
-## $tok = $tok->fromCorpusXMLNode($node)
-sub fromCorpusXMLNode {
-  my ($tok,$node) = @_;
-  $tok = $tok->new if (!ref($tok));
-  $$tok = join('', map { $_->textContent } $node->getChildrenByTagName('text'));
-  return $tok;
-}
+#inherited
 
 
 

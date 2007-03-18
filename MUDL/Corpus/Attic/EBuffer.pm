@@ -227,7 +227,7 @@ sub putSentence {
   push(@{$cw->{buffer}{sents}},
        bless [
 	      map {
-		$tok=MUDL::EToken->newFromToken($_,_enums=>$cw->{buffer}{enums});
+		$tok=MUDL::EToken->fromToken($_,_enums=>$cw->{buffer}{enums});
 		delete($tok->{_enums});
 		$tok
 	      } @$s
@@ -477,7 +477,7 @@ sub putSentence {
   push(@{$cw->{buffer}{sents}},
        bless [
 	      map {
-		$tok=MUDL::EToken::TT->newFromToken($_,_enums=>$cw->{buffer}{enums});
+		$tok=MUDL::EToken::TT->fromToken($_,_enums=>$cw->{buffer}{enums});
 		$tok->[0]=undef;
 		$tok
 	      } @$s

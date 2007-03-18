@@ -12,7 +12,7 @@ use MUDL::Set;
 use MUDL::Map;
 use IO::File;
 use PDL;
-use PDL::Fit::Linfit;
+#use PDL::Fit::Linfit;
 use Carp;
 
 use strict;
@@ -122,10 +122,11 @@ sub smear {
 ##  + returned values can be used to predict by:
 ##      $newval = $coeffs[0] + $coeffs[1]*$key
 sub linfit {
+  require PDL::Fit::Linfit;
   my $d = shift;
   my $xdata = pdl([keys   %$d])->inplace->double;
   my $ydata = pdl([values %$d])->inplace->double;
-  my ($yfit,$coeffs) = linfit1d($ydata, cat(ones($ydata->nelem), $xdata));
+  my ($yfit,$coeffs) = $ydata->linfit1d(cat(ones($ydata->nelem), $xdata));
   undef $yfit;
   return wantarray ? ($coeffs->at(0),$coeffs->at(1)) : $coeffs;
 }
@@ -135,6 +136,7 @@ sub linfit {
 ##  + returned values can be used to predict by:
 ##      $newval = $coeffs[0] * $key**$coeffs[1]
 sub loglinfit {
+  require PDL::Fit::Linfit;
   my $d = shift;
   my $xdata = pdl([keys   %$d])->inplace->double->inplace->log;
   my $ydata = pdl([values %$d])->inplace->double->inplace->log;

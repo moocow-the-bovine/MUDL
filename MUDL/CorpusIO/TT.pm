@@ -9,7 +9,7 @@
 package MUDL::CorpusIO::TT;
 use MUDL::Object;
 use MUDL::CorpusIO;
-use MUDL::Token;
+use MUDL::Token::TT;
 use MUDL::Sentence;
 use IO::File;
 use Encode qw(encode decode);
@@ -23,8 +23,7 @@ use Carp;
 ########################################################################
 package MUDL::CorpusReader::TT;
 use MUDL::CorpusIO;
-use MUDL::Token;
-use MUDL::Sentence;
+use MUDL::Token::TT;
 use IO::File;
 use Encode qw(encode decode);
 use strict;
@@ -95,7 +94,7 @@ sub getSentence {
   %args = (allow_empty_sentences=>0,%args);
 
   my ($line);
-  my $sent = bless [], 'MUDL::Sentence';
+  my $sent = bless [], 'MUDL::Sentence::TT';
   while (defined($line=$cr->{fh}->getline)) {
     chomp $line;
     next if ($line =~ /^\%\%/);
@@ -194,29 +193,43 @@ sub putSentence {
   my $fh = $cw->{fh};
   my ($tok);
   foreach $tok (@$sent) {
-    if (ref($tok)) {
-      $fh->print(encode($cw->{encoding},$tok->saveNativeString));
-      #$fh->print(join("\t", $tok->{text}, @{$tok->{details}}), "\n");
+    if (ref($tok) && ref($tok) eq 'MUDL::Token::TT') {
+      ##-- fast write for MUDL::Token::TT
+      $fh->print(encode($cw->{encoding}, join("\t", grep {defined($_)} @$tok)), "\n");
+    }
+    elsif (ref($tok)) {
+      ##-- general case for MUDL::Token::Base API
+      $fh->print(encode($cw->{encoding},
+			#$tok->saveNativeString
+			join("\t", grep {defined($_)} @{$tok->asArray}), "\n")
+		);
     } else {
+      ##-- highly deprecated backwards-compatibility: non-ref tokens
       $fh->print(encode($cw->{encoding},$tok), "\n");
     }
   }
   $fh->print("\n");
 }
 
-## undef = $cw->putToken($text_or_hashref)
+## undef = $cw->putToken($text_or_token)
 sub putToken {
   my ($cw,$tok) = @_;
-  return undef if (!$cw->{fh});
+  my ($fh);
+  return undef if (!defined($fh=$cw->{fh}));
 
-  if (ref($tok)) {
-    $cw->{fh}->print(encode($cw->{encoding},$tok->saveNativeString));
-    #$cw->{fh}->print(join("\t", $tok->{text}, @{$tok->{details}}), "\n");
-  } elsif (defined($tok)) {
-    #$cw->{fh}->print($tok, "\n");
-    $cw->{fh}->print(encode($cw->{encoding},$tok), "\n");
+  if (ref($tok) && ref($tok) eq 'MUDL::Token::TT') {
+    ##-- fast write for MUDL::Token::TT
+    $fh->print(encode($cw->{encoding}, join("\t", grep {defined($_)} @$tok)), "\n");
+  }
+  elsif (ref($tok)) {
+    ##-- general case for MUDL::Token::Base API
+    $fh->print(encode($cw->{encoding},
+		      #$tok->saveNativeString
+		      join("\t", grep {defined($_)} @{$tok->asArray}), "\n")
+	      );
   } else {
-    $cw->{fh}->print("\n");
+    ##-- highly deprecated backwards-compatibility: non-ref tokens
+    $fh->print(encode($cw->{encoding},$tok), "\n");
   }
 }
 

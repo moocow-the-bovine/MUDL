@@ -206,11 +206,14 @@ sub STORABLE_freeze {
 ## $obj = STORABLE_thaw($obj, $cloning_flag, $serialized_string, @other_refs)
 sub STORABLE_thaw {
   my ($obj,$cloning,$str,$ar) = @_;
-  %$obj = @$ar;
-  #return $obj if (ref($obj) ne __PACKAGE__); ##-- hack
-  $obj->{sym2id} = {} if (!defined($obj->{sym2id}));
-  @{$obj->{sym2id}}{grep {defined($_)} @{$obj->{id2sym}}}
-    = grep {defined($obj->{id2sym}[$_])} (0..$#{$obj->{id2sym}});
+  if (!defined($str) || $str eq '') {
+    ##-- backwards-compatibility
+    %$obj = @$ar;
+    #return $obj if (ref($obj) ne __PACKAGE__); ##-- hack
+    $obj->{sym2id} = {} if (!defined($obj->{sym2id}));
+    @{$obj->{sym2id}}{grep {defined($_)} @{$obj->{id2sym}}}
+      = grep {defined($obj->{id2sym}[$_])} (0..$#{$obj->{id2sym}});
+  }
   return $obj;
 }
 
