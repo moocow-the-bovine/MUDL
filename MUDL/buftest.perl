@@ -113,6 +113,28 @@ sub test_pdlfull_reader {
 #test_pdlfull_reader();
 
 ##----------------------------------------------------------------------
+## test: pdltt
+##----------------------------------------------------------------------
+
+sub test_pdltt_ugs {
+  $pb  = load("$cfile.pdltt.bin");
+  $ug  = MUDL::Unigrams->new;
+  $ug->addReader($pb->reader);
+  $pb->packPdls();
+
+  $e = $pb->{enums}[0];
+  $ugp   = hist($pb->{pdls}[0],0,$pb->{enums}[0]->size,1);
+  $ugpe  = MUDL::EDist->new(enum=>$e)->fromPDL($ugp);
+  $ugped = $ugpe->toDist();
+
+  my $ugpeds = join('', map {"$_\t$ugped->{$_}\n"} sort keys %$ugped);
+  my $ugs    = join('', map {"$_\t$ug->{$_}\n"}    sort keys %$ug);
+
+  print "Unigrams: ", ($ugs eq $ugpeds ? "ok" : "NOT ok"), "\n";
+}
+test_pdltt_ugs;
+
+##----------------------------------------------------------------------
 ## Utils: store & retrieve timing results
 ##----------------------------------------------------------------------
 
@@ -167,6 +189,7 @@ sub store_timeresults {
   $benches->{$benchid} = {fields=>\%tfields, ttr=>$ttr};
   store_benches();
 }
+
 
 ##----------------------------------------------------------------------
 ## Utils: plot benchmark results
