@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -27,6 +27,9 @@ use MUDL::Enum::Nary::Flat;
 use MUDL::Set;
 
 use MUDL::Token;
+use MUDL::Token::TT;
+use MUDL::Token::Raw;
+#use MUDL::Token::XML;
 use MUDL::Sentence;
 
 use MUDL::Dist;

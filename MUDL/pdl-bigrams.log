@@ -1,0 +1,289 @@
+##-- flat hack: works, but not good for trigrams (overflows PDL long type)
+$w12i = $w12i->convert(long);
+$Nw   = $w12i->dim(1);
+$w12i_flat=($w12i->slice("(0),:")*$Nw)+($w12i->slice("(1),:"));
+
+$w12i_flat_w1i = ($w12i_flat / $Nw); ##-- == $w12i->slice("(0),:")  ##-- test: 1-to-nd: x
+$w12i_flat_w2i = ($w12i_flat % $Nw); ##-- == $w12i->slice("(1),:")  ##-- test: 1-to-nd: y
+
+$w12i_flat_sorted_i = qsorti($w12i_flat);
+($w12i_flat_sorted_f0,$w12i_flat_sorted_c0) = $w12i_flat->index($w12i_flat_sorted_i)->rle();
+
+$nnz = $w12i_flat_sorted_f0->nnz; ##-- ->which->nelem
+$w12i_flat_sorted_f = $w12i_flat_sorted_f0->slice("0:".($nnz-1));
+$w12i_flat_sorted_c = $w12i_flat_sorted_c0->slice("0:".($nnz-1));
+
+$w12i_flat_sorted_w1i = ($w12i_flat_sorted_c / $Nw);
+$w12i_flat_sorted_w2i = ($w12i_flat_sorted_c % $Nw);
+$w12i_flat_sorted_cat = $w12i_flat_sorted_w1i->cat($w12i_flat_sorted_w2i)->xchg(0,1);
+
+$w12_sorted = $w12i->dice_axis(1,$w12i_flat_sorted_i); ##-- alternative
+$w12_uniq   = $w12_sorted->uniqvec;                    ##-- s.t. all($w12_uniq == $w12i_flat_sorted_cat) ##-- yep
+
+($ptr,$rowids,$nzvals) = ccsencode_i2d($w12i_flat_sorted_w1i,$w12i_flat_sorted_w2i,$w12i_flat_sorted_f);
+
+##-------------------------------------------------------------
+
+  DB<66> print ($xsorti=$pi->xchg(0,1)->qsorti->slice(",(1)")), ($pix=$pi->dice_axis(1,$xsorti)), ($ysorti=$pix->xchg(0,1)->qsorti->slice(",(0)")), ($piy=$pix->dice_axis(1,$ysorti))
+[1 3 0 4 2 5]
+  DB<67> p $pi
+
+[
+ [1 2]
+ [2 1]
+ [1 3]
+ [1 2]
+ [1 3]
+ [3 4]
+]
+
+  DB<68> p qsortvec($pi)
+
+[
+ [1 2]
+ [1 2]
+ [1 3]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+
+  DB<69> $piqs = $pi->qsortvec
+
+  DB<70> p $piqs
+
+[
+ [1 2]
+ [1 2]
+ [1 3]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+
+  DB<71> p rle($piqs)
+
+[
+ [1 1]
+ [1 1]
+ [1 1]
+ [1 1]
+ [1 1]
+ [1 1]
+]
+ 
+[
+ [1 2]
+ [1 2]
+ [1 3]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+
+  DB<72> p rle($piqs->xchg(0,1))
+
+[
+ [4 1 1 0 0 0]
+ [2 2 1 1 0 0]
+]
+ 
+[
+ [1 2 3 0 0 0]
+ [2 3 1 4 0 0]
+]
+
+  DB<73> p $piqs->xchg(0,1)
+
+[
+ [1 1 1 1 2 3]
+ [2 2 3 3 1 4]
+]
+
+  DB<74> p $piqs->xchg(0,1)->slice(",(1)")
+[2 2 3 3 1 4]
+  DB<75> p $piqs->slice("(1),")
+[2 2 3 3 1 4]
+  DB<76> p $piqs->slice("(1),")->rle
+[2 2 1 1 0 0] [2 3 1 4 0 0]
+  DB<77> p ($piqcounts,$piqxi)=$piqs->slice("(1),")->rle
+[2 2 1 1 0 0] [2 3 1 4 0 0]
+  DB<78> p $pi->uniqvec
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+
+  DB<79> p $pi
+
+[
+ [1 2]
+ [2 1]
+ [1 3]
+ [1 2]
+ [1 3]
+ [3 4]
+]
+
+  DB<80> p $piu=$pi->uniqvec
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+
+  DB<81> p $piu, $piqcounts->slice("0:".($piu->nelem-1))
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+ Slice cannot start or end above limit at /usr/lib/perl5/PDL/Core.pm line 2227, <GEN3> line 152.
+
+  DB<82> p $piu, $piqcounts->slice("0:".($piu->dim(1)-1))
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+ [2 2 1 1]
+  DB<83> p $piu->cat($piqcounts->slice("0:".($piu->dim(1)-1)))
+PDL: PDL::Ops::assgn(a,b): Parameter 'b'
+PDL: Mismatched implicit thread dimension 0: should be 4, is 2
+	
+Caught at file (eval 148)[/usr/share/perl/5.8/perl5db.pl:628], line 2, pkg main
+
+
+  DB<84> p $piu->append($piqcounts->slice("0:".($piu->dim(1)-1)))
+
+[
+ [1 2 2 2 1 1]
+ [1 3 2 2 1 1]
+ [2 1 2 2 1 1]
+ [3 4 2 2 1 1]
+]
+
+  DB<85> p $piu->xchg(0,1)->cat($piqcounts->slice("0:".($piu->dim(1)-1)))
+
+[
+ [
+  [1 1 2 3]
+  [2 3 1 4]
+ ]
+ [
+  [2 2 1 1]
+  [2 2 1 1]
+ ]
+]
+
+  DB<86> p $piu->xchg(0,1)->append($piqcounts->slice("0:".($piu->dim(1)-1)))
+
+[
+ [1 1 2 3 2 2 1 1]
+ [2 3 1 4 2 2 1 1]
+]
+
+  DB<87> p $piu->xchg(0,1)->append($piqcounts->slice("0:".($piu->dim(1)-1)))->xchg(0,1)
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+ [2 2]
+ [2 2]
+ [1 1]
+ [1 1]
+]
+
+  DB<88> p $piu, $piqcounts_nz=$piqcounts->slice("0:".($piu->dim(1)-1))
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+ [2 2 1 1]
+  DB<89> p $pi
+
+[
+ [1 2]
+ [2 1]
+ [1 3]
+ [1 2]
+ [1 3]
+ [3 4]
+]
+
+  DB<90> use PDL::CCS
+
+  DB<91> p $piu
+
+[
+ [1 2]
+ [1 3]
+ [2 1]
+ [3 4]
+]
+
+  DB<92> p $piu->slice(",(0)")
+[1 2]
+  DB<93> p $piu->slice("(0),")
+[1 1 2 3]
+  DB<94> p $piqcounts->where($piqcounts!=0)
+[2 2 1 1]
+  DB<95> ($ptr,$rowids,$vals) = ccsencode_i2d($piq->slice("(0),"),$piq->slice("(1),"), $piqcounts->where($piqcounts))
+Can't call method "slice" on an undefined value at (eval 163)[/usr/share/perl/5.8/perl5db.pl:628] line 2, <GEN3> line 152.
+
+  DB<96> ($ptr,$rowids,$vals) = ccsencode_i2d($piu->slice("(0),"),$piu->slice("(1),"), $piqcounts->where($piqcounts))
+
+  DB<97> p $ptr
+[0 0 2 3]
+  DB<98> p $rowids
+[2 3 1 4]
+  DB<99> p $vals
+[2 2 1 1]
+  DB<100> p $dense = ccsdecode($ptr,$rowids,$vals)
+
+[
+ [0 0 0 0]
+ [0 0 1 0]
+ [0 2 0 0]
+ [0 2 0 0]
+ [0 0 0 1]
+]
+
+  DB<101> p $pi
+
+[
+ [1 2]
+ [2 1]
+ [1 3]
+ [1 2]
+ [1 3]
+ [3 4]
+]
+
+  DB<102> p $dense->at(1,2)
+2
+  DB<103> p $dense->at(1,3)
+2
+  DB<104> p $dense->at(2,1)
+1
+  DB<105> p $dense->at(3,4)
+1
+  DB<106> p $dense->at(4,3)
+Position out of range at /usr/lib/perl5/PDL/Core.pm line 2386, <GEN3> line 152.
+
+  DB<107> p $dense->at(3,3)
+

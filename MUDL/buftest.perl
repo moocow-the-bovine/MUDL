@@ -132,7 +132,92 @@ sub test_pdltt_ugs {
 
   print "Unigrams: ", ($ugs eq $ugpeds ? "ok" : "NOT ok"), "\n";
 }
-test_pdltt_ugs;
+#test_pdltt_ugs;
+
+use MUDL::PdlDist::Sparse2d;
+use PDL::CCS;
+sub test_pdltt_bgs {
+  $,   = ' ';
+  $pb  = load("$cfile.pdltt.bin");
+  ##
+  ##-- bigrams: insert BOS,EOS markers into full text pdl
+  my $enum = $pb->{enums}[0];
+  my $eos  = $enum->addSymbol('__$');
+  my $fpdl = $pb->fullPdl->slice("(0),:");
+  my $epdl = zeroes($fpdl->type, $fpdl->nelem + $pb->{begins}->nelem + 1)+$eos;
+  my $beg  = $pb->{begins};
+  my $f2e_delta = zeroes(long, $fpdl->nelem);
+  $f2e_delta->index($beg) .= 1;
+  my $f2e = $f2e_delta->cumusumover + sequence(long,$fpdl->nelem);
+  $epdl->index($f2e) .= $fpdl;
+  ##
+  ##-- bigrams: get bigram indices
+  my $w1i   = $epdl;
+  my $w2i   = $w1i->rotate(-1);            ##-- requires that BOS,EOS have the same label
+  my $w12i  = $w1i->cat($w2i)->xchg(0,1);  ##-- pdl(2,$nToks)  : raw bigram indices (with <BOS,EOS> at end)
+  $w12i     = $w12i->slice(":,0:-2");      ##-- pdl(2,$nToks-1): raw bigram indices (without <BOS,EOS> at end)
+  $w12i     = $w12i->convert(long);        ##-- need it as a long....
+  ##
+  ##-- bigrams: get flat indices
+  my $nToks1    = $w12i->dim(1);
+  my $w12i_flat = ($w12i->slice("(0),:")*$nToks1) + $w12i->slice("(1),:"); ##-- pdl($nToks-1): flat bigram indices
+  #$w12i_flat_w1i = ($w12i_flat / $Nw); ##-- == $w12i->slice("(0),:")  ##-- test: recover 2d index from 1d: x
+  #$w12i_flat_w2i = ($w12i_flat % $Nw); ##-- == $w12i->slice("(1),:")  ##-- test: recover 2d index from 1d: y
+  ##
+  ##-- bigrams: sort & count flat indices
+  my $w12i_flat_sorted = $w12i_flat->qsort();    ##-- pdl($nToks-1): sorted flat indices (w1 > w2)
+  my ($w12i_flat_sorted_f0,                      ##-- pdl($nToks-1): raw frequencies, with trailing zeroes
+      $w12i_flat_sorted_i0)                      ##-- pdl($nToks-1): flat bigram indices, with empties
+    = $w12i_flat_sorted->rle();                  ##-- run-length encode: see PDL::Slices
+  my $Nnz = $w12i_flat_sorted_f0->nnz;           ##-- $Nnz: number of actually observed bigram types
+  my $w12i_flat_sorted_f
+    = $w12i_flat_sorted_f0->slice("0:".($Nnz-1)); ##-- pdl($Nnz): actual nonzero bigram freqs
+  my $w12i_flat_sorted_i
+    = $w12i_flat_sorted_i0->slice("0:".($Nnz-1)); ##-- pdl($Nnz): actual nonzero bigram indices (flat)
+  ##
+  ##-- bigrams: reconstruct 2d indices from $w12_flat_sorted_c
+  my $w1i_nnz = $w12i_flat_sorted_i / $nToks1;   ##-- pdl($Nnz):  first component ($w1i) of nonzero bigram types
+  my $w2i_nnz = $w12i_flat_sorted_i % $nToks1;   ##-- pdl($Nnz): second component ($w2i) of nonzero bigram types
+  ##
+  ##--BEGIN NOTE
+  ## + it should now be the case that:
+  ##      all( $w12i->uniqvec == ($w12i_nnz = $w1i_nnz->cat($w2i_nnz)->xchg(0,1)) )
+  ##--END NOTE
+  ##
+  ##-- bigrams: ccs encode
+  my ($ptr,$rowids,$nzvals) = ccsencode_i2d($w1i_nnz,$w2i_nnz,$w12i_flat_sorted_f);
+  ##
+  ##-- bigrams: to MUDL::PdlDist::Sparse2d
+  my $bgenum  = MUDL::Enum::Nary->new(nfields=>2,enums=>[$enum,$enum]);
+  my $bgpd    = MUDL::PdlDist::Sparse2d->new(
+					     ptr=>$ptr,
+					     rowids=>$rowids,
+					     nzvals=>$nzvals,
+					     dims=>[$nToks1,$nToks1],
+					     enum=>$bgenum,
+					    );
+
+  ##.... the rest
+  print "constructed.\n";
+
+  ##-- get bigrams the old, text-based way
+  $bg  = MUDL::Bigrams->new;
+  $bg->addReader($pb->reader);
+  our $nbgs = scalar(keys(%{$bg->{nz}})); ##-- 8033
+  our @nbg_strs = map { "$_\t$bg->{nz}{$_}\n" } sort(keys(%{$bg->{nz}}));
+  our $nbg_str  = join('',sort @nbg_strs);
+
+  ##-- test: format
+  my $id2sym  = $enum->{id2sym};
+  my @w1i_nnz = $w1i_nnz->list;
+  my @w2i_nnz = $w2i_nnz->list;
+  my @f_nnz   = $w12i_flat_sorted_f->list;
+  our @pbg_strs = map { join("\t", @$id2sym[$w1i_nnz[$_],$w2i_nnz[$_]], $f_nnz[$_])."\n" } (0..$#w1i_nnz);
+  our $pbg_str  = join('',sort @pbg_strs);
+
+  print "Bigrams: ", ($nbg_str eq $pbg_str ? "ok" : "NOT ok"), "\n";
+}
+#test_pdltt_bgs();
 
 ##----------------------------------------------------------------------
 ## Utils: store & retrieve timing results
@@ -327,6 +412,166 @@ sub plotcmp {
   close(GP);
 }
 #plotcmp();
+
+##----------------------------------------------------------------------
+## Bench: get bigrams
+##----------------------------------------------------------------------
+
+sub getenum_bigrams {
+  my $bg = shift;
+  my $enum = MUDL::Enum->new;
+  my $sym2id = $enum->{sym2id};
+  my $id2sym = $enum->{id2sym};
+  @$sym2id{map {split(/\t/,$_)} keys(%{$bg->{nz}})} = undef;
+  my @bgkeys = keys %$sym2id;
+  @$id2sym[0..$#bgkeys] = @bgkeys;
+  @$sym2id{@bgkeys} = 0..$#bgkeys;
+  return $enum;
+}
+
+BEGIN {
+  our $GETBIGRAMS_STRINGS=1; ##-- set to true to get (only) string bigrams during benchmark
+  our $GETBIGRAMS_PDLS=1;    ##-- set to true to get (only) PDL bigrams during benchmark
+}
+
+sub getbigrams_reader {
+  my $cr  = shift;
+  ##
+  ##-- we always need string-bigrams here
+  my $bg = MUDL::Bigrams->new();
+  $bg->addReader($cr);
+  ##
+  my ($bgpd);
+  if ($GETBIGRAMS_PDLS) {
+    my $enum   = getenum_bigrams($bg);
+    my $sym2id = $enum->{sym2id};
+    my $bged = MUDL::EDist::Nary->new(nfields=>2,enums=>[$enum,$enum]);
+    @{$bged->{nz}}{ map {join("\t", @$sym2id{split(/\t/,$_)})} keys(%{$bg->{nz}}) } = values(%{$bg->{nz}});
+    $bgpd = $bged->toSparsePdlDist();
+  }
+  return ($bg,$bgpd);
+}
+#($bgs,$bgpd) = getbigrams_reader(load("$cfile.cbuf.bin")->reader);
+
+
+## ($bgs,$bgpd) = getbigrams_from_pdls($txtpdl,$txtenum,$sbegins)
+##   + FIX THIS: flat-index hack won't cut the butter for TRIGRAMS and above with nTypes=44k
+sub getbigrams_from_pdls {
+  my ($fpdl,$enum,$begins) = @_;
+  ##
+  ##-- add EOS to enum
+  my $eos  = $enum->addSymbol('__$');
+  #my $beg  = $begins;
+  my $epdl = zeroes($fpdl->type, $fpdl->nelem + $begins->nelem + 1)+$eos;
+  my $f2e_delta = zeroes(long, $fpdl->nelem);
+  $f2e_delta->index($begins) .= 1;
+  my $f2e = $f2e_delta->cumusumover + sequence(long,$fpdl->nelem);
+  $epdl->index($f2e) .= $fpdl;
+  ##
+  ##-- bigrams: get 2d bigram indices
+  my $w1i   = $epdl;
+  my $w2i   = $w1i->rotate(-1);            ##-- requires that BOS,EOS have the same label
+  my $w12i  = $w1i->cat($w2i)->xchg(0,1);  ##-- pdl(2,$nToks)  : raw bigram indices (with <BOS,EOS> at end)
+  $w12i     = $w12i->slice(":,0:-2");      ##-- pdl(2,$nToks-1): raw bigram indices (without <BOS,EOS> at end)
+  $w12i     = $w12i->convert(long);        ##-- need it as a long....
+  ##
+  ##-- bigrams: get flat bigram indices
+  my $nToks1    = $w12i->dim(1);
+  my $w12i_flat = ($w12i->slice("(0),:")*$nToks1) + $w12i->slice("(1),:"); ##-- pdl($nToks-1): flat bigram indices
+  ##
+  ##-- bigrams: sort & count flat indices
+  my $w12i_flat_sorted = $w12i_flat->qsort();    ##-- pdl($nToks-1): sorted flat indices (w1 > w2)
+  my ($w12i_flat_sorted_f0,                      ##-- pdl($nToks-1): raw frequencies, with trailing zeroes
+      $w12i_flat_sorted_i0)                      ##-- pdl($nToks-1): flat bigram indices, with empties
+    = $w12i_flat_sorted->rle();                  ##-- run-length encode: see PDL::Slices
+  my $Nnz = $w12i_flat_sorted_f0->nnz;           ##-- $Nnz: number of actually observed bigram types
+  my $w12i_flat_sorted_f
+    = $w12i_flat_sorted_f0->slice("0:".($Nnz-1)); ##-- pdl($Nnz): actual nonzero bigram freqs
+  my $w12i_flat_sorted_i
+    = $w12i_flat_sorted_i0->slice("0:".($Nnz-1)); ##-- pdl($Nnz): actual nonzero bigram indices (flat)
+  ##
+  ##-- bigrams: reconstruct 2d indices from $w12_flat_sorted_c
+  my $w1i_nnz = $w12i_flat_sorted_i / $nToks1;   ##-- pdl($Nnz):  first component ($w1i) of nonzero bigram types
+  my $w2i_nnz = $w12i_flat_sorted_i % $nToks1;   ##-- pdl($Nnz): second component ($w2i) of nonzero bigram types
+  ##
+  ##--BEGIN NOTE
+  ## + it should now be the case that:
+  ##      all( $w12i->uniqvec == ($w12i_nnz = $w1i_nnz->cat($w2i_nnz)->xchg(0,1)) )
+  ##--END NOTE
+  ##
+  ##-- bigrams: ccs encode
+  my ($ptr,$rowids,$nzvals) = ccsencode_i2d($w1i_nnz,$w2i_nnz,$w12i_flat_sorted_f);
+  ##
+  ##-- bigrams: to MUDL::PdlDist::Sparse2d
+  my $bgenum  = MUDL::Enum::Nary->new(nfields=>2,enums=>[$enum,$enum]);
+  my $bgpd    = MUDL::PdlDist::Sparse2d->new(
+					     ptr=>$ptr,
+					     rowids=>$rowids,
+					     nzvals=>$nzvals,
+					     dims=>[$nToks1,$nToks1],
+					     enum=>$bgenum,
+					    );
+
+  ##-- bigrams: strings: backtranslate (if requested)
+  my ($bgs);
+  if ($GETBIGRAMS_STRINGS) {
+    $bgs = MUDL::Bigrams->new();
+    my $id2sym  = $enum->{id2sym};
+    my @w1i_nnz = $w1i_nnz->list;
+    my @w2i_nnz = $w2i_nnz->list;
+    my @f_nnz   = $w12i_flat_sorted_f->list;
+    @{$bgs->{nz}}{ map { join("\t",@$id2sym[$w1i_nnz[$_],$w2i_nnz[$_]]) } (0..$#f_nnz) } = @f_nnz;
+  }
+
+  return ($bgs,$bgpd);
+}
+
+sub getbigrams_pdltt {
+  my $pb   = shift;
+  my $fpdl = $pb->fullPdl()->slice("(0),:");
+  return getbigrams_from_pdls($fpdl, $pb->{enums}[0], $pb->{begins});
+}
+#($bgs,$bgpd) = getbigrams_pdltt(load("$cfile.pdltt.bin"));
+
+sub getbigrams_ptt {
+  my $pttb = shift;
+  my ($enums,$fpdl) = bench_get_full_pdl_buf_ptt($pttb);
+  my $slens         = pdl(long,map {scalar(@$_)} @{$pttb->{sents}});
+  my $ends          = $slens->cumusumover;
+  my $begins        = $ends - $slens;
+  return getbigrams_from_pdls($fpdl->slice("(0),:"), $enums->[0], $begins);
+}
+#($bgs,$bgpd) = getbigrams_ptt(load("$cfile.ptt.bin"));
+
+BEGIN {
+  our %getbigrams_subs =
+    (
+     'ttt'           => sub { getbigrams_reader(MUDL::CorpusIO->fileReader("$cfile")); },
+     'ttt.cbuf.bin'  => sub { getbigrams_reader(MUDL::CorpusIO->fileReader("$cfile.cbuf.bin")); },
+     'ttt.ptt.bin'   => sub { getbigrams_ptt(load("$cfile.ptt.bin")); },
+     'ttt.pdltt.bin' => sub { getbigrams_pdltt(load("$cfile.pdltt.bin")); },
+    );
+}
+
+sub benchall_getbigrams_pdls {
+  $GETBIGRAMS_PDLS    =1;
+  $GETBIGRAMS_STRINGS =0;
+  $ttr = timethese(-3,\%getbigrams_subs);
+  cmpthese($ttr);
+  store_timeresults($ttr,'bgPdl');
+}
+#benchall_getbigrams_pdls();
+cmpbench('bgPdl');
+
+sub benchall_getbigrams_strings {
+  $GETBIGRAMS_PDLS    =0;
+  $GETBIGRAMS_STRINGS =1;
+  $ttr = timethese(-3,\%getbigrams_subs);
+  cmpthese($ttr);
+  store_timeresults($ttr,'bgStr');
+}
+#benchall_getbigrams_strings();
+cmpbench('bgStr');
 
 ##----------------------------------------------------------------------
 ## Bench: File sizes
