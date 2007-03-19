@@ -185,7 +185,7 @@ sub packPdls {
   #my @sents_new  = @{$pb->{sents}}[@sentis_new];
   #return $pb if (!@sents_new); ##-- sanity check
   ##--
-  my $sent_isnew_mask = pdl(byte,map { ref($sents->[$_]) eq 'MUDL::Sentence::PdlTT' ? 0 : 1} (0..$#{$pb->{sents}}));
+  my $sent_isnew_mask = pdl(byte,map {ref($sents->[$_]) eq 'MUDL::Sentence::PdlTT' ? 0 : 1} (0..$#{$pb->{sents}}));
   return $pb if (!any($sent_isnew_mask)); ##-- sanity check
   my @sentis_new = which($sent_isnew_mask)->list;
 
@@ -195,9 +195,11 @@ sub packPdls {
   ##-- update: create new pdls: sentences
   my $slens_new = pdl(long, map {scalar(@$_)} @$sents[@sentis_new]); #@sents_new
   my $end_new   = $slens_new->cumusumover;
+  my $sent_isold_which = which(!$sent_isnew_mask);
   my ($beg_old,$end_old,$which_toks_old);
-  if (!defined($beg_old=$pb->{begins}) || $beg_old->isempty
-      || !defined($end_old=$pb->{ends}) || $end_old->isempty)
+  if ($sent_isold_which->isempty
+      || !defined($beg_old=$pb->{begins}) || $beg_old->isempty
+      || !defined($end_old=$pb->{ends})   || $end_old->isempty)
     {
       ##-- easy way out: just assign
       $pb->{ends}   = $end_new;
@@ -206,15 +208,14 @@ sub packPdls {
   else
     {
       ##-- tough cookies: shove compatible sentences to the front
-      my $which_old = which(!$sent_isnew_mask);
-
+      ##
       ##-- get indices of old tokens
       my @beg_old_list = $beg_old->list;
       my @end_old_list = $end_old->list;
       $which_toks_old = pdl(long,map { $beg_old_list[$_]..$end_old_list[$_] } (0..$#beg_old_list));
 
       ##-- update old sentence lengths
-      my $slens_old = $end_old->index($which_old) - $beg_old->index($which_old);
+      my $slens_old = $end_old->index($sent_isold_which) - $beg_old->index($sent_isold_which);
       $end_old      = $slens_old->cumusumover;
       $beg_old      = $end_old - $slens_old;
 
@@ -546,6 +547,9 @@ sub eof {
 	 );
 }
 
+our $STATE_DIRTY = ~($MUDL::Corpus::Buffer::PdlTT::STATE_PACKED
+		     |$MUDL::Corpus::Buffer::PdlTT::STATE_INDEXED);
+
 ## \@sentence = $cr->getSentence();
 ##   + may call $buf->unpackSentences()
 sub getSentence {
@@ -556,7 +560,7 @@ sub getSentence {
   return undef if ($ppos > $#{$buf->{sents}});
 
   my $s = bless $cr->{buffer}{sents}[$ppos], 'MUDL::Sentence::TT'; ##-- mark sentence as read
-  $buf->{state} = 0;                                               ##-- mark buffer as dirty
+  $buf->{state} &= $STATE_DIRTY;                                   ##-- mark buffer as dirty
   $cr->{rpos}  ++;
   $cr->{nsents}++;
   $cr->{ntoks} += scalar(@$s);
@@ -623,6 +627,9 @@ sub new {
 ##   + get/set buffer (may return undef)
 #(inherited)
 
+our $STATE_DIRTY = ~($MUDL::Corpus::Buffer::PdlTT::STATE_PACKED
+		     |$MUDL::Corpus::Buffer::PdlTT::STATE_INDEXED);
+
 ## undef = $cw->putSentence(\@sent);
 sub putSentence {
   push(@{$_[0]{buffer}{sents}},
@@ -630,7 +637,7 @@ sub putSentence {
        ? $_[1]                                    ##-- just adopt TT sentences
        : MUDL::Sentence::TT->stealSentence($_[1]) ##-- force "alien" sentences to MUDL::Sentence::TT
       );
-  $_[0]{buffer}{state} = 0;                       ##-- mark buffer as dirty
+  $_[0]{buffer}{state} &= $STATE_DIRTY;           ##-- mark buffer as dirty
   return $_[0];
 }
 
