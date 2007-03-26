@@ -62,7 +62,7 @@ sub helpString {
     (''
      ."Filter out sentences containing \"unsafe\" tags in input corpus.\n"
      ."Options:\n"
-     ."  unsafe=>\%set,       ##-- pseudo-set of unsafe tags (default: NIL,nil,'')\n"
+     ."  unsafe    =>\%set,    ##-- pseudo-set of unsafe tags (default: NIL,nil,'')\n"
      ."  unsafe_str=>\$str,    ##-- comma-separated list of unsafe tags\n"
     );
 }

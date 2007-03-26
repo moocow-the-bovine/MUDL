@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Filter::ByEnum3.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -65,8 +65,8 @@ sub helpString {
      ."Filter corpus content by text lookup in a MUDL::Enum.\n"
      ."Options:\n"
      ."  enum=FLAT_ENUM        [default=empty]\n"
-     ."  bos=BOS               [default=__\$]\n",
-     ."  eos=EOS               [default=__\$]\n",
+     ."  bos=BOS               [default=__\$]\n"
+     ."  eos=EOS               [default=__\$]\n"
     );
 }
 
