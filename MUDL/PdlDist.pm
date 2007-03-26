@@ -231,7 +231,7 @@ sub mutualInformation {
 
 
 ##======================================================================
-## Conversion: enumeration
+## Conversion: enumerated dist
 ##======================================================================
 
 ## $edist_nary = $pd->toEDist();

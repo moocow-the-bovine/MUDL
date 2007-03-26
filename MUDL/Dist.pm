@@ -11,7 +11,7 @@ use MUDL::Object;
 use MUDL::Set;
 use MUDL::Map;
 use IO::File;
-use PDL;
+use PDL;               ##-- ugly, but hey...
 #use PDL::Fit::Linfit;
 use Carp;
 

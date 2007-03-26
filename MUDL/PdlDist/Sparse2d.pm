@@ -246,17 +246,31 @@ sub toEDist {
   my ($pd,$ed) = @_;
   $ed = MUDL::EDist::Nary->new(nfields=>2,enum=>$pd->{enum}) if (!defined($ed));
 
-  my $nzvals    = $pd->{nzvals};
-  my @whichpdls = ccswhichND(@$pd{qw(ptr rowids)}, $nzvals);
-  return $ed if (!@whichpdls);
+  my ($wx,$wy) = ccswhichND(@$pd{qw(ptr rowids nzvals)});
+  return $ed if (!defined($wx) || !defined($wy));
+  my @ax = $wx->list;
+  my @ay = $wy->list;
 
-  my (@nzi,$i);
-  foreach $i (0..($whichpdls[0]->nelem-1)) {
-    @nzi = map { $_->at($i) } @whichpdls;
-    $ed->{nz}{join($ed->{sep}, @nzi)} = $nzvals->at($i);
-  }
+  @{$ed->{nz}}{ map {join($ed->{sep}, $ax[$_],$ay[$_])} (0..$#ax) } = $pd->{nzvals}->list;
 
   return $ed;
+}
+
+## $dist_nary = $pd->toDist();
+## $dist_nary = $pd->toDist($dist_nary);
+sub toDist {
+  my ($pd,$d) = @_;
+  $d = MUDL::Dist::Nary->new(nfields=>2) if (!defined($d));
+
+  my ($wx,$wy) = ccswhichND(@$pd{qw(ptr rowids nzvals)});
+  return $d if (!defined($wx) || !defined($wy));
+  my @ax = @{$pd->{enum}{enums}[0]{id2sym}}[ $wx->list ];
+  my @ay = @{$pd->{enum}{enums}[1]{id2sym}}[ $wy->list ];
+
+  @{$d->{nz}}{ map {join($d->{sep}, $ax[$_],$ay[$_])} (0..$#ax) } = $pd->{nzvals}->list;
+
+  return $d;
+
 }
 
 ##======================================================================

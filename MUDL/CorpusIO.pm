@@ -230,10 +230,11 @@ sub putBuffer { $_[0]->putReader($_[1]->reader); }
 
 use MUDL::CorpusIO::TT;
 #use MUDL::CorpusIO::TT::Bin; ##-- experimental, superceded by MUDL::Corpus::Buffer::PdlTT
+use MUDL::Corpus::Buffer::PdlTT;
 use MUDL::CorpusIO::Separated;
 #use MUDL::CorpusIO::LOB;
 #use MUDL::CorpusIO::Brown;
-use MUDL::CorpusIO::XML;
+#use MUDL::CorpusIO::XML;
 use MUDL::CorpusIO::FileList;
 
 ########################################################################

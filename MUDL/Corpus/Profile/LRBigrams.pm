@@ -183,6 +183,18 @@ sub addBigrams {
   return $lr;
 }
 
+
+##======================================================================
+## Profiling: special: addPdlBigrams($bg_pdldist_sparse2d)
+
+## $lr = $lr->addPdlBigrams($bg,%args);
+##   + %args or $lr flags:
+sub addPdlBigrams {
+  my ($lr,$bgpd) = @_;
+  confess(ref($lr),"::addPdlBigrams(): not yet implemented!");
+}
+
+
 ##======================================================================
 ## Conversion: Unigrams: PDL
 
