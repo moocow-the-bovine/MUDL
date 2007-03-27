@@ -20,17 +20,18 @@ our @ISA = qw(MUDL::Corpus::Profile);
 
 #======================================================================
 ## $lr = $class_or_obj->new(%args)
-##   + %args:
-##       eos => $eos_str,
-##       bos => $bos_str,
-##       targets => $targets_enum,
-##       bounds => $bounds_enum,
-##       left => $left_edist,
-##       right=> $right_edist,
-##       donorm => $do_normalize,
-##       nfields => $number_of_bound_fields, # ($nbf)
+##  + %args:
+##     eos => $eos_str,
+##     bos => $bos_str,
+##     targets => $targets_enum,
+##     bounds => $bounds_enum,
+##     donorm => $do_normalize,
+##     nfields => $number_of_bound_fields, # ($nbf)
+##  + acquired data
+##     left => $left_edist,
+##     right=> $right_edist,
 ##  + event structure:
-##       $lr->{$dir \in qw(left right)} : ($target_id, @nbf_bounds) = $lr->{dir}->split($event);
+##     $lr->{$dir \in qw(left right)} : ($target_id, @nbf_bounds) = $lr->{dir}->split($event);
 sub new {
   my ($that,%args) = @_;
 
@@ -66,8 +67,8 @@ sub new {
 ##   + resets profile distributions
 sub reset {
   my $lr = shift;
-  $lr->{left}->clear;
-  $lr->{right}->clear;
+  $lr->{left}->clear  if (defined($lr->{left}));
+  $lr->{right}->clear if (defined($lr->{right}));
   return $lr;
 }
 
@@ -112,6 +113,20 @@ sub setEnums {
   return $lr;
 }
 
+##======================================================================
+## Profiling: API
+
+## undef = $profile->addBuffer($corpus_buffer)
+##  + inherited: calls addReader()
+
+## undef = $profile->addReader($corpus_buffer)
+##  + inherited: iteratively calls addSentence()
+
+## undef = $profile->addSentence($mudl_sentence)
+##  + REQUIRED
+
+## undef = $profile->finish()
+##  + optional
 
 ##======================================================================
 ## Profiling
@@ -119,9 +134,35 @@ sub setEnums {
 ## undef = $profile->addSentence(\@sentence)
 ##-- not implemented here!
 
+## undef = $profile->addBigrams($mudl_bigrams)
+##-- not implemented here!
+
+## undef = $profile->addPdlBigrams($pdldist_sparse2d)
+##-- not implemented here
 
 ##======================================================================
 ## Conversion: to independent PDL
+##
+## + Function call tree:
+##    toPDL($pdl2d)              # top-level: returns pdl(       $d, $n)
+##    -> toPDL3d($pdl3d)         # directed:  returns pdl($z, $d/$z, $n) ~ pdl(2, $d/2, $n)
+##                               #  + (bad) assumes EDist {left} and {right}
+##       -> smoothPdl($pdl3d)    # smooths each direction sub-pdl in $pdl3d
+##       -> finishPdl($pdl3d)    # hook for subclasses
+##       -> normalizePdl($pdl3d) # normalizes pdl values, only called if ($lr->{donorm})
+##
+## + Want:
+##   - PDL-ization
+##     * store underlying LR profiles as PdlDist::Sparse2d
+##   - Fast profiling (for Corpus::Buffer::PdlTT)
+##   - KEEP backwards-compatibility
+##     * add __methods__ to get old {left},{right} EDists
+##     * re-implement compatible addSentence() and addBigrams() routines (?)
+##   - MetaProfile friendliness (?)
+##     * add method somewhere somehow to do EXPECTED profiling
+##       ~ e.g. given {phat} and a base profile, convert to cluster-based profile
+##       ~ maybe even do this DIRECTLY, to save some disk space & I/O time?
+##======================================================================
 
 ## $pdl_2d = $lr->toPDL()
 ## $pdl_2d = $lr->toPDL($pdl_2d)
@@ -142,7 +183,8 @@ sub toPDL {
   my ($lr,$pdl,%args) = @_;
   @$lr{keys %args} = values %args; ##-- args: clobber
   $pdl = $lr->toPDL3d($pdl);
-  $pdl->reshape($pdl->dim(0)*$pdl->dim(1), $pdl->dim(2));
+  $pdl->inplace->reshape($pdl->dim(0)*$pdl->dim(1), $pdl->dim(2)); ##-- not clump, since might be inplace
+  #$pdl = $pdl->clump(2);                                          ##-- easier
   return $pdl;
 }
 
@@ -217,9 +259,9 @@ sub smoothPdl {
     my ($logr, $logz, $nrfit,$coeffs);
     my ($S_a,$S_e, $nzrp1,$Enzr,$Enzrp1);
     my ($nrzero,$dim);
-    foreach $dim (0,1) {
+    foreach $dim (0..($pdl->dim(0)-1)) {
       ##-- get count-counts
-      $dpdl  = $pdl->slice("$dim,:,:");        ##-- direction pdl
+      $dpdl  = $pdl->slice("$dim,:,:");      ##-- direction pdl
       $dnz   = $dpdl->where($dpdl!=0);       ##-- flat non-zero counts
       $dnzi  = $dnz->qsorti;                 ##-- flat non-zero count indices, sorted
       $N     = $dnz->sum;
@@ -330,7 +372,7 @@ sub normalizePdl {
   my ($z,$pz);
   if ($norm_ind) {
     ##-- normalize left- & right- subvectors independently
-    foreach $z (0,1) {
+    foreach $z (0..($pdl->dim(0)-1)) {
       $pz = $pdl->slice("($z),:,:");
       $norm_sub->($lr, $pdl->slice("($z),:,:"));
     }

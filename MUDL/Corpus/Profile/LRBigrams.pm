@@ -8,12 +8,16 @@
 
 package MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Corpus::Profile::LR;
+use MUDL::Corpus::Profile::Pdl;
+use MUDL::Corpus::Profile::Pdl::Bigrams;
 use MUDL::Object;
 use PDL;
+use PDL::CCS;
+use MUDL::PdlDist::Sparse2d;
 use Carp;
 
 use strict;
-our @ISA = qw(MUDL::Corpus::Profile::LR); #)
+our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::Pdl); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -23,15 +27,34 @@ our @ISA = qw(MUDL::Corpus::Profile::LR); #)
 ##       bounds => $bounds_enum,
 ##       targets => $targets_enum,
 ##       smoothgt=>$which,           ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
-##   + data acquired:
+##
+##   + data acquired [NEW: PDL-ized]
+##       pleft =>$left_bigrams,      ## MUDL::PdlDist::Sparse2d: ($target_id, $left_bound_id) => $freq
+##       pright=>$right_bigrams,     ## MUDL::PdlDist::Sparse2d: ($target_id,$right_bound_id) => $freq
+##       ptugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for targets
+##       pbugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for bounds
+##       ftotal=>$total,             ## total number of w2 tokens processed (perl scalar)
+##
+##   + backwards-compatibility data:
 ##       left =>$left_bigrams,       ## ($target_id,$lneighbor_id) => $count
 ##       right=>$right_bigrams,      ## ($target_id,$rneighbor_id) => $count
 ##       tugs =>$target_unigrams,    ## w1-unigram totals for targets (ids)
 ##       bugs =>$target_unigrams,    ## w1-unigram totals for bounds (ids)
-##       total=>$ftotal,             ## total number of tokens processed
+##
+##   + data acquired [OLD: string-based]
+##       left =>$left_bigrams,       ## ($target_id,$lneighbor_id) => $count
+##       right=>$right_bigrams,      ## ($target_id,$rneighbor_id) => $count
+##       tugs =>$target_unigrams,    ## w1-unigram totals for targets (ids)
+##       bugs =>$target_unigrams,    ## w1-unigram totals for bounds (ids)
+##       ftotal=>$ftotal,            ## total number of tokens processed
 sub new {
   my ($that,%args) = @_; 
-  my $self = $that->SUPER::new(nfields=>1,donorm=>1,norm_min=>0,%args);
+  my $self = $that->SUPER::new(
+			       nfields=>1,
+			       donorm=>1,
+			       norm_min=>0,
+			       %args,
+			      );
   $self->{tugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{tugs});
   $self->{bugs} = MUDL::EDist->new(enum=>$self->{bounds})  if (!$self->{bugs});
   $self->{ftotal} = 0 if (!defined($self->{ftotal}));
@@ -41,10 +64,21 @@ sub new {
 ## $prof = $prof-reset();
 sub reset {
   my $prf = shift;
-  $prf->{tugs}->clear();
-  $prf->{bugs}->clear();
+
+  ##-- clear: pdls
+  delete(@$prf{qw(ptugs pbugs pleft pright)});
+
+  ##-- clear: unigram EDists (backwards-compatibility)
+  #delete(@$prf{qw(tugs bugs left right)});
+  $prf->{tugs}->clear() if (defined($prf->{tugs}));
+  $prf->{bugs}->clear() if (defined($prf->{bugs}));
   $prf->{ftotal} = 0;
-  return $prf->SUPER::reset();
+
+  ##-- clear: profile EDists (backwards-compatibility)
+  $prf->{left}->clear  if (defined($prf->{left}));
+  $prf->{right}->clear if (defined($prf->{right}));
+
+  return $prf;
 }
 
 ## $lr2 = $lr->shadow(%args)
@@ -54,29 +88,46 @@ sub reset {
 sub shadow {
   my $lr = shift;
 
-  ##-- save temps
+  ##-- save temps: pdls
+  my (%pdtmp);
+  foreach (qw(pleft pright ptugs pbugs)) {
+    $pdtmp{$_} = $lr->{$_};
+    delete($lr->{$_});
+  }
+
+  ##-- save temps: backwards-compat EDists
   my (%nztmp);
   foreach (qw(left right tugs bugs)) {
+    next if (!defined($lr->{$_}));
     $nztmp{$_} = $lr->{$_}{nz};
     $lr->{$_}{nz} = ref($nztmp{$_})->new();
   }
+
 
   ##-- copy
   my $lr2 = $lr->copy(@_);
   $lr2->{ftotal} = 0;
 
-  ##-- restore temps
-  $lr->{$_}{nz} = $nztmp{$_} foreach (qw(left right tugs bugs));
+  ##-- restore temps: EDists
+  foreach (qw(left right tugs bugs)) {
+    next if (!exists($nztmp{$_}));
+    $lr->{$_}{nz} = $nztmp{$_};
+  }
+  ##-- restore temps: pdls
+  $lr->{$_}  = $pdtmp{$_} foreach (qw(pleft pright ptugs pbugs));
 
   return $lr2;
 }
 
 
 ##======================================================================
-## Profiling
+## MUDL::Profile API
 
 ## undef = $profile->addSentence(\@sentence)
-sub addSentence {
+##  + push to pdl buffer
+#(inherited from Corpus::Profile::Pdl)
+
+sub addSentence_OLD {
   my ($pr,$s) = @_;
 
   ##-- sanity checks: bos/eos
@@ -131,12 +182,71 @@ sub addSentence {
 
 
 ##======================================================================
-## Profiling: special: addBigrams($bg)
+## Profiling:: Deprecated: addBigrams($bg)
 
 ## $lr = $lr->addBigrams($bg,%args);
-##   + %args or $lr flags:
+##  + %args or $lr flags:
 ##      #smoothgt => $which,  ##-- call smoothGTLogLin on bigrams, sets $lr->{norm_zero_f} if $which eq 'bigrams'
+##  + profiles to EDists
+
 sub addBigrams {
+  my ($lr,$bg) = @_;
+
+  ##-- warn
+  warn(ref($lr),"::addBigrams() is deprecated");
+
+  ##-- fast dispatch to pdl
+  return $lr->addPdlBigrams($bg)
+    if ($bg->isa('MUDL::Corpus::Profile::Pdl::Bigrams'));
+
+  ##-- standard bigrams: pdl-ize 'em
+  my ($tgs,$bds,$lbg,$rbg) = @$lr{qw(targets bounds left right)};
+  my ($tugs,$bugs)         = @$lr{qw(tugs bugs)};
+  my ($w12,$f12,$w1,$w2, $tid,$bid);
+  while (($w12,$f12)=each(%{$bg->{nz}})) {
+    ##-- split
+    my ($w1,$w2) = $bg->split($w12);
+
+    ##-- left-bound
+    if (defined($bid=$bds->{sym2id}{$w1}) && defined($tid=$tgs->{sym2id}{$w2})) {
+      $lbg->{nz}{$tid.$lbg->{sep}.$bid} += $f12;
+    }
+
+    ##-- right-bound
+    if (defined($tid=$tgs->{sym2id}{$w1}) && defined($bid=$bds->{sym2id}{$w2})) {
+      $rbg->{nz}{$tid.$rbg->{sep}.$bid} += $f12;
+    }
+
+    ##-- unigrams (on w1)
+    $lr->{tugs}{nz}{$tid} += $f12 if (defined($tid=$tgs->{sym2id}{$w1}));
+    $lr->{bugs}{nz}{$bid} += $f12 if (defined($bid=$bds->{sym2id}{$w1}));
+
+    ##-- total freq
+    $lr->{ftotal} += $f12;
+  }
+
+  ##-- set enums (just in case)
+  $lr->{tugs}{enum} = $tgs;
+  $lr->{bugs}{enum} = $bds;
+  @{$lr->{left}{enum}{enums}}  = ($tgs,$bds);
+  @{$lr->{right}{enum}{enums}} = ($tgs,$bds);
+
+  ##-- pdl-ize
+  $lr->{pleft}  = $lbg->toSparsePdlDist();
+  $lr->{pright} = $rbg->toSparsePdlDist();
+  $lr->{ptugs}  = $lr->{tugs}->toPdlDist();
+  $lr->{pbugs}  = $lr->{bugs}->toPdlDist();
+
+  ##-- clear EDists
+  $lbg->clear();
+  $rbg->clear();
+  $lr->{tugs}->clear();
+  $lr->{bugs}->clear();
+
+  return $lr;
+}
+
+sub addBigrams_OLD {
   my ($lr,$bg,%args) = @_;
   require MUDL::Bigrams;
 
@@ -183,15 +293,118 @@ sub addBigrams {
   return $lr;
 }
 
+##======================================================================
+## MUDL::Corpus::Profile::Pdl API
+
+## undef = $profile->finishPdlProfile(%args)
+##  + perform pdl-sensitive finishing actions
+##  + called by default finish() method
+##    - when this method is called, the buffer (if any) has been filled and pdl-ized
+##    - after this completes, the buffer (if any) is deleted
+sub finishPdlProfile {
+  my $lr = shift;
+
+  ##-- get raw bigrams
+  my $bgpd = MUDL::Corpus::Profile::Pdl::Bigrams->new(bos=>$lr->{bos},
+						      eos=>$lr->{eos},
+						      buffer=>$lr->{buffer});
+  $bgpd->finish();
+
+  ##-- ... and dispatch
+  return $lr->addPdlBigrams($bgpd);
+}
+
+
 
 ##======================================================================
-## Profiling: special: addPdlBigrams($bg_pdldist_sparse2d)
+## Profiling: new: addPdlBigrams($bg_pdldist_sparse2d)
 
 ## $lr = $lr->addPdlBigrams($bg,%args);
-##   + %args or $lr flags:
+##   + profiles to PDLs
 sub addPdlBigrams {
   my ($lr,$bgpd) = @_;
-  confess(ref($lr),"::addPdlBigrams(): not yet implemented!");
+
+  ##-- get enums
+  my $bge  = $bgpd->{enum}{enums}[0];
+  my $bds  = $lr->{bounds};
+  my $tgs  = $lr->{targets};
+  my $Nbge = $bge->size;
+  my $Nbds = $bds->size;
+  my $Ntgs = $tgs->size;
+
+  ##-- sanity checks: bos/eos
+  $bds->addSymbol($lr->{bos}) if (defined($lr->{bos}));
+  $bds->addSymbol($lr->{eos}) if (defined($lr->{eos}));
+
+
+  ##-- get translation PDLs: bounds
+  my $bds2bge = pdl(long, @{$bge->{sym2id}}{ @{$bds->{id2sym}} }); ##-- $bds2bge: $bds_id => $bge_id
+  my $bds_msk = zeroes(byte,$Nbge);                                ##-- $bds_msk: $bge_id => $is_bound
+  my $bge2bds = zeroes(long,$Nbge)->setvaltobad(0);                ##-- $bge2bds: $bge_id => $bds_id_or_BAD
+  $bds_msk->index($bds2bge) .= 1;
+  $bge2bds->index($bds2bge) .= sequence(long,$Nbds);
+
+  ##-- get translation PDLs: targets
+  my $tgs2bge = pdl(long, @{$bge->{sym2id}}{ @{$tgs->{id2sym}} }); ##-- $tgs2bge: $tgs_id => $bge_id
+  my $tgs_msk = zeroes(byte,$Nbge);                                ##-- $tgs_msk: $bge_id => $is_target
+  my $bge2tgs = zeroes(long,$Nbge)->setvaltobad(0);                ##-- $bge2tgs: $bge_id => $tgs_id_or_BAD
+  $tgs_msk->index($tgs2bge) .= 1;
+  $bge2tgs->index($tgs2bge) .= sequence(long,$Ntgs);
+
+  ##-- get CCS data
+  my @ccs          = @$bgpd{qw(ptr rowids nzvals)};
+  my $nzvals       = $ccs[2];
+  my ($bgw1,$bgw2) = ccswhichND(@ccs);
+
+  ##-- get {left} CCS distribution: bounds-on-left, targets-on-right
+  my $l_isgood = $bds_msk->index($bgw1) & $tgs_msk->index($bgw2);
+  my $lbi_bgi  = $bgw1->where($l_isgood);
+  my $lti_bgi  = $bgw2->where($l_isgood);
+  #my $l_nz0   = ccsget2d(@ccs, $lbi_bgi,$lti_bgi,0); ##-- warning: linear search for each (x,y) index pair
+  my $l_nz     = $nzvals->where($l_isgood);           ##-- trick: ccsget2d() always returns in nzvals-order
+  my $lbi_bds  = $bge2bds->index($lbi_bgi);
+  my $lti_tgs  = $bge2tgs->index($lti_bgi);
+  my @lccs     = ccsencode_i2d($lti_tgs,$lbi_bds,$l_nz);
+  my ($lptr,$lrowids,$lnzvals) = @lccs;
+
+  ##-- get {right} CCS distribution: bounds-on-right, targets-on-left
+  my $r_isgood = $bds_msk->index($bgw2) & $tgs_msk->index($bgw1);
+  my $rbi_bgi  = $bgw2->where($r_isgood);
+  my $rti_bgi  = $bgw1->where($r_isgood);
+  #my $r_nz0   = ccsget2d(@ccs, $rti_bgi,$rbi_bgi,0); ##-- warning: linear search for each (x,y) index pair
+  my $r_nz     = $nzvals->where($r_isgood);           ##-- trick: ccsget2d() always returns in nzvals-order
+  my $rbi_bds  = $bge2bds->index($rbi_bgi);
+  my $rti_tgs  = $bge2tgs->index($rti_bgi);
+  my @rccs     = ccsencode_i2d($rti_tgs,$rbi_bds,$r_nz);
+  my ($rptr,$rrowids,$rnzvals) = @rccs;
+
+  ##-- pack up {right} and {left} distributions into {pright}, {pleft}
+  my $tbenum   = MUDL::Enum::Nary->new(nfields=>2, enums=>[$tgs,$bds]);
+
+  $lr->{pleft} = MUDL::PdlDist::Sparse2d->new(dims=>[$Ntgs,$Nbds],
+					      enum=>$tbenum,
+					      ptr=>$lptr,
+					      rowids=>$lrowids,
+					      nzvals=>$lnzvals);
+
+  $lr->{pright} = MUDL::PdlDist::Sparse2d->new(dims=>[$Ntgs,$Nbds],
+					       enum=>$tbenum,
+					       ptr=>$rptr,
+					       rowids=>$rrowids,
+					       nzvals=>$rnzvals);
+
+  ##-- get target & bound unigram pdls
+  my $ccs_sum   = ccssumover(@ccs);
+  $lr->{ptugs}  = MUDL::PdlDist->new(enum=>$tgs,pdl=>$ccs_sum->index($tgs2bge));
+  $lr->{pbugs}  = MUDL::PdlDist->new(enum=>$bds,pdl=>$ccs_sum->index($bds2bge));
+  $lr->{ftotal}  = $ccs_sum->sum;
+
+  ##-- invalidate any EDists we might have hanging around
+  foreach (qw(left right tugs bugs)) {
+    $lr->{$_}->clear() if (defined($lr->{$_}));
+  }
+
+  return $lr;
 }
 
 
@@ -200,19 +413,26 @@ sub addPdlBigrams {
 
 ## $target_unigram_pdl = $lr->targetUgPdl();
 sub targetUgPdl {
-  $_[0]{tugs}{enum} = $_[0]{targets}; ##-- sanity check
-  return $_[0]{tugs}->toPDL();
+  #$_[0]{tugs}{enum} = $_[0]{targets}; ##-- sanity check
+  #return $_[0]{tugs}->toPDL();
+  ##--
+  return $_[0]{ptugs}{pdl};
 }
 
 ## $bound_unigram_pdl = $lr->boundUgPdl();
 sub boundUgPdl {
-  $_[0]{bugs}{enum} = $_[0]{bounds}; ##-- sanity check
-  return $_[0]{bugs}->toPDL();
+  #$_[0]{bugs}{enum} = $_[0]{bounds}; ##-- sanity check
+  #return $_[0]{bugs}->toPDL();
+  ##--
+  return $_[0]{pbugs}{pdl};
 }
 
 
 ##======================================================================
 ## Conversion: to PDL
+
+##----> TODO:::: fix MUDL::Corpus::Profile::LR !!!
+## + pdl-ize it, afap
 
 ##-- inherited from MUDL:::Corpus::Profile::LR
 
@@ -248,7 +468,7 @@ sub helpString {
 ## - (output only!)
 
 ## $bool = $obj->saveNativeFh($fh,%args)
-sub saveNativeFh {
+sub saveNativeFh_OLD {
   my ($obj,$fh) = @_;
   $fh->print("##-- BIGRAMS: LEFT\n");
   $obj->{left}->toDist->saveNativeFh($fh,@_);

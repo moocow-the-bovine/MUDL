@@ -12,7 +12,7 @@ use MUDL::Corpus::Model;
 use MUDL::LogUtils qw(:all);
 use MUDL::Dist;
 use Carp;
-our @ISA = qw(MUDL::Dist MUDL::Corpus::Profile MUDL::Corpus::Model);
+our @ISA = qw(MUDL::Dist MUDL::Corpus::Profile MUDL::Corpus::Model); #)
 
 our $DEFAULT_ZERO_PROB = 1e-3;
 #our $DEFAULT_ZERO_PROB = 1e-4;
@@ -133,7 +133,10 @@ sub readerProbability_old {
 ## $string = $class_or_obj->helpString()
 sub helpString {
   my $that = shift;
-  return qq(Extract token-text unigrams.\n)
+  return (
+	  qq(Extract token-text unigrams.\n)
+	  .qq(- see also MUDL::Corpus::Profile::Unigrams::Pdl\n)
+	 );
 }
 
 

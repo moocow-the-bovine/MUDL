@@ -253,6 +253,23 @@ sub toEDist {
   return $ed;
 }
 
+
+## $edist = $pd->toEDistFlat();
+## $edist = $pd->toEDistFlat($edist);
+##  + conversion to a flat EDist, for 1d-pdls with 1d-enums ONLY
+sub toEDistFlat {
+  my ($pd,$ed) = @_;
+  $ed = MUDL::EDist->new(enum=>$pd->{enum}) if (!defined($ed));
+
+  my $pdl   = $pd->{pdl};
+  my $which = $pdl->which;
+  return $ed if (!defined($which) || $which->isempty);
+
+  @{$ed->{nz}}{ $which->list } = $pdl->index($which)->list;
+
+  return $ed;
+}
+
 ##======================================================================
 ## I/O: Native
 ##======================================================================

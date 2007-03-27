@@ -22,6 +22,12 @@ sub addCorpus {
   return $_[0]->addReader(MUDL::CorpusReader::Corpus->new(corpus=>$_[1]),@_[2..$#_]);
 }
 
+## undef = $profile->addBuffer($buffer,@args)
+##  + calls addReader()
+sub addBuffer {
+  return $_[0]->addReader($_[1]->reader(), @_[2..$#_]);
+}
+
 ## undef = $profile->addReader($CorpusReader,@args)
 ##  + calls addSentence($s) for every sentence
 sub addReader {
