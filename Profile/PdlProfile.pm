@@ -1,12 +1,12 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::Pdl.pm
+## File: MUDL::Corpus::Profile::PdlProfile.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profiles: pdl-ized
 ##======================================================================
 
-package MUDL::Corpus::Profile::Pdl;
+package MUDL::Corpus::Profile::PdlProfile;
 use MUDL::Corpus::Profile;
 use MUDL::CorpusIO;
 use MUDL::Corpus::Buffer::PdlTT;
@@ -15,16 +15,16 @@ use Carp;
 our @ISA = qw(MUDL::Corpus::Profile); #)
 
 ##======================================================================
-## Corpus::Profile API: constructors
+## Constructors etc.
 
 ## $obj = $class_or_obj->new(%args)
-##  + new args:
+##  + %args for Corpus::Profile::PdlProfile:
 ##     buffer => $corpus_buffer_pdltt,  ##-- buffer for generic Corpus::Profile API
 ##     writer => $bufwriter,            ##-- buffer writer
 
 
 ##======================================================================
-## Corpus::Profile::Pdl : API
+## Corpus::Profile::PdlProfile : API
 
 ## $buf = $pdlprof->getBuffer()
 ##  + get or create a new MUDL::Corpus::Buffer::PdlTT in $obj->{buffer}

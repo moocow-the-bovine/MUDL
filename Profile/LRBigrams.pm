@@ -8,8 +8,8 @@
 
 package MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Corpus::Profile::LR;
-use MUDL::Corpus::Profile::Pdl;
-use MUDL::Corpus::Profile::Pdl::Bigrams;
+use MUDL::Corpus::Profile::PdlProfile;
+use MUDL::Corpus::Profile::PdlProfile::Bigrams;
 use MUDL::Object;
 use PDL;
 use PDL::CCS;
@@ -17,7 +17,7 @@ use MUDL::PdlDist::Sparse2d;
 use Carp;
 
 use strict;
-our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::Pdl); #)
+our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::PdlProfile); #)
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -125,7 +125,7 @@ sub shadow {
 
 ## undef = $profile->addSentence(\@sentence)
 ##  + push to pdl buffer
-#(inherited from Corpus::Profile::Pdl)
+#(inherited from Corpus::Profile::PdlProfile)
 
 sub addSentence_OLD {
   my ($pr,$s) = @_;
@@ -197,7 +197,7 @@ sub addBigrams {
 
   ##-- fast dispatch to pdl
   return $lr->addPdlBigrams($bg)
-    if ($bg->isa('MUDL::Corpus::Profile::Pdl::Bigrams'));
+    if ($bg->isa('MUDL::Corpus::Profile::PdlProfile::Bigrams'));
 
   ##-- standard bigrams: pdl-ize 'em
   my ($tgs,$bds,$lbg,$rbg) = @$lr{qw(targets bounds left right)};
@@ -300,7 +300,7 @@ sub addBigrams_OLD {
 }
 
 ##======================================================================
-## MUDL::Corpus::Profile::Pdl API
+## MUDL::Corpus::Profile::PdlProfile API
 
 ## undef = $profile->finishPdlProfile(%args)
 ##  + perform pdl-sensitive finishing actions
@@ -311,9 +311,9 @@ sub finishPdlProfile {
   my $lr = shift;
 
   ##-- get raw bigrams
-  my $bgpd = MUDL::Corpus::Profile::Pdl::Bigrams->new(bos=>$lr->{bos},
-						      eos=>$lr->{eos},
-						      buffer=>$lr->{buffer});
+  my $bgpd = MUDL::Corpus::Profile::PdlProfile::Bigrams->new(bos=>$lr->{bos},
+							     eos=>$lr->{eos},
+							     buffer=>$lr->{buffer});
   $bgpd->finish();
 
   ##-- ... and dispatch

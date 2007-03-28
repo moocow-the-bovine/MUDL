@@ -1,13 +1,13 @@
 ##-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::Pdl::Unigrams.pm
+## File: MUDL::Corpus::Profile::PdlProfile::Unigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: unigram distribution: pdl-ized
 ##======================================================================
 
-package MUDL::Corpus::Profile::Pdl::Unigrams;
-use MUDL::Corpus::Profile::Pdl;
+package MUDL::Corpus::Profile::PdlProfile::Unigrams;
+use MUDL::Corpus::Profile::PdlProfile;
 use MUDL::Unigrams;
 #use MUDL::LogUtils qw(:all);
 #use MUDL::Enum;
@@ -15,7 +15,7 @@ use MUDL::PdlDist;
 #use PDL;
 use Carp;
 use strict;
-our @ISA = qw(MUDL::PdlDist MUDL::Corpus::Profile::Pdl MUDL::Corpus::Model); #)
+our @ISA = qw(MUDL::PdlDist MUDL::Corpus::Profile::PdlProfile MUDL::Corpus::Model); #)
 
 our $DEFAULT_ZERO_PROB = $MUDL::Unigrams::DEFAULT_ZERO_PROB;
 
@@ -26,7 +26,7 @@ our $DEFAULT_ZERO_PROB = $MUDL::Unigrams::DEFAULT_ZERO_PROB;
 
 
 ##======================================================================
-## Corpus::Profile::Pdl Methods
+## Corpus::Profile::PdlProfile Methods
 
 ## undef = $profile->finishPdlProfile(%args)
 ##  + perform pdl-sensitive finishing actions

@@ -1,26 +1,26 @@
 ##-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::Pdl::Bigrams.pm
+## File: MUDL::Corpus::Profile::PdlProfile::Bigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: bigram distribution
 ##======================================================================
 
-package MUDL::Corpus::Profile::Pdl::Bigrams;
+package MUDL::Corpus::Profile::PdlProfile::Bigrams;
 #use MUDL::LogUtils qw(:all);
 use MUDL::Bigrams;
-use MUDL::Corpus::Profile::Pdl;
+use MUDL::Corpus::Profile::PdlProfile;
 use MUDL::PdlDist::Sparse2d;
 use PDL;
 use PDL::Ngrams;
 use Carp;
 use strict;
-our @ISA = qw(MUDL::PdlDist::Sparse2d MUDL::Corpus::Profile::Pdl MUDL::Corpus::Model);
+our @ISA = qw(MUDL::PdlDist::Sparse2d MUDL::Corpus::Profile::PdlProfile MUDL::Corpus::Model);
 
 our $DEFAULT_ZERO_PROB = $MUDL::Bigrams::DEFAULT_ZERO_PROB;
 
 ## OBJECT STRUCTURE:
-##   + new in MUDL::Corpus::Profile::Pdl::Bigrams:
+##   + new in MUDL::Corpus::Profile::PdlProfile::Bigrams:
 ##      bos=>$bos_marker    # default "__$"
 ##      eos=>$eos_marker    # default "__$"
 ##
@@ -30,11 +30,11 @@ our $DEFAULT_ZERO_PROB = $MUDL::Bigrams::DEFAULT_ZERO_PROB;
 ##      rowids =>$rowids,      # pdl($Nnz): CCS-encoded matrix: rowids
 ##      nzvals =>$nzvals,      # pdl($Nnz): CCS-encoded matrix: nzvals
 ##
-##   + from MUDL::Corpus::Profile::Pdl:
+##   + from MUDL::Corpus::Profile::PdlProfile:
 ##      buffer =>$pdltt_buffer,
 ##      writer =>$buf_writer,
 ##
-##   + new in Profile::Pdl::Bigrams
+##   + new in Profile::PdlProfile::Bigrams
 ##      #colids =>$colids,      # pdl($Nnz): expanded column ids, for easy access
 ##
 sub new {
@@ -60,10 +60,10 @@ sub vocabulary { return @{ $_[0]{enum}{enums}[0]{id2sym} }; }
 
 ## $unigrams = $bg->unigrams
 sub unigrams {
-  require MUDL::Corpus::Profile::Pdl::Unigrams;
-  return MUDL::Corpus::Profile::Pdl::Unigrams->new('pdl'=>ccssumover(@{$_[0]}{qw(ptr rowids nzvals)}),
-						   'enum'=>$_[0]{enum}{enums}[1],
-						  );
+  require MUDL::Corpus::Profile::PdlProfile::Unigrams;
+  return MUDL::Corpus::Profile::PdlProfile::Unigrams->new('pdl'=>ccssumover(@{$_[0]}{qw(ptr rowids nzvals)}),
+							  'enum'=>$_[0]{enum}{enums}[1],
+							 );
 }
 
 ##======================================================================
@@ -90,7 +90,7 @@ sub unigrams {
 
 
 ##======================================================================
-## Corpus::Profile::Pdl API
+## Corpus::Profile::PdlProfile API
 
 ## undef = $profile->finishPdlProfile(%args)
 ##  + perform pdl-sensitive finishing actions
