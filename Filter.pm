@@ -67,7 +67,7 @@ sub processSentence {
   return $s;
 }
 
-## $bool = $cr->process(%args)
+## $bool = $cf->process(%args)
 sub process {
   my $f = shift;
   my ($s);
@@ -81,6 +81,9 @@ sub process {
   return $f;
 }
 
+## $bool = $cf->flush(%args)
+##  + finish processing, maybe flushing data
+sub flush { $_[0]{writer}->flush(@_[1..$#_]); }
 
 ##----------------------------------------------------------------------
 ## Help String

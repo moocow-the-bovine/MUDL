@@ -80,7 +80,7 @@ sub addReader {
 ##  + default implementation just adds sentence to a (possibly new) PdlTT buffer
 sub addSentence {
   $_[0]{writer} = $_[0]->getBuffer()->writer() if (!defined($_[0]{writer}));
-  $_[0]{writer}->addSentence($_[1]);
+  $_[0]{writer}->putSentence($_[1]);
 }
 
 ## undef = $profile->finish(%args)
