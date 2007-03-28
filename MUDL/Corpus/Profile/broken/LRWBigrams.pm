@@ -1,9 +1,11 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRWBigrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R MI-weighted bigrams
+##  + MUDL unsupervised dependency learner: corpus profile:
+##    L-R MI-weighted bigrams
+##  + BROKEN
 ##======================================================================
 
 package MUDL::Corpus::Profile::LRWBigrams;

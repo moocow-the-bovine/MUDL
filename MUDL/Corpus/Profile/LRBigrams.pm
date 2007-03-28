@@ -237,6 +237,12 @@ sub addBigrams {
   $lr->{ptugs}  = $lr->{tugs}->toPdlDist();
   $lr->{pbugs}  = $lr->{bugs}->toPdlDist();
 
+  ##-- ... and convert to integer types
+  $lr->{pleft}{nzvals}  = $lr->{pleft}{nzvals}->convert(long);
+  $lr->{pright}{nzvals} = $lr->{pright}{nzvals}->convert(long);
+  $lr->{ptugs}{pdl}     = $lr->{ptugs}{pdl}->convert(long);
+  $lr->{pbugs}{pdl}     = $lr->{pbugs}{pdl}->convert(long);
+
   ##-- clear EDists
   $lbg->clear();
   $rbg->clear();
@@ -439,6 +445,58 @@ sub boundUgPdl {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
+## $pdl_3d = $lr->toPDL3d()
+## $pdl_3d = $lr->toPDL3d($pdl_3d,%args)
+##   + converts to pdl
+##   + returned $pdl_3d is of dimensions: (2,$d,$n), where:
+##     - $n == number-of-targets
+##     - $d == (number-of-bounds ^ $nfields)   ##-- left-bounds & right-bounds
+##   + may call the following:
+##     - undef = $lr->finishPdl($pdl_3d)
+##     - undef = $lr->normalizePdl($pdl_3d)
+##   + %args:
+##     clobber %$lr
+sub toPDL3d {
+  my ($lr,$pdl,%args) = @_;
+  @$lr{keys %args} = values %args; ##-- args: clobber
+
+  ##-- enums
+  my $nfields  = $lr->{nfields} = 1;      ##-- nfields is always 1 for LRBigrams
+  my ($eb,$et) = @$lr{qw(bounds targets)};
+  my $net      = $et->size;
+  my $neb      = $eb->size;
+
+  ##-- pdl
+  $pdl = zeroes(double,1) if (!defined($pdl));
+  $pdl->reshape(2, ($neb**$nfields), $net)
+    if ($pdl->ndims < 3 || $pdl->dim(0) < 2 || $pdl->dim(1) < ($neb**$nfields) || $pdl->dim(2) < $net);
+  $pdl .= 0;
+
+  ##-- frequency data: variables
+  my ($spdl,$xi,$yi);
+
+  ##-- frequency data: left-context
+  $spdl = $lr->{pleft};
+  ($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
+  $pdl->slice('(0),')->index2d($yi,$xi) .= $spdl->{nzvals};
+
+  ##-- frequency data: right-context
+  $spdl = $lr->{pright};
+  ($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
+  $pdl->slice('(1),')->index2d($yi,$xi) .= $spdl->{nzvals};
+
+  ##-- smoothing
+  $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));
+
+  ##-- data munging
+  $lr->finishPdl($pdl) if ($lr->can('finishPdl'));
+
+  ##-- normalization
+  $lr->normalizePdl($pdl) if ($lr->{donorm});
+
+  return $pdl;
+}
+
 ## undef = $lr->smoothPdl($pdl);
 
 ## undef = $lr->finishPdl($pdl);
@@ -468,16 +526,16 @@ sub helpString {
 ## - (output only!)
 
 ## $bool = $obj->saveNativeFh($fh,%args)
-sub saveNativeFh_OLD {
+sub saveNativeFh {
   my ($obj,$fh) = @_;
   $fh->print("##-- BIGRAMS: LEFT\n");
-  $obj->{left}->toDist->saveNativeFh($fh,@_);
+  $obj->{pleft}->toEDist->toDist->saveNativeFh($fh,@_);
   $fh->print("\n\n##-- BIGRAMS: RIGHT\n");
-  $obj->{right}->toDist->saveNativeFh($fh,@_);
+  $obj->{pright}->toEDist->toDist->saveNativeFh($fh,@_);
   $fh->print("\n\n##-- UNIGRAMS: TARGETS\n");
-  $obj->{tugs}->toDist->saveNativeFh($fh,@_);
+  $obj->{ptugs}->toEDist->toDist->saveNativeFh($fh,@_);
   $fh->print("\n\n##-- UNIGRAMS: BOUNDS\n");
-  $obj->{bugs}->toDist->saveNativeFh($fh,@_);
+  $obj->{pbugs}->toEDist->toDist->saveNativeFh($fh,@_);
   $fh->print("\n\n##-- FTOTAL\n");
   $fh->print($obj->{ftotal}, "\n");
   return $obj;
