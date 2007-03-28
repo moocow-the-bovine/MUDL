@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Filter::Map.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -45,11 +45,11 @@ sub doSentence {
 
   my ($from,$to);
   foreach $tok (@$s) {
-    next if (!defined($from = $tok->getAttribute($f->{from})));
+    next if (!defined($from = $tok->attribute($f->{from})));
     $to = $f->{'map'}{$from};
 
     next if (!defined($to) && !defined($to=$f->{unknown}));
-    $tok->setAttribute($f->{to}, $to);
+    $tok->attribute($f->{to}, $to);
   }
 
   return $s;

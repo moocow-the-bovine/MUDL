@@ -66,6 +66,14 @@ sub new {
 ##======================================================================
 ## new API
 
+## $bool = $pb->nSentences()
+##  + returns the number of stored sentences
+sub nSentences {
+  my $pb = shift;
+  return $pb->{begins}->nelem if ($pb->{state} & $STATE_INDEXED);
+  return scalar(@{$pb->{sents}});
+}
+
 ## \@enums = $pb->updateEnums()
 ##  + fills $pb->{enums} based on unpacked sentences in $pb->{sents}
 ##  + if $pb->{fixedWidth} is set and true, only the first pending token is checked for width
