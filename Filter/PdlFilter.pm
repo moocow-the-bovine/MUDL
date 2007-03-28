@@ -23,9 +23,9 @@ our @ISA = qw(MUDL::Corpus::Profile); #)
 ##     bwriter => $buf_writer,           ##-- writer to buffer
 ##
 ##  + %args from Corpus::Filter
-##     reader=>$corpusReader,
-##     writer=>$corpusWriter,
-##     allow_empty_sentences=>$bool,  ##-- default=0
+##     reader=>$corpusReader,            ##-- generic, but fast handling for a single Buffer::PdlTT reader
+##     writer=>$corpusWriter,            ##-- generic, but fast handling for a Buffer::PdlTT writer
+##     allow_empty_sentences=>$bool,     ##-- default=0: only used for generic I/O
 ##     ...
 
 ##======================================================================
@@ -49,8 +49,8 @@ sub getBufWriter {
 ##  + deletes underlying buffer & its writer; called by default finish() method
 sub clearBuffer { delete(@{$_[0]}{qw(buffer bwriter)}); }
 
-## $bool = $pf->processPdlBuffer(%args)
-##  + perform processing on buffered data in $pf->buffer()
+## undef = $pf->processPdlBuffer(%args)
+##  + perform processing on buffered data in $pf->{buffer}
 ##  + called by default flush() method
 ##    - when this method is called, the buffer (if any) has been filled and pdl-ized
 ##    - after this completes, the buffer (if any) is deleted
@@ -79,32 +79,32 @@ sub fileWriter {
 ##  + dummy method: just pushes sentence to buffer
 sub doSentence {
   $_[0]{writer} = $_[0]->getBuffer()->writer() if (!defined($_[0]{writer}));
-  $_[0]{writer}->putSentence($_[1]);
+  $_[0]{writer}->putSentence($_[1])
+    if ($_[0]{allow_empty_sentences} || @{$_[1]});
   return $_[1];
 }
 
 ## \@sentence = $cf->processSentence(%args)
-##   + dummy method: just pushes sentence to buffer
+##   + dummy method: just gets a sentence and pushes it to the buffer
 sub processSentence {
   $_[0]{writer} = $_[0]->getBuffer()->writer() if (!defined($_[0]{writer}));
-  $_[0]{writer}->putSentence($_[1]);
-  return $_[1];
+  my $s = $_[0]{reader}->getSentence();
+  $_[0]{writer}->putSentence($s)
+    if (defined($s) && ($_[0]{allow_empty_sentences} || @$s));
+  return $s;
 }
 
 ## $bool = $cf->process(%args)
 sub process {
   my $f = shift;
-
   if (!defined($f->{buffer}) && $f->{reader}->isa('MUDL::CorpusReader::Buffer::PdlTT')) {
     ##-- fast way: gank the buffer
     $f->{buffer} = $f->{reader}{buffer};
   }
   else {
     ##-- generic reader: push to buffer
-    my $bw = $f->getBufWriter();
-    $bw->putReader($f->{reader});
+    $f->getBufWriter->putReader($f->{reader});
   }
-
   return $f;
 }
 
@@ -116,7 +116,7 @@ sub flush {
   ##-- preparatory stuff
   my $buf = $cf->getBuffer();
   $buf->packPdls();
-  $cf->processPdlBuffer();    ##-- child classes should override this
+  $cf->processPdlBuffer(@_);   ##-- child classes should override this
 
   if ($cf->{writer}->isa('MUDL::CorpusWriter::Buffer::PdlTT')
       &&
@@ -132,7 +132,7 @@ sub flush {
 
   ##-- cleanup
   $cf->clearBuffer();
-  return $cf->{writer}->flush(@_);
+  return $cf->{writer}->flush();
 }
 
 
