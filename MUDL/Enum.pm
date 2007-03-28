@@ -146,6 +146,53 @@ sub removeEnum {
 }
 
 ##======================================================================
+## Conversion: translator pdls
+
+
+## $pdl = $enumFrom->xlatePdlTo($enumTo,%args)
+##  + create a translation pdl from $enumFrom ids to $enumTo ids
+##  + output pdl is 1d, and has length $enumFrom->size()
+##  + %args:
+##     badval=>$badval,  ##-- value to use for "missing" keys (keys in $enumFrom & not in $enumTo)
+##                       ##   + default: $enumTo->size+1
+##     badstr=>$badstr,  ##-- string to lookup in $enumTo used for "missing" keys
+##                       ##   + only used for $badval if badval is unset
+##                       ##   + always used for unallocated ids in $enumFrom
+##                       ##   + if it doesn't exist in $enumTo, $badval will be used (via $PDL::undefval)
+##                       ##   + default: ''
+##     pdl   =>$pdl,     ##-- output pdl
+sub xlatePdlTo {
+  require PDL;
+  my ($efrom,$eto,%args) = @_;
+
+  ##-- get bad value
+  my $badval = $args{badval};
+  if (!defined($badval)) {
+    $badval = $eto->{sym2id}{$args{badstr}} if (defined($args{badstr}));
+    $badval = $eto->size+1 if (!defined($badval));
+  }
+
+  ##-- get output pdl
+  my $undefval   = $PDL::undefval;
+  $PDL::undefval = $badval;
+  my $pdl        = PDL->pdl(PDL::long(), [
+					  @{$eto->{sym2id}}{
+					    map { $_||$args{badstr}||'' } @{$efrom->{id2sym}}
+					  }
+					 ]);
+  $PDL::undefval = $undefval;
+
+  ##-- return
+  if (defined($args{pdl})) {
+    $args{pdl} .= $pdl;
+    return $args{pdl};
+  }
+
+  return $pdl;
+}
+
+
+##======================================================================
 ## Conversion: Encoding
 use Encode;
 

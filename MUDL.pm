@@ -39,10 +39,10 @@ use MUDL::EDist;
 use MUDL::Ranks;
 
 use MUDL::Corpus::Profile;
-use MUDL::Corpus::Profile::LRBound;
+#use MUDL::Corpus::Profile::LRBound;
 
-use MUDL::Unigrams;
-use MUDL::Bigrams;
+#use MUDL::Unigrams;
+#use MUDL::Bigrams;
 
 1;
 

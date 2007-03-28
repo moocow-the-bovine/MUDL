@@ -32,9 +32,9 @@ our $STATE_PACKED   = 4;                      ##-- all packed up (only useful wi
 ## $cb = $class_or_object->new(%args)
 ##   + %args:
 ##      enums     => \@enums,   ##-- enumerators by attribute-position
-##      sents     => \@sents,   ##-- array of expanded sentences (MUDL::Sentence::TT)
 ##      pdls      => \@pdls,    ##-- array of full-corpus pdls, by attribute position: [pdl(INTTYPE,$nToks),...]
-##      fullpdl   => $pdl,      ##-- pdl($fulltype,$nattrs,$ntoks) : full-corpus pdl
+##      sents     => \@sents,   ##-- array of expanded|buffered sentences (MUDL::Sentence::TT)
+##      fullpdl   => $pdl,      ##-- pdl($fulltype,$nattrs,$ntoks) : full-corpus pdl (cached)
 ##      begins    => $pdl,      ##-- pdl(long,$nsents): sentence start indices
 ##      ends      => $pdl,      ##-- pdl(long,$nsents): sentence end indices
 ##      offset    => $n,        ##-- (inherited, for reader): logical offset of 1st stored sentence, >= 0
