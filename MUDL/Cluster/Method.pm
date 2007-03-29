@@ -1883,6 +1883,46 @@ sub toMetaMap {
   return $map;
 }
 
+##======================================================================
+## $map = $cm->toPdlFilterMap(%args)
+##  + returns a MUDL::Corpus::Filter::PdlFilter::Map representing the clustering solution
+##  + %args are passed to MUDL::Corpus::Filter::PdlFilter::Map->new()
+sub toPdlFilterMap {
+  require MUDL::Corpus::Filter::PdlFilter::Map;
+  my $cm = shift;
+  my ($tenum,$cenum) = $cm->toEnums();
+
+  my ($cids);
+  if (defined($cm->{clusterids})) {
+    ##-- hard clusters
+    $cids = $cm->{clusterids};
+  } elsif (defined($cm->{cdmatrix})) {
+    ##-- soft clusters
+    $cids = $cm->{cdmatrix}->minimum_ind;
+  } else {
+    confess(ref($cm),"::toPdlFilterMap(): no 'clusterids' or 'cdmatrix': cannot create map");
+  }
+
+  ##-- generate map
+  my $pmap = MUDL::Corpus::Filter::PdlFilter::Map->new(
+						       fromEnum  =>$tenum,
+						       toEnum    =>$cenum,
+						       mapPdl    =>$cids,
+						       mapBadStr =>'@UNKNOWN',
+
+						       ##-- additional defaults
+						       fromAttr=>0,
+						       toAttr=>0,
+						       mapBadStr=>q(@UNKNOWN),
+						       keepAttrs=>[0],
+						       clobberTo=>1,
+
+						       @_,
+						      );
+
+  return $pmap;
+}
+
 
 
 ########################################################################
