@@ -145,15 +145,18 @@ sub bootstrap {
   $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
   $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
   my ($dir);
-  foreach $dir (qw(right left)) {
-    my $d = $mp->{prof}{$dir};
-    my ($k,$t,$b,$f,$w);
-    while (($k,$f)=each(%{$d->{nz}})) {
-      ($w,$b) = $d->split($k);
-      $mp->{ugs_k}->slice("$w") += $f;
-    }
-  }
-  $mp->{ugs_k} /= 2;
+#  foreach $dir (qw(right left)) {
+#    my $d = $mp->{prof}{$dir};
+#    my ($k,$t,$b,$f,$w);
+#    while (($k,$f)=each(%{$d->{nz}})) {
+#      ($w,$b) = $d->split($k);
+#      $mp->{ugs_k}->slice("$w") += $f;
+#    }
+#  }
+#  $mp->{ugs_k} /= 2;
+  ##--
+  #$mp->{ugs_k} = $prof->targetUgPdl()->convert(double);
+  $mp->{ugs_k} = $prof->targetUgPdl();
 
   ##-- update info
   $mp->{stage_info} = {} if (!$mp->{stage_info});
@@ -232,7 +235,7 @@ sub populatePhat {
   my $phat    = zeroes(double, $cenum->size, $mp->{tenum}->size);
   my $beta    = $mp->beta;
   my $d2pbeta = $mp->d2pbeta();
-  $mp->vmsg($vl_info, "populatePhat(): avg(beta) = ", $beta->avg, "\n");
+  $mp->vmsg($vl_info, "populatePhat(): avg(beta) = ", $beta->davg, "\n");
   $mp->vmsg($vl_info, "populatePhat(): betamode  = ", $mp->{betamode}, "\n");
 
   $mp->{cm}->membershipProbPdl(@_,
@@ -326,6 +329,7 @@ sub update {
   $mp->{benum}->addEnum($prof->{bounds});
 
   ##-- tenum_k: new targets
+  ##   + FIXME: optimize (use pdls directly?)
   my $tenum_k = $mp->{tenum_k} = MUDL::Enum->new();
   my $tk2t = $mp->{tk2t} = {};
   my $t2tk = $mp->{t2tk} = {};
@@ -339,11 +343,13 @@ sub update {
   $mp->{stage_info}{ntgs_k} = $tenum_k->size;
 
   ##-- update: pprof
+  ##  + FIXME: pdl-ize
   $mp->vmsg($vl_info, "update(): ctrprof ~ f_{<=k}(d, c_b, c_{<k})\n");
   $mp->vmsg($vl_info, "        : curprof ~ f_{<=k}(d, c_b, t_k   )\n");
   my ($ctrprof,$curprof) = $mp->populateProfiles($prof);
 
   ##-- update: info & report
+  ##  + FIXME: pdl-ize
   my $ugs_tgs_k = $mp->{ugs_k}->slice("0:".($mp->{stage_info}{ntgs_k}-1));
   @{$mp->{stage_info}}{qw(avg prms median min max adev rms)} = map { $_->sclr } $ugs_tgs_k->stats;
   $mp->{stage_info}{logavg} = $ugs_tgs_k->log->average->exp->sclr;
@@ -439,10 +445,12 @@ sub update {
   }
 
   ##-- update: cm
+  ##  + FIXME: pdl-ize
   $mp->vmsg($vl_info, "update(): cm\n");
   $mp->updateCm();
 
   ##-- update: phat
+  ##  + FIXME: pdl-ize
   $mp->vmsg($vl_info, "update(): phat ~ ^p( c_{k} | w_{<=k} )\n");
   $mp->updatePhat();
 
@@ -452,6 +460,7 @@ sub update {
 ##--------------------------------------------------------------
 ## ($ctrprof,$curprof) = $mp->populateProfiles()
 ## ($ctrprof,$curprof) = $mp->populateProfiles($prof)
+##  + FIXME: pdl-ize
 ##  + populate
 ##      $mp->{ctrprof} ~ f_{k}(z, c_b \in C_{k-1}, c \in C_{k-1} )
 ##    and
@@ -508,6 +517,7 @@ sub populateProfiles {
 ##  + updates 'tugs', 'bugs', and 'ftotal' for each of $ctrProfile, $curProfile
 ##  + uses $mp->{tenum_k}, $mp->{cbenum}, $mp->{cenum}
 ##  + $ctrProfile may be undef, in which case it's ignored
+##  + FIXME: pdl-ize
 sub updateProfileUnigramDists {
   my ($mp,$prf_wv_raw,$prf_cb_new,$prf_wb_new) = @_;
 
@@ -598,6 +608,7 @@ sub updateProfileUnigramDists {
 ##    ~ $mp->{clusterids}
 ##    ###~ $mp->{c2tk}
 ##  + $ctrDistNaryDir may be undef, in which case it's ignored
+##  + FIXME: pdl-ize
 sub updateProfileDists {
   my ($mp,$wvdist,$cbdist,$wbdist) = @_;
 
@@ -694,6 +705,7 @@ sub beta {
 
 ##--------------------------------------------------------------
 ## $phatPdl = $mp->updatePhat(%args)
+##  + FIXME: pdl-ize
 ##  + populates $mp->{phat} ~ $phat->at($cid,$wid) = ^p($cid | $wid)
 ##    from $mp->{cm_k} and $mp->{phat} (last iteration)
 ##  + %args:
@@ -789,6 +801,7 @@ sub updatePhat {
 
 ##--------------------------------------------------------------
 ## $cm = $mp-updateCm(%args)
+##  + FIXME: pdl-ize
 ##  + updates $mp->{cm} from $mp->{cm_k} and $mp->{cm_ltk}
 ##  + %args:
 ##    - ignored
@@ -859,6 +872,7 @@ sub updateCm {
 
 ## $mp = $mp->recluster()
 ## $mp = $mp->recluster($prof)
+##  + FIXME: (TODO): implement!
 sub recluster {
   my ($mp,$prof) = @_;
   confess(ref($mp), ": recluster() method not implemented!");
