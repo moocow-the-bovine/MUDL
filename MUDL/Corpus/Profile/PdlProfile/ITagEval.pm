@@ -551,6 +551,7 @@ sub finishPdlProfile {
   my $prH = frac($I12, $H2);
   my $rcH = frac($I12, $H1);
   my $IH  = frac($I12, $H12);
+  my $IHuc = $IH;
 
   ##-- Entropy: get values (corresponds to old ($entropyMethod eq 'unknown-singletons'))
   if (1) {
@@ -577,7 +578,7 @@ sub finishPdlProfile {
   }
 
   ##-- Entropy: assign
-  @$eval{qw(H_precision H_recall H_F H_I)} = ($prH,$rcH,pr2F($prH,$rcH), $IH);
+  @$eval{qw(H_precision H_recall H_F H_I H_Iuc)} = ($prH,$rcH,pr2F($prH,$rcH), $IH, $IHuc);
 
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -817,7 +818,7 @@ sub fromEval {
 	     (map { "wavg_$_" } qw(precision recall F)),
 	     (map { "pair_$_" } qw(precision recall F)),
 	     (map { "wpair_$_" } qw(precision recall F)),
-	     (map { "H_$_" } qw(precision recall I F)),
+	     (map { "H_$_" } qw(precision recall I F Iuc)),
 	     (map { "mi_$_" } qw(known unk all)),
 	     qw(H1 H2 H12 H1g2 H2g1 Hu1 Hu2 Hu12 Hu1g2 Hu2g1),
 	     #qw(Rand),  ##-- Rand Index
@@ -899,7 +900,7 @@ sub saveNativeFh {
      "## H Recall                 : ", sprintf("%6.2f %%", 100*$esum->{H_recall}), "\n",
      "## H F                      : ", sprintf("%6.2f %%", 100*$esum->{H_F}), "\n",
      "## H I (uc+us)              : ", sprintf("%6.2f %%", 100*$esum->{H_I}), "\n",
-     "## I   (all)                : ", sprintf("%6.3f bits",   $esum->{mi_all}), "\n",
+     "## H I (uc)                 : ", sprintf("%6.2f %%", 100*$esum->{H_Iuc}), "\n",
      "##", ("-" x 78), "\n",
      "1;\n",
     );
