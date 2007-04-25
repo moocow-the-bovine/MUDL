@@ -261,38 +261,41 @@ sub toPdlDist {
 ## $sparsePdlDist = $de->toSparsePdlDist()
 *toPdlDistSparse = \&toSparsePdlDist;
 sub toSparsePdlDist {
-  require MUDL::PdlDist::Sparse2d;
+  require MUDL::PdlDist::SparseNd;
   require PDL::CCS;
   my $de = shift;
 
   ##-- sanity check
-  die(ref($de), "::toSparsePdlDist(): can't handle nfields=$nfields") if ($de->{nfields} != 2);
+  #die(ref($de), "::toSparsePdlDist(): can't handle nfields=$nfields") if ($de->{nfields} != 2);
 
   my $enum = $de->{enum};
-  my $pd = MUDL::PdlDist::Sparse2d->new(
-					enum=>$de->{enum},
-					dims=>[map { $_->size } @{$enum->{enums}}],
-				       );
-  ##-- setup colids,rowids
-  my $nnz    = scalar(keys(%{$de->{nz}}));
-  my $xids = zeroes(long,$nnz);
-  my $yids = zeroes(long,$nnz);
-  my $vals = zeroes(double,$nnz);
 
-  my ($xy,$x,$y,$val);
+  ##-- setup whichND,vals
+  my $nnz   = scalar(keys(%{$de->{nz}}));
+  my $which = zeroes(long, $de->{enum}{nfields}, $nnz);
+  my $vals  = zeroes(double,$nnz+1);
+
+  my ($key,$val,@keys,$ki);
   my $i=0;
-  while (($xy,$val)=each(%{$de->{nz}})) {
-    ($x,$y) = $de->split($xy);
-    $xids->set($i,$x);
-    $yids->set($i,$y);
+  while (($key,$val)=each(%{$de->{nz}})) {
+    @keys = $de->split($key);
+    foreach $ki (0..$#keys) {
+      $which->set($ki,$i, $keys[$ki]);
+    }
     $vals->set($i,$val);
     ++$i;
   }
 
   ##-- encode
-  @$pd{qw(ptr rowids nzvals)} = PDL::CCS::ccsencode_i2d($xids,$yids,$vals, $pd->{dims}[0]);
-
-  return $pd;
+  my $pdl = PDL::CCS::Nd->newFromWhich($which,$vals,
+				       pdims  => pdl(long,map {$_->size} @{$enum->{enums}}),
+				       missing=> $de->zeroCount,
+				       flags  => $MUDL::PdlDist::SparseNd::CCSND_FLAGS_DEFAULT,
+				      );
+  return MUDL::PdlDist::SparseNd->new(
+				      pdl =>$pdl,
+				      enum=>$de->{enum},
+				     );
 }
 
 1;

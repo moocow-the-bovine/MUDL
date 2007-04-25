@@ -10,14 +10,16 @@ package MUDL::Corpus::Profile::PdlProfile::Bigrams;
 #use MUDL::LogUtils qw(:all);
 use MUDL::Bigrams;
 use MUDL::Corpus::Profile::PdlProfile;
-use MUDL::PdlDist::Sparse2d;
+use MUDL::PdlDist::SparseNd;
+use PDL::CCS::Nd qw(:all);
 use PDL;
 use PDL::Ngrams;
 use Carp;
 use strict;
-our @ISA = qw(MUDL::PdlDist::Sparse2d MUDL::Corpus::Profile::PdlProfile MUDL::Corpus::Model);
+our @ISA = qw(MUDL::PdlDist::SparseNd MUDL::Corpus::Profile::PdlProfile MUDL::Corpus::Model);
 
-our $DEFAULT_ZERO_PROB = $MUDL::Bigrams::DEFAULT_ZERO_PROB;
+our $DEFAULT_ZERO_PROB   = $MUDL::Bigrams::DEFAULT_ZERO_PROB;
+our $PROFILE_CCSND_FLAGS = ($CCSND_BAD_IS_MISSING | $CCSND_NAN_IS_MISSING);
 
 ## OBJECT STRUCTURE:
 ##   + new in MUDL::Corpus::Profile::PdlProfile::Bigrams:
@@ -25,10 +27,11 @@ our $DEFAULT_ZERO_PROB = $MUDL::Bigrams::DEFAULT_ZERO_PROB;
 ##      eos=>$eos_marker    # default "__$"
 ##
 ##   + from MUDL::PdlDist::Sparse2d:
-##      enum   =>$enum_nary,   # event enum
-##      ptr    =>$ptr,         # pdl($NW1): CCS-encoded matrix: pointer
-##      rowids =>$rowids,      # pdl($Nnz): CCS-encoded matrix: rowids
-##      nzvals =>$nzvals,      # pdl($Nnz): CCS-encoded matrix: nzvals
+##      enum   =>$enum_nary,    # event enum
+##      pdl    =>$sparsend_pdl, # PDL::CCS::Nd object
+##      #ptr    =>$ptr,         # pdl($NW1): CCS-encoded matrix: pointer
+##      #rowids =>$rowids,      # pdl($Nnz): CCS-encoded matrix: rowids
+##      #nzvals =>$nzvals,      # pdl($Nnz): CCS-encoded matrix: nzvals
 ##
 ##   + from MUDL::Corpus::Profile::PdlProfile:
 ##      buffer =>$pdltt_buffer,
@@ -61,9 +64,12 @@ sub vocabulary { return @{ $_[0]{enum}{enums}[0]{id2sym} }; }
 ## $unigrams = $bg->unigrams
 sub unigrams {
   require MUDL::Corpus::Profile::PdlProfile::Unigrams;
-  return MUDL::Corpus::Profile::PdlProfile::Unigrams->new('pdl'=>ccssumover(@{$_[0]}{qw(ptr rowids nzvals)}),
-							  'enum'=>$_[0]{enum}{enums}[1],
-							 );
+  return MUDL::Corpus::Profile::PdlProfile::Unigrams->new
+    (
+     #'pdl' =>ccssumover(@{$_[0]}{qw(ptr rowids nzvals)}),
+     'pdl' =>$_[0]{pdl}->sumover->todense,
+     'enum'=>$_[0]{enum}{enums}[1],
+    );
 }
 
 ##======================================================================
@@ -125,14 +131,13 @@ sub finishPdlProfile {
   my ($bgfreqs,$bgelts) = $toks->slice("*2,")->ng_cofreq(boffsets=>$offsets, delims=>$delims);
 
   ##-- setup MUDL::PdlDist properties
-  my $NTypes      = $enum->size;
-  $prf->{dims}    = [] if (!defined($prf->{dims}));
-  @{$prf->{dims}} = ($NTypes,$NTypes);
-  $prf->{enum}    = MUDL::Enum::Nary->new(nfields=>2,enums=>[$enum,$enum]);
-
-  @$prf{qw(ptr rowids nzvals)}   = PDL::CCS::ccsencode_i2d($bgelts->slice("(0),"),
-							   $bgelts->slice("(1),"),
-							   $bgfreqs);
+  my $NTypes  = $enum->size;
+  $prf->{pdl} = PDL::CCS::Nd->newFromWhich($bgelts,$bgfreqs,
+					   missing=>0,
+					   pdims  =>pdl(long,$NTypes,$NTypes),
+					   flags  =>$PROFILE_CCSND_FLAGS,
+					  );
+  $prf->{enum} = MUDL::Enum::Nary->new(nfields=>2,enums=>[$enum,$enum]);
 
   ##-- all done
   return $prf;
