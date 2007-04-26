@@ -59,7 +59,7 @@ sub finishPdl {
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
   ##-- get zero mask
-  my $nzmask = ($pdl != 0);
+  #my $nzmask = ($pdl != 0);
 
   ##-- get minimum value
   my $eps = $lr->{eps};

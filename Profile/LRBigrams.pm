@@ -13,7 +13,8 @@ use MUDL::Corpus::Profile::PdlProfile::Bigrams;
 use MUDL::Object;
 use PDL;
 use PDL::CCS;
-use MUDL::PdlDist::Sparse2d;
+#use MUDL::PdlDist::Sparse2d;
+use MUDL::PdlDist::SparseNd;
 use Carp;
 
 use strict;
@@ -29,8 +30,8 @@ our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::PdlProfile); #)
 ##       smoothgt=>$which,           ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
 ##
 ##   + data acquired [NEW: PDL-ized]
-##       pleft =>$left_bigrams,      ## MUDL::PdlDist::Sparse2d: ($target_id, $left_bound_id) => $freq
-##       pright=>$right_bigrams,     ## MUDL::PdlDist::Sparse2d: ($target_id,$right_bound_id) => $freq
+##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq
+##       pright=>$right_bigrams,     ## MUDL::PdlDist::SparseNd: ($target_id,$right_bound_id) => $freq
 ##       ptugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for targets
 ##       pbugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for bounds
 ##       ftotal=>$total,             ## total number of w2 tokens processed (perl scalar)
@@ -238,10 +239,10 @@ sub addBigrams {
   $lr->{pbugs}  = $lr->{bugs}->toPdlDist();
 
   ##-- ... and convert to integer types
-  $lr->{pleft}{nzvals}  = $lr->{pleft}{nzvals}->convert(long);
-  $lr->{pright}{nzvals} = $lr->{pright}{nzvals}->convert(long);
-  $lr->{ptugs}{pdl}     = $lr->{ptugs}{pdl}->convert(long);
-  $lr->{pbugs}{pdl}     = $lr->{pbugs}{pdl}->convert(long);
+  $lr->{pleft}      = $lr->{pleft}->convert(long);
+  $lr->{pright}     = $lr->{pright}->convert(long);
+  $lr->{ptugs}{pdl} = $lr->{ptugs}{pdl}->convert(long);
+  $lr->{pbugs}{pdl} = $lr->{pbugs}{pdl}->convert(long);
 
   ##-- clear EDists
   $lbg->clear();
@@ -357,50 +358,46 @@ sub addPdlBigrams {
   $tgs_msk->index($tgs2bge) .= 1;
   $bge2tgs->index($tgs2bge) .= sequence(long,$Ntgs);
 
-  ##-- get CCS data
-  my @ccs          = @$bgpd{qw(ptr rowids nzvals)};
-  my $nzvals       = $ccs[2];
-  my ($bgw1,$bgw2) = ccswhichND(@ccs);
+  ##-- get bigram data
+  my ($bgw1,$bgw2) = $bgpd->{pdl}->whichND;
+  my $vals         = $bgpd->{pdl}->whichVals;
+  my $missing      = $bgpd->{pdl}->missing;
 
   ##-- get {left} CCS distribution: bounds-on-left, targets-on-right
   my $l_isgood = $bds_msk->index($bgw1) & $tgs_msk->index($bgw2);
   my $lbi_bgi  = $bgw1->where($l_isgood);
   my $lti_bgi  = $bgw2->where($l_isgood);
-  #my $l_nz0   = ccsget2d(@ccs, $lbi_bgi,$lti_bgi,0); ##-- warning: linear search for each (x,y) index pair
-  my $l_nz     = $nzvals->where($l_isgood);           ##-- trick: ccsget2d() always returns in nzvals-order
+  my $l_nz     = $vals->where($l_isgood);
   my $lbi_bds  = $bge2bds->index($lbi_bgi);
   my $lti_tgs  = $bge2tgs->index($lti_bgi);
-  my @lccs     = ccsencode_i2d($lti_tgs,$lbi_bds,$l_nz);
-  my ($lptr,$lrowids,$lnzvals) = @lccs;
+  my $lpd      = $bgpd->{pdl}->shadow(
+				      pdims=>pdl(long,$Ntgs,$Nbds),
+				      vdims=>sequence(long,2),
+				      which=>$lti_tgs->cat($lbi_bds)->xchg(0,1),
+				      vals =>$l_nz->append($missing),
+				     );
 
   ##-- get {right} CCS distribution: bounds-on-right, targets-on-left
   my $r_isgood = $bds_msk->index($bgw2) & $tgs_msk->index($bgw1);
   my $rbi_bgi  = $bgw2->where($r_isgood);
   my $rti_bgi  = $bgw1->where($r_isgood);
-  #my $r_nz0   = ccsget2d(@ccs, $rti_bgi,$rbi_bgi,0); ##-- warning: linear search for each (x,y) index pair
-  my $r_nz     = $nzvals->where($r_isgood);           ##-- trick: ccsget2d() always returns in nzvals-order
+  my $r_nz     = $vals->where($r_isgood);
   my $rbi_bds  = $bge2bds->index($rbi_bgi);
   my $rti_tgs  = $bge2tgs->index($rti_bgi);
-  my @rccs     = ccsencode_i2d($rti_tgs,$rbi_bds,$r_nz);
-  my ($rptr,$rrowids,$rnzvals) = @rccs;
+  my $rpd      = $bgpd->{pdl}->shadow(
+				      pdims=>pdl(long,$Ntgs,$Nbds),
+				      vdims=>sequence(long,2),
+				      which=>$rti_tgs->cat($rbi_bds)->xchg(0,1),
+				      vals =>$r_nz->append($missing),
+				     );
 
   ##-- pack up {right} and {left} distributions into {pright}, {pleft}
   my $tbenum   = MUDL::Enum::Nary->new(nfields=>2, enums=>[$tgs,$bds]);
-
-  $lr->{pleft} = MUDL::PdlDist::Sparse2d->new(dims=>[$Ntgs,$Nbds],
-					      enum=>$tbenum,
-					      ptr=>$lptr,
-					      rowids=>$lrowids,
-					      nzvals=>$lnzvals);
-
-  $lr->{pright} = MUDL::PdlDist::Sparse2d->new(dims=>[$Ntgs,$Nbds],
-					       enum=>$tbenum,
-					       ptr=>$rptr,
-					       rowids=>$rrowids,
-					       nzvals=>$rnzvals);
+  $lr->{pleft} = MUDL::PdlDist::SparseNd->new(enum=>$tbenum, pdl=>$lpd);
+  $lr->{pright} = MUDL::PdlDist::SparseNd->new(enum=>$tbenum, pdl=>$rpd);
 
   ##-- get target & bound unigram pdls
-  my $ccs_sum   = ccssumover(@ccs);
+  my $ccs_sum   = $bgpd->{pdl}->sumover->todense;
   $lr->{ptugs}  = MUDL::PdlDist->new(enum=>$tgs,pdl=>$ccs_sum->index($tgs2bge));
   $lr->{pbugs}  = MUDL::PdlDist->new(enum=>$bds,pdl=>$ccs_sum->index($bds2bge));
   $lr->{ftotal}  = $ccs_sum->sum;
@@ -473,17 +470,21 @@ sub toPDL3d {
   $pdl .= 0;
 
   ##-- frequency data: variables
-  my ($spdl,$xi,$yi);
+  #my ($spdl,$xi,$yi);
 
   ##-- frequency data: left-context
-  $spdl = $lr->{pleft};
-  ($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
-  $pdl->slice('(0),')->index2d($yi,$xi) .= $spdl->{nzvals};
+  #$spdl = $lr->{pleft};
+  #($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
+  #$pdl->slice('(0),')->index2d($yi,$xi) .= $spdl->{nzvals};
+  ##--
+  $lr->{pleft}{pdl}->decode( $pdl->slice('(0),')->xchg(0,1) );
 
   ##-- frequency data: right-context
-  $spdl = $lr->{pright};
-  ($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
-  $pdl->slice('(1),')->index2d($yi,$xi) .= $spdl->{nzvals};
+  #$spdl = $lr->{pright};
+  #($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
+  #$pdl->slice('(1),')->index2d($yi,$xi) .= $spdl->{nzvals};
+  ##--
+  $lr->{pright}{pdl}->decode( $pdl->slice('(1),')->xchg(0,1) );
 
   ##-- smoothing
   $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));

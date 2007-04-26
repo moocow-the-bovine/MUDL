@@ -10,7 +10,8 @@
 package MUDL::Corpus::Profile::PdlProfile::ITagEval;
 use MUDL::Corpus::Profile::PdlProfile;
 use MUDL::PdlDist;
-use MUDL::PdlDist::Sparse2d;
+#use MUDL::PdlDist::Sparse2d;
+use MUDL::PdlDist::SparseNd;
 use MUDL::Object;
 use PDL;
 use PDL::CCS;
@@ -46,9 +47,9 @@ our @ISA = qw(MUDL::Corpus::Profile::PdlProfile); #)
 ##
 ##     ##-- basic runtime data (new)
 ##     ntoks   => $ntokens,     ##-- total number of tokens processed
-##     jpdist  => $sparse2d,    ##-- MUDL::PdlDist::Sparse2d: <tag1,tag2> => f(tag1 && tag2)
-##     tag1txt => $sparse2d,    ##-- MUDL::PdlDist::Sparse2d: <tag1,txt>  => f(txt  && tag1)
-##     tag2txt => $sparse2d,    ##-- MUDL::PdlDist::Sparse2d: <tag2,txt>  => f(txt  && tag2)
+##     jpdist  => $sparseNd,    ##-- MUDL::PdlDist::SparseNd: <tag1,tag2> => f(tag1 && tag2)
+##     tag1txt => $sparseNd,    ##-- MUDL::PdlDist::SparseNd: <tag1,txt>  => f(txt  && tag1)
+##     tag2txt => $sparseNd,    ##-- MUDL::PdlDist::SparseNd: <tag2,txt>  => f(txt  && tag2)
 ##
 ##     ##-- summary data: target restriction
 ##     token_coverage => $float, ##-- 0 <= $float <= 1: percentage of tokens covered by targets
@@ -219,10 +220,19 @@ sub finishPdlProfile {
   ($vfreq,$vwhich) = ng_cofreq($tag1pdl->cat($tag2pdl)->xchg(0,1), norotate=>1);
 
   my $jpdist = $eval->{jpdist} =
-    MUDL::PdlDist::Sparse2d->new(dims=>[$Ntags1,$Ntags2],
+    MUDL::PdlDist::SparseNd->new(
 				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag1enum,$tag2enum]),
+				 pdl =>PDL::CCS::Nd->newFromWhich($vwhich,$vfreq,
+								  pdims=>pdl(long,$Ntags1,$Ntags2)),
 				);
-  my @tag12_ccs = @$jpdist{qw(ptr rowids nzvals)} = ccsencode_i2d($vwhich->xchg(0,1)->dog, $vfreq, $Ntags1);
+  my $tag12_pdl = $jpdist->{pdl};
+  #my $jpdist = $eval->{jpdist} =
+    #    MUDL::PdlDist::Sparse2d->new(dims=>[$Ntags1,$Ntags2],
+    #				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag1enum,$tag2enum]),
+    #				);
+    #  my @tag12_ccs = @$jpdist{qw(ptr rowids nzvals)} = ccsencode_i2d($vwhich->xchg(0,1)->dog, $vfreq, $Ntags1);
+    ##--
+
 
   ##-- dense joint matrix, handy here, but not stored
   my $jpdl                 = zeroes(long, $Ntags1,$Ntags2);
@@ -235,11 +245,21 @@ sub finishPdlProfile {
   $vvecs->slice("(1),") .= $txtpdl;
   ($vfreq,$vwhich) = ng_cofreq($vvecs, norotate=>1);
   my $tag1txt = $eval->{tag1txt} =
-    MUDL::PdlDist::Sparse2d->new(dims=>[$Ntags1, $Ntxt],
-				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag1enum,undef]),
-				 ##-- don't store the text enum!
+    MUDL::PdlDist::SparseNd->new(
+  				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag1enum,undef]),
+  				 ##-- don't store the text enum!
+				 pdl=>PDL::CCS::Nd->newFromWhich($vwhich,$vfreq,
+								 pdims=>pdl(long,$Ntags1,$Ntxt)),
 				);
-  my @tag1txt_ccs = @$tag1txt{qw(ptr rowids nzvals)} = ccsencode_i2d($vwhich->xchg(0,1)->dog, $vfreq, $Ntags1);
+  ##--
+  #  my $tag1txt = $eval->{tag1txt} =
+  #    MUDL::PdlDist::Sparse2d->new(dims=>[$Ntags1, $Ntxt],
+  #				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag1enum,undef]),
+  #				 ##-- don't store the text enum!
+  #				);
+  #  my @tag1txt_ccs = @$tag1txt{qw(ptr rowids nzvals)} = ccsencode_i2d($vwhich->xchg(0,1)->dog, $vfreq, $Ntags1);
+  ##--
+
 
   ##-- basic data: txttag2: <tag2,text> -> f(tag2 && text) [sparse]
   $vvecs = zeroes($txtpdl->type, 2, $txtpdl->nelem);
@@ -247,11 +267,20 @@ sub finishPdlProfile {
   $vvecs->slice("(1),") .= $txtpdl;
   ($vfreq,$vwhich) = ng_cofreq($vvecs, norotate=>1);
   my $tag2txt = $eval->{tag2txt} =
-    MUDL::PdlDist::Sparse2d->new(dims=>[$Ntags2, $Ntxt],
-				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag2enum,undef]),
-				 ##-- don't store the text enum!
+    MUDL::PdlDist::SparseNd->new(
+  				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag1enum,undef]),
+  				 ##-- don't store the text enum!
+				 pdl=>PDL::CCS::Nd->newFromWhich($vwhich,$vfreq,
+								 pdims=>pdl(long,$Ntags2,$Ntxt)),
 				);
-  my @tag2txt_ccs = @$tag2txt{qw(ptr rowids nzvals)} = ccsencode_i2d($vwhich->xchg(0,1)->dog, $vfreq, $Ntags2);
+  ##--
+  #  my $tag2txt = $eval->{tag2txt} =
+  #    MUDL::PdlDist::Sparse2d->new(dims=>[$Ntags2, $Ntxt],
+  #				 enum=>MUDL::Enum::Nary->new(nfields=>2,enums=>[$tag2enum,undef]),
+  #				 ##-- don't store the text enum!
+  #				);
+  #  my @tag2txt_ccs = @$tag2txt{qw(ptr rowids nzvals)} = ccsencode_i2d($vwhich->xchg(0,1)->dog, $vfreq, $Ntags2);
+  ##--
 
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -300,9 +329,9 @@ sub finishPdlProfile {
   my $tag2ia = [];
 
   ##-- get unigram (tag1),(tag2) distributions
-  my $tag1d   = MUDL::PdlDist->new(enum=>$tag1enum, pdl=>ccssumovert(@tag12_ccs));
+  my $tag1d   = MUDL::PdlDist->new(enum=>$tag1enum, pdl=>$tag12_pdl->xchg(0,1)->sumover->todense);
   my $tag1dp  = $tag1d->{pdl};
-  my $tag2d   = MUDL::PdlDist->new(enum=>$tag2enum, pdl=>ccssumover (@tag12_ccs, $Ntags2));
+  my $tag2d   = MUDL::PdlDist->new(enum=>$tag2enum, pdl=>$tag12_pdl->sumover->todense);
   my $tag2dp  = $tag2d->{pdl};
   my $ftotal  = $tag1dp->sumover;         ##-- total frequency, including unknowns
   my $ftotald = $ftotal->convert(double); ##-- ... as double
@@ -610,20 +639,28 @@ sub finishPdlProfile {
   ##-- ambiguity rates
   #my $ntypes  = $Ntxt; ##-- number of text types in the corpus
   my $ntypes  = $Ntxtk; ##-- number of known text types in the corpus
-  my $nanals1 = $tag1txt->{nzvals}->nelem;
-  my $nanals2 = $tag2txt->{nzvals}->nelem;
+  my $nanals1 = $tag1txt->{pdl}->_nnz;
+  my $nanals2 = $tag2txt->{pdl}->_nnz;
   @$eval{qw(ntypes nanals1 nanals2)} = ($ntypes,$nanals1,$nanals2);
   $eval->{arate1} = frac($nanals1, $ntypes);
   $eval->{arate2} = frac($nanals2, $ntypes);
 
   ##-- word-type info: pdls
-  my $tag1txt_begin = $tag1txt->{ptr};
-  my $tag1txt_end   = $tag1txt->{ptr}->rotate(-1)->slice("0:-2")->append($nanals1);
-  my $tag1ntxt      = $tag1txt_end - $tag1txt_begin;
+  #my $tag1txt_begin = $tag1txt->{ptr};
+  #my $tag1txt_end   = $tag1txt->{ptr}->rotate(-1)->slice("0:-2")->append($nanals1);
+  #my $tag1ntxt      = $tag1txt_end - $tag1txt_begin;
+  #
+  #my $tag2txt_begin = $tag2txt->{ptr};
+  #my $tag2txt_end   = $tag2txt->{ptr}->rotate(-1)->slice("0:-2")->append($nanals2);
+  #my $tag2ntxt      = $tag2txt_end - $tag2txt_begin;
+  ##--
+  my $tag1txt_begin  = $tag1txt->{pdl}->ptr(0);
+  my $tag1txt_end    = $tag1txt_begin->rotate(-1);
+  my $tag1ntxt       = ($tag1txt_end - $tag1txt_begin)->slice("0:-2");
 
-  my $tag2txt_begin = $tag2txt->{ptr};
-  my $tag2txt_end   = $tag2txt->{ptr}->rotate(-1)->slice("0:-2")->append($nanals2);
-  my $tag2ntxt      = $tag2txt_end - $tag2txt_begin;
+  my $tag2txt_begin  = $tag2txt->{pdl}->ptr(0);
+  my $tag2txt_end    = $tag2txt_begin->rotate(-1);
+  my $tag2ntxt       = ($tag2txt_end - $tag2txt_begin)->slice("0:-2");
 
   ##-- word-type info: inverse pdls
   my $tag1ntxti     = ($tag2ntxt * $isbest21)->sumover;
