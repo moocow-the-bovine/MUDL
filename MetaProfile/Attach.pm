@@ -25,6 +25,7 @@ our @ISA = qw(MUDL::Corpus::MetaProfile);
 ##  ##-- global data
 ##  phat   => $phat,        ## dims: ($NBoundClusters, $NPrevTargets) : $phat->at($cid,$tid) = ^p_{<=$i}($cid|$tid)
 ##  phatm  => $mask,        ## type=byte,   dims as for $phat; $phatm ~ p(c|w) != 0
+##  t2stg => $t2stg,        ## pdl(byte,$NTargets_lek) : $t2stg->at($tid) = first_stage_containing($tid)
 ##
 ##  tenum => $enum,        ## previous+current targets (token) enum (T_{<=$i})
 ##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + literals)
@@ -53,8 +54,8 @@ our @ISA = qw(MUDL::Corpus::MetaProfile);
 ##  tenum_ltk => $enum,    ## previous (token) targets only
 ##  #tk2c => \%idmap,       ## maps current target-ids to previous cluster-ids: {$tid_k   => $cid_lek, ...}
 ##  #c2tk => \%idmap,       ## maps previous cluster-ids to current target-ids: {$cid_lek => $tid_k,   ...}
-##  #tk2t => \%idmap,       ## maps current target-ids to global target-ids:    {$tid_k   => $tid_lek, ...}
-##  #t2tk => \%idmap,       ## maps global target-ids to current target-ids:    {$tid_lek => $tid_k,   ...}
+##  tk2t => $xlpdl,        ## maps current target-ids to global target-ids:    $tid_k   => $tid_lek
+##  t2tk => $xlpdl,        ## maps global target-ids to current target-ids:    $tid_lek => $tid_k_or_-1
 ##  ugs_k => $pdl,         ## pdl($n): expected unigram pseudo-frequency (targets_k u clusters_{k-1})
 ##  ##
 ##  ##-- messages
@@ -130,12 +131,15 @@ sub bootstrap {
   $mp->{cbenum}->addEnum($mp->{lbenum});
   $mp->{benum }->addEnum($mp->{lbenum});
 
+  ##-- initialize: t2stg
+  $mp->{t2stg} = ones(byte,$mp->{tenum}->size);
+
   ##-- info: enums
   $mp->vmsg($vl_info, sprintf("bootstrap(): |targets|     = %6d\n", $mp->{tenum}->size));
   $mp->vmsg($vl_info, sprintf("bootstrap(): |bounds|      = %6d\n", $mp->{benum}->size));
   $mp->vmsg($vl_info, sprintf("bootstrap(): |lit. bounds| = %6d\n", $mp->{lbenum}->size));
   $mp->vmsg($vl_info, sprintf("bootstrap(): |clusters|    = %6d\n", $mp->{cenum}->size));
-  $mp->vmsg($vl_info, sprintf("bootstrap(): |any bounds|  = %6d\n", $mp->{cbenum}->size));
+  #$mp->vmsg($vl_info, sprintf("bootstrap(): |any bounds|  = %6d\n", $mp->{cbenum}->size)); ##--n/a here
 
   ##-- populate {clusterids}: word => argmax_class ( p(class|word) )
   $mp->vmsg($vl_info, "bootstrap(): clusterids ~ w => argmax_c ( p(c|w) )\n");
@@ -143,20 +147,25 @@ sub bootstrap {
 
   ##-- populate ugs_k
   $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
-  $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
-  my ($dir);
-#  foreach $dir (qw(right left)) {
-#    my $d = $mp->{prof}{$dir};
-#    my ($k,$t,$b,$f,$w);
-#    while (($k,$f)=each(%{$d->{nz}})) {
-#      ($w,$b) = $d->split($k);
-#      $mp->{ugs_k}->slice("$w") += $f;
-#    }
-#  }
-#  $mp->{ugs_k} /= 2;
+  ##--
+  #  $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
+  #  my ($dir);
+  #  foreach $dir (qw(right left)) {
+  #    my $d = $mp->{prof}{$dir};
+  #    my ($k,$t,$b,$f,$w);
+  #    while (($k,$f)=each(%{$d->{nz}})) {
+  #      ($w,$b) = $d->split($k);
+  #      $mp->{ugs_k}->slice("$w") += $f;
+  #    }
+  #  }
+  #  $mp->{ugs_k} /= 2;
   ##--
   #$mp->{ugs_k} = $prof->targetUgPdl()->convert(double);
-  $mp->{ugs_k} = $prof->targetUgPdl();
+  ##--
+  #$mp->{ugs_k} = $prof->targetUgPdl();
+  ##--
+  $mp->{ugs_k} = ($prof->{pleft}{pdl}->xchg(0,1)->sumover->todense
+		  + $prof->{pright}{pdl}->xchg(0,1)->sumover->todense)->double / 2;
 
   ##-- update info
   $mp->{stage_info} = {} if (!$mp->{stage_info});
@@ -328,19 +337,39 @@ sub update {
   $mp->{tenum}->addEnum($prof->{targets});
   $mp->{benum}->addEnum($prof->{bounds});
 
-  ##-- tenum_k: new targets
-  ##   + FIXME: optimize (use pdls directly?)
+  ##-- tenum_k: new targets (OLD)
+  #  my $tenum_k = $mp->{tenum_k} = MUDL::Enum->new();
+  #  my $tk2t = $mp->{tk2t} = {};
+  #  my $t2tk = $mp->{t2tk} = {};
+  #  my ($tid,$tid_k);
+  #  foreach $tid (grep {!exists($tenum_ltk->{sym2id}{$_})} (@{$prof->{targets}{id2sym}})) {
+  #    $tid_k = $tenum_k->addSymbol($tid);
+  #    $t2tk->{$tid}   = $tid_k;
+  #    $tk2t->{$tid_k} = $tid;
+  #  }
+  #  $mp->vmsg($vl_info, "update(): ntargets_k   = ", $tenum_k->size, "\n");
+  #  $mp->{stage_info}{ntgs_k} = $tenum_k->size;
+  ##--
+
+  ##-- tenum_k: new targets (NEW)
   my $tenum_k = $mp->{tenum_k} = MUDL::Enum->new();
-  my $tk2t = $mp->{tk2t} = {};
-  my $t2tk = $mp->{t2tk} = {};
   my ($tid,$tid_k);
-  foreach $tid (grep {!exists($tenum_ltk->{sym2id}{$_})} (@{$prof->{targets}{id2sym}})) {
-    $tid_k = $tenum_k->addSymbol($tid);
-    $t2tk->{$tid}   = $tid_k;
-    $tk2t->{$tid_k} = $tid;
+  @{$tenum_k->{id2sym}}  = grep {!exists($tenum_ltk->{sym2id}{$_})} @{$prof->{targets}{id2sym}};
+  $tenum_k->{sym2id}{ $tenum_k->{id2sym}[$_] } = $_ foreach (0..$#{$tenum_k->{id2sym}});
+
+  my $tk2t = $mp->{tk2t} = $tenum_k->xlatePdlTo($mp->{tenum},badval=>-1); ##-- $tk2t->at($tid_k  ) = $tid_lek
+  my $t2tk = $mp->{t2tk} = $mp->{tenum}->xlatePdlTo($tenum_k,badval=>-1); ##-- $t2tk->at($tid_lek) = $tid_k_or_-1
+  ##-- it should be the case that: all( $tk2t == sequence($tk2t->nelem)+256 )
+
+  ##-- update: t2stg
+  $mp->vmsg($vl_info, "update(): t2stg : T_lek -> stg\n");
+  $mp->{t2stg} = $mp->{t2stg}->reshape($mp->{tenum}->size);
+  if ($mp->{t2stg}->type==byte && $mp->{stage} > 255) {
+    $mp->{t2stg} = $mp->{t2stg}->ushort;
+  } elsif ($mp->{t2stg}->type==byte && $mp->{stage} > 65535) {
+    $mp->{t2stg} = $mp->{t2stg}->long;
   }
-  $mp->vmsg($vl_info, "update(): ntargets_k   = ", $tenum_k->size, "\n");
-  $mp->{stage_info}{ntgs_k} = $tenum_k->size;
+  $mp->{t2stg}->slice('-'.($tenum_k->size+1).":-1") .= $mp->{stage};
 
   ##-- update: pprof
   ##  + FIXME: pdl-ize
@@ -477,14 +506,34 @@ sub populateProfiles {
   my ($mp,$prof) = @_;
   $prof = $mp->{prof} if (!defined($prof));
 
-  ##-- profiles: step 0: copy profile (hack: shadow distributions)
+  ##-- profiles: step 0: copy source profile (hack: shadow distributions)
   my $ctrprof = $mp->{ctrprof} = $prof->shadow();
   my $curprof = $mp->{curprof} = $prof->shadow();
 
-  ##-- profiles: step 0: allocate unigram dist
-  $mp->{ugs_k} = zeroes(double, $mp->{tenum_k}->size);
+  ##-- profiles: step 0.5: allocate unigram dist
+  $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
+  $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
 
   ##-- profiles: step 1: tweak profile neighbor-distributions
+#  $ctrprof->{pleft}  = $prof->{pleft}  x $phat_ccs;
+#  $ctrprof->{pright} = $prof->{pright} x $phat_ccs;
+#  $curprof->{pleft}  = $prof->{pleft}  x $phat_ccs;
+#  $curprof->{pright} = $prof->{pright} x $phat_ccs;
+
+  ##-- OLD
+  ##  + FIXME: update to use ccs matmult
+  ##    - literal bounds are a problem b/c not in dense phat (?)
+  ##    - trick 1: use intermediate CCS: pz0(double, NTgsAny,NBdsK), for z \in {left,right}
+  ##      ~ literal-bound translation
+  ##      ~ cluster-bound expectation value
+  ##      ~ should simplify to matmult (hopefully using only public CCS::Nd API)
+  ##    - trick 2: desired $curprof co-occ pdl is:
+  ##        $pz0->dice_axis($tgsAxis=0, $mp->{tk2t})                    ##-- NTgsK,NBdsK
+  ##    - trick 3: desired $ctrprof co-occ pdl is:
+  ##        ($pz0->dice_axis($tgsAxis=0, $tgs_ltk=which($mp->{t2tk}<0)) ##-- NTgsLTK,NBdsK
+  ##          x $clusterBoundMask                                       ##-- x NClusters,NTgsLTK
+  ##         )                                                          ##-- --> NClusters,NTgsLTK
+  ##         ->xchg(0,1)->make_physically_indexed;                      ##-- --> NTgsLTK,NClusters
   $mp->updateProfileDists($prof->{left},  $ctrprof->{left},  $curprof->{left});
   $mp->updateProfileDists($prof->{right}, $ctrprof->{right}, $curprof->{right});
   $mp->{ugs_k}  /= 2; ##-- factor out l,r doubling
