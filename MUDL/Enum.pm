@@ -177,7 +177,10 @@ sub xlatePdlTo {
   $PDL::undefval = $badval;
   my $pdl        = PDL->pdl(PDL::long(), [
 					  @{$eto->{sym2id}}{
-					    map { $_||$args{badstr}||'' } @{$efrom->{id2sym}}
+					    map {
+					      defined($_) ? $_
+						: (defined($args{badstr}) ? $args{badstr} : '')
+					    } @{$efrom->{id2sym}}
 					  }
 					 ]);
   $PDL::undefval = $undefval;
