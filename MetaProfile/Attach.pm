@@ -23,9 +23,11 @@ our @ISA = qw(MUDL::Corpus::MetaProfile);
 ## {
 ##  ##
 ##  ##-- global data
-##  phat   => $phat,        ## dims: ($NBoundClusters, $NPrevTargets) : $phat->at($cid,$tid) = ^p_{<=$i}($cid|$tid)
+##  phat   => $phat,        ## dims: ($NClusters, $NPrevTargets) : $phat->at($cid,$tid) = ^p_{<=$i}($cid|$tid)
 ##  phatm  => $mask,        ## type=byte,   dims as for $phat; $phatm ~ p(c|w) != 0
-##  t2stg => $t2stg,        ## pdl(byte,$NTargets_lek) : $t2stg->at($tid) = first_stage_containing($tid)
+##  stg2ntgs => $stg2ntgs,  ## pdl(byte,$nstages) : $stg2ntgs->at($stg) = $number_of_targets_at_stage
+##                          ##  + s.t. $tgs2stg == rld($stg2ntgs, 1+$stg2ntgs->sequence)
+##                          ##    since $tid_i<=$tid_j implies firstStage($tid_i)<=firstStage($tid_j)
 ##
 ##  tenum => $enum,        ## previous+current targets (token) enum (T_{<=$i})
 ##  benum => $enum,        ## previous+current bounds (token) enum (B_{<=$i}) (targets + literals)
@@ -131,8 +133,8 @@ sub bootstrap {
   $mp->{cbenum}->addEnum($mp->{lbenum});
   $mp->{benum }->addEnum($mp->{lbenum});
 
-  ##-- initialize: t2stg
-  $mp->{t2stg} = ones(byte,$mp->{tenum}->size);
+  ##-- initialize: stg2ntgs
+  $mp->{stg2ntgs} = pdl(long,[$mp->{tenum}->size]);
 
   ##-- info: enums
   $mp->vmsg($vl_info, sprintf("bootstrap(): |targets|     = %6d\n", $mp->{tenum}->size));
@@ -361,15 +363,9 @@ sub update {
   my $t2tk = $mp->{t2tk} = $mp->{tenum}->xlatePdlTo($tenum_k,badval=>-1); ##-- $t2tk->at($tid_lek) = $tid_k_or_-1
   ##-- it should be the case that: all( $tk2t == sequence($tk2t->nelem)+256 )
 
-  ##-- update: t2stg
-  $mp->vmsg($vl_info, "update(): t2stg : T_lek -> stg\n");
-  $mp->{t2stg} = $mp->{t2stg}->reshape($mp->{tenum}->size);
-  if ($mp->{t2stg}->type==byte && $mp->{stage} > 255) {
-    $mp->{t2stg} = $mp->{t2stg}->ushort;
-  } elsif ($mp->{t2stg}->type==byte && $mp->{stage} > 65535) {
-    $mp->{t2stg} = $mp->{t2stg}->long;
-  }
-  $mp->{t2stg}->slice('-'.($tenum_k->size+1).":-1") .= $mp->{stage};
+  ##-- update: stg2ntgs
+  $mp->{stg2ntgs} = $mp->{stg2ntgs}->reshape($mp->{stage});
+  $mp->{stg2ntgs}->set($mp->{stage}-1, $tenum_k->size);
 
   ##-- update: pprof
   ##  + FIXME: pdl-ize
@@ -506,19 +502,9 @@ sub populateProfiles {
   my ($mp,$prof) = @_;
   $prof = $mp->{prof} if (!defined($prof));
 
-  ##-- profiles: step 0: copy source profile (hack: shadow distributions)
+  ##-- profiles: step 0a: copy source profile (hack: shadow distributions)
   my $ctrprof = $mp->{ctrprof} = $prof->shadow();
   my $curprof = $mp->{curprof} = $prof->shadow();
-
-  ##-- profiles: step 0.5: allocate unigram dist
-  $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
-  $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
-
-  ##-- profiles: step 1: tweak profile neighbor-distributions
-#  $ctrprof->{pleft}  = $prof->{pleft}  x $phat_ccs;
-#  $ctrprof->{pright} = $prof->{pright} x $phat_ccs;
-#  $curprof->{pleft}  = $prof->{pleft}  x $phat_ccs;
-#  $curprof->{pright} = $prof->{pright} x $phat_ccs;
 
   ##-- OLD
   ##  + FIXME: update to use ccs matmult
@@ -534,9 +520,25 @@ sub populateProfiles {
   ##          x $clusterBoundMask                                       ##-- x NClusters,NTgsLTK
   ##         )                                                          ##-- --> NClusters,NTgsLTK
   ##         ->xchg(0,1)->make_physically_indexed;                      ##-- --> NTgsLTK,NClusters
+
+  ##-- add temps
+
+  ##-- map bounds (profile->mp):   $pb2cb : ($NProfileBounds,$NMetaProfileBounds)
+  my $pb2cb = $mp->{pb2cb} = $mp->xlateBoundsPdl($prof->{bounds});
+
+  ##-- TEST TEST TEST
+  my $pd_in = $prof->{pleft}{pdl};
+  my $pd0   = $pb2cb x $pd_in;    ##-- haha!
+  ##-- END TEST: seems ok
+
+  ##~~~ OLD
+  $mp->vmsg($vl_info, "bootstrap(): unigrams ~ f_0(w)\n");
+  $mp->{ugs_k} = zeroes(double, $mp->{tenum}->size);
+  ##
   $mp->updateProfileDists($prof->{left},  $ctrprof->{left},  $curprof->{left});
   $mp->updateProfileDists($prof->{right}, $ctrprof->{right}, $curprof->{right});
-  $mp->{ugs_k}  /= 2; ##-- factor out l,r doubling
+  ##
+  $mp->{ugs_k}  /= 2; ##-- unigrams: factor out l,r doubling
 
   ##-- profiles: step 1b: update unigram dists
   $mp->updateProfileUnigramDists($prof, $ctrprof, $curprof);
@@ -560,6 +562,78 @@ sub populateProfiles {
   return ($ctrprof,$curprof);
 }
 
+##--------------------------------------------------------------
+## $pb2cb = $mp->xlateBoundsPdl($profile_bounds_enum)
+##   + returns a CCS::Nd-encoded translation matrix
+##
+##          $pb2cb : pdl(double, $NProfileBounds,$NMetaProfileBounds)
+##
+##     suitable for bounds-translation via CCS::Nd::matmult() on a literal sub-profile
+##     encoded in terms of $profile_bounds
+##   + $profile_bounds_enum defaults to $mp->{prof}{bounds}
+##   + requires:
+sub xlateBoundsPdl {
+  my ($mp,$pbenum) = @_;
+  $pbenum = $mp->{prof}{bounds} if (!defined($pbenum)); ##-- profile bounds
+
+  ##-- map bounds of current profile to mp-bounds
+  my $lbenum  = $mp->lbenum();   ##-- mp-bounds: literals
+  my $cenum   = $mp->{cenum};    ##-- mp clusters
+  my $cbenum  = $mp->{cbenum};   ##-- all mp-bounds
+
+  ##-- map bounds: literals
+  my $pb2cb_l       = $pbenum->xlatePdlTo($cbenum,badval=>-1);          ## $pb2cb_l : $pbid => $cbid  (literals)
+  my $pb_which_l    = which($pb2cb_l>=0);
+  my $pb2cb_whichND = $pb_which_l->cat($pb2cb_l->index($pb_which_l)     ## $pb2cb_whichND : [[$pbid,$cbid],...]
+				      )->xchg(0,1);
+
+  ##-- map bounds: CCS::Nd matrix $upd_b2cb
+  my $pb2cb = PDL::CCS::Nd->newFromWhich($pb2cb_whichND, ones(double,$pb2cb_whichND->dim(1)),
+					 pdims  =>pdl(long, [$pbenum->size,$cbenum->size]),
+					 missing=>0,
+					)->badmissing->nanmissing;
+
+  ##-- map bounds: clusters
+  if ($mp->{use_cbounds}) {
+    my $tenum_ltk  = $mp->{tenum_ltk};
+    my $pb2t       = $pbenum->xlatePdlTo($tenum_ltk, badval=>-1);  ## $pb2t : $pbid => $tid_ltk
+    my $pb2t_mask  = ($pb2t>=0);
+    $pb2t_mask->index($pb_which_l) .= 0;
+    my $pb_which_c = which($pb2t_mask);
+
+    my $t2pb = zeroes(long,$tenum_ltk->size)-1;                    ## $t2pb : $tid_ltk => $pbid
+    $t2pb->index($pb2t->index($pb_which_c)) .= $pb_which_c;
+    #my $t_which = which($t2pb>=0);
+    ##--
+    #my $t_which = $pb2t->index($pb_which_c);
+    #$tc_mask->index($pb2t->index($pb_which_c)) .= 1;
+
+    my $c2cb = $cenum->xlatePdlTo($cbenum, badval=>-1);            ## $c2cb : $cid => $cbid
+    #my $c_which = which($c2cb>=0);
+
+    ##-- phat: CCS-ifiy
+    my $phat = $mp->{phat} * $mp->{phatm};                         ## $phat : ($NClusters, $NPrevTargets)
+    $phat    = $phat->toccs->badmissing->nanmissing;
+    $phat   /= $phat->sumover->dummy(0,1);
+    $phat->missing(0);
+
+    ##-- phat: translate
+    my $phat_which = $phat->whichND;
+    my $phat_vals  = $phat->_nzvals;
+
+    my $phat_t     = $t2pb->index($phat_which->slice("(1),"));     ## $NPrevTargets ~~> $NProfileBounds
+    my $phat_c     = $c2cb->index($phat_which->slice("(0),"));     ## $NClusters    ~~> $NClusterBounds
+    my $phat_tci   = which( ($phat_t >= 0) & ($phat_c >= 0) );
+
+    ##-- phat: append to bounds-map
+    my $phatx_which = $phat_t->index($phat_tci)->cat($phat_c->index($phat_tci))->xchg(0,1);
+    my $phatx_vals  = $phat_vals->index($phat_tci);
+
+    $pb2cb->appendWhich($phatx_which, $phatx_vals);
+  }
+
+  return $pb2cb;
+}
 
 ##--------------------------------------------------------------
 ## undef = $mp->updateProfileUnigramDists($rawProfile, $ctrProfile, $curProfile)
@@ -644,21 +718,109 @@ sub updateProfileUnigramDists {
 }
 
 ##--------------------------------------------------------------
-## undef = $mp->updateProfileDists($rawDistNaryDir, $ctrDistNaryDir, $curDistNaryDir)
-##  + populates $ctrDistNaryDir and $curDistNaryDir from $rawDistNaryDir, where:
-##    - $rawDistNaryDir : prof directed nary dist wrt targets (\in T_<=k) & bound-words   (\in     (LB u T_<k ))
-##    - $ctrDistNaryDir : prof directed nary dist wrt classes (\in C_k-1) & bound-classes (\in B_k=(LB u C_k-1))
-##    - $curDistNaryDir : prof directed nary dist wrt targets (\in T_k  ) & bound-classes (\in B_k=(LB u C_k-1))
+## undef = $mp->updateProfileDists($rawSparsePdlDistNd, $ctrSparsePdlDistNd, $curSparsePdlDistNd)
+##  + populates $ctrSparsePdlDistNd and $curSparsePdlDistNd from $rawSparsePdlDistNd, where:
+##    - $rawSparsePdlDistNd : prof directed nary dist wrt targets (\in T_<=k) & bound-words   (\in     (LB u T_<k ))
+##    - $ctrSparsePdlDistNd : prof directed nary dist wrt classes (\in C_k-1) & bound-classes (\in B_k=(LB u C_k-1))
+##    - $curSparsePdlDistNd : prof directed nary dist wrt targets (\in T_k  ) & bound-classes (\in B_k=(LB u C_k-1))
 ##  + output distributions should be subsequently changed to use enums:
-##    - $ctrDistNaryDir : targets=$mp->{cenum}   ; bounds=$mp->{cbenum}, lbounds=$mp->{lbenum}
-##    - $curDistNaryDir : targets=$mp->{tenum_k} ; bounds=$mp->{cbenum}, lbounds=$mp->{lbenum}
+##    - $ctrSparsePdlDistNd : targets=$mp->{cenum}   ; bounds=$mp->{cbenum}, lbounds=$mp->{lbenum}
+##    - $curSparsePdlDistNd : targets=$mp->{tenum_k} ; bounds=$mp->{cbenum}, lbounds=$mp->{lbenum}
 ##  + requires:
 ##    ~ $mp->{tenum_k}
 ##    ~ $mp->{clusterids}
 ##    ###~ $mp->{c2tk}
-##  + $ctrDistNaryDir may be undef, in which case it's ignored
+##    ~ $mp->{pp_phat}       : CCS::Nd ($NBoundsK, $NPrevTargets)
+##  + $ctrSparsePdlDistNd may be undef, in which case it's ignored
 ##  + FIXME: pdl-ize
 sub updateProfileDists {
+  my ($mp,$wvdist,$cbdist,$wbdist) = @_;
+
+  my $wenum   = $wvdist->{enum}{enums}[0];
+  my $venum   = $wvdist->{enum}{enums}[1];
+  my $tenum   = $mp->{tenum};
+  my $cbenum  = $mp->{cbenum};
+  my $cenum   = $mp->{cenum};
+  my $lbenum  = $mp->lbenum();
+
+  my $tenum_k  = $mp->{tenum_k};
+  my $cids_ltk = $mp->{clusterids};
+  #my $c2tk     = $mp->{c2tk};
+
+  my $Nc      = $cenum->size;
+  my $Ncb     = $cbenum->size;
+  my $Nt      = $tenum->size;
+  my $Ntk     = $tenum_k->size;
+
+  #my $phat = $mp->{pp_phat}; ##-- ??
+
+  ##-- OLD
+  my $fwb_pdl  = zeroes(double, $Ntk, $Ncb);
+  my $fcb_pdl  = (defined($cbdist) ? zeroes(double, $Nc,  $Ncb) : undef);
+  my $phat     = $mp->{phat} * $mp->{phatm};
+  $phat       /= $phat->sumover->slice("*1,");                         ##-- ($NBoundClusters, $NPrevTargets)
+  $phat        = $phat->inplace->setnantobad->inplace->setbadtoval(0); ##-- hack
+
+  my $phat_ccs = $phat->toccs->badmissing->nanmissing;
+  $phat_ccs   /= $phat_ccs->sumover->dummy(0,1);
+
+  ##-- $c2cb->at($ci) = $cbenum->index( $cenum->symbol($ci) )
+  ##   + used to index {cbenum} distribution PDLs for non-literal class-bounds
+  my $c2cb = pdl(long, [ @{$cbenum->{sym2id}}{ @{$cenum->{id2sym}} } ]);
+
+  my ($key,$f, $w,$v, $ws,$wi, $vs,$vi, $Pbv, $opdl);
+  while (($key,$f)=each(%{$wvdist->{nz}})) {
+    ($w,$v) = $wvdist->split($key);
+
+    ##-- get target-index ($wi)
+    $ws = $wenum->{id2sym}[$w];
+    $wi = $tenum_k->{sym2id}{$ws};
+    if (defined($wi)) {
+      ##-- target is new: add data to $fwb_pdl
+      $opdl = $fwb_pdl;
+    } elsif (defined($fcb_pdl)) {
+      ##-- target is old: add associated class-data to $fcb_pdl
+      $opdl = $fcb_pdl;
+      $wi   = $cids_ltk->at($tenum->{sym2id}{$ws}); ##-- HACK: no smearing
+    } else {
+      ##-- totally bizarre target, or $ctrDistNaryDir was undef
+      next;
+    }
+
+    ##-- get bound-index ($vi)
+    $vs  = $venum->{id2sym}[$v];
+
+    if (exists($lbenum->{sym2id}{$vs})) {
+      ##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
+      $vi = $cbenum->{sym2id}{$vs};
+      $opdl->slice("$wi,$vi") += $f;
+    } elsif ($mp->{use_cbounds}) {
+      ##-- bound-word is a previous target
+      $vi = $tenum->{sym2id}{$vs};
+      $Pbv                                 = $phat->slice(",($vi)");
+      $opdl->slice("($wi)")->index($c2cb) += $Pbv * $f;
+    }
+  }
+
+  $mp->{ugs_k} += $fwb_pdl->xchg(0,1)->sumover; ##-- new stage-local target unigrams, may be needed later
+
+  ##-- output: {ctrdist}
+  if (defined($cbdist)) {
+    @$cbdist{qw(nfields sep enum)} = (@$wvdist{qw(nfields sep)},
+				      MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
+							    enums=>[$cenum, $cbenum]));
+    MUDL::PdlDist->new(pdl=>$fcb_pdl, enum=>$cbdist->{enum})->toEDist($cbdist);
+  }
+
+  @$wbdist{qw(nfields sep enum)} = (@$wvdist{qw(nfields sep)},
+				    MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
+							  enums=>[$tenum_k, $cbenum]));
+  MUDL::PdlDist->new(pdl=>$fwb_pdl, enum=>$wbdist->{enum})->toEDist($wbdist);
+
+  return;
+}
+
+sub updateProfileDists_OLD {
   my ($mp,$wvdist,$cbdist,$wbdist) = @_;
 
   my $wenum   = $wvdist->{enum}{enums}[0];
