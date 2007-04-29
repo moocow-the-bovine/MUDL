@@ -92,7 +92,9 @@ sub shadow {
   ##-- save temps: pdls
   my (%pdtmp);
   foreach (qw(pleft pright ptugs pbugs)) {
+    next if (!defined($lr->{$_}));
     $pdtmp{$_} = $lr->{$_};
+    #$lr->{$_} = ref($pdtmp{$_})->new();
     delete($lr->{$_});
   }
 
@@ -115,7 +117,10 @@ sub shadow {
     $lr->{$_}{nz} = $nztmp{$_};
   }
   ##-- restore temps: pdls
-  $lr->{$_}  = $pdtmp{$_} foreach (qw(pleft pright ptugs pbugs));
+  foreach (qw(pleft pright ptugs pbugs)) {
+    $lr->{$_}  = $pdtmp{$_};
+    $lr2->{$_} = $lr->{$_}->new;
+  }
 
   return $lr2;
 }
