@@ -10,6 +10,7 @@
 package MUDL::Make::Config::MetaProfile::EM;
 use MUDL::Make::Config::MetaProfile;
 use MUDL::CmdUtils qw(load loadModule);
+use MUDL::Corpus::Profile::PdlFile::ITagEval::Summary;
 use IO::File;
 use Carp;
 use strict;
@@ -35,9 +36,9 @@ our $DEBUG = 0;
 ##     targets  => $targets_str,    ##-- default: 'all'
 ##
 ##  + re-implemented MUDL::Make::Config::MetaProfile::EM from MUDL::Make::Config::MetaProfile
-##     eval_global    => $global_eval_summary,    ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
-##     eval_targets   => $target_eval_summary,    ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
-##     eval_targets_k => $targets_k_eval_summary, ##-- a MUDL::Corpus::Profile::ITagEval::Summary object
+##     eval_global    => $global_eval_summary,    ##-- a MUDL::Corpus::Profile::PdlFile::ITagEval::Summary
+##     eval_targets   => $target_eval_summary,    ##-- a MUDL::Corpus::Profile::PdlFile::ITagEval::Summary
+##     eval_targets_k => $targets_k_eval_summary, ##-- a MUDL::Corpus::Profile::PdlFile::ITagEval::Summary
 ##     mpsummary      => \%info,                  ##-- as returned by $mp->getSummaryInfo() [base data]
 sub new {
   my $that = shift;
@@ -63,7 +64,7 @@ sub clear {
   my $cfg = shift;
   $cfg->SUPER::clear();
 
-  $cfg->{targets} = 'em-global-eval-summary em-tgs-eval-summary em-tgs-k-eval-summary';
+  $cfg->{targets} = 'em-global-eval em-tgs-eval em-tgs-k-eval';
   $cfg->{userfile} = 'user.mak';
   delete(@$cfg{qw(eval_global eval_targets eval_targets_k mpsummary)});
 
@@ -98,17 +99,17 @@ sub acquire {
   ##-- load eval (summary): global
   my ($file);
   $file = "${filebase}.t-${tbase}.eval.summary.bin";
-  $cfg->{eval_global} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
+  $cfg->{eval_global} = MUDL::Corpus::Profile->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load global-eval file '$file': $!");
 
   ##-- load eval (summary): targets
   $file = "${filebase}.tgs.t-${tbase}.eval.summary.bin";
-  $cfg->{eval_targets} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
+  $cfg->{eval_targets} = MUDL::Corpus::Profile->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load target-eval file '$file': $!");
 
   ##-- load eval (summary): targets_k
   $file = "${filebase}.tgs-k.t-${tbase}.eval.summary.bin";
-  $cfg->{eval_targets_k} = MUDL::Corpus::Profile::ITagEval->loadFile($file)
+  $cfg->{eval_targets_k} = MUDL::Corpus::Profile->loadFile($file)
     or confess(ref($cfg),"::acquire(): could not load targets-k-eval file '$file': $!");
 
   return $cfg;
@@ -173,53 +174,4 @@ sub reacquire {
 }
 
 
-1;
-
-##======================================================================
-## Docs
-=pod
-
-=head1 NAME
-
-MUDL - MUDL Unsupervised Dependency Learner
-
-=head1 SYNOPSIS
-
- use MUDL;
-
-=cut
-
-##======================================================================
-## Description
-=pod
-
-=head1 DESCRIPTION
-
-...
-
-=cut
-
-##======================================================================
-## Footer
-=pod
-
-=head1 ACKNOWLEDGEMENTS
-
-perl by Larry Wall.
-
-=head1 AUTHOR
-
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
-
-=head1 COPYRIGHT
-
-Copyright (c) 2006, Bryan Jurish.  All rights reserved.
-
-This package is free software.  You may redistribute it
-and/or modify it under the same terms as Perl itself.
-
-=head1 SEE ALSO
-
-perl(1)
-
-=cut
+1; ##-- make perl happy

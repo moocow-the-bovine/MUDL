@@ -917,18 +917,15 @@ sub _buffer {
 
 ## $sequencePdl = $hmm->sentence2sequence($mudl_sentence)
 ##   + converts $mudl_sentence to a valid pdl sequence
-##   + adds pseudo-elements bos, eos to sequence
 sub sentence2sequence {
   my ($hmm,$s) = @_;
   my ($id);
   return pdl(long, [
-		    #$hmm->{oenum}->index($hmm->{bos}),
 		    (map {
 		      (defined($id=$hmm->{oenum}->index(ref($_) ? $_->text : $_))
 		       ? $id
 		       : $hmm->{oenum}->index($hmm->{unknown}))
 		    } @$s),
-		    #$hmm->{oenum}->index($hmm->{eos}),
 		   ]);
 }
 
@@ -1433,11 +1430,19 @@ sub fbPath {
 ## Viterbi: CorpusIO style / MUDL::Corpus::Filter overrides
 
 ## $filter = $hmm->viterbiFilter(%args)
-#   + returns a MUDL::Corpus::Filter::Viterbi for this HMM, shared
+##  + returns a MUDL::Corpus::Filter::Viterbi for this HMM, shared
 sub viterbiFilter {
   my $hmm = shift;
   require MUDL::Corpus::Filter::Viterbi;
   return MUDL::Corpus::Filter::Viterbi->new(%$hmm,@_);
+}
+
+## $filter = $hmm->viterbiPdlFilter(%args)
+##  + returns a MUDL::Corpus::Filter::PdlFilter::Viterbi for this HMM, shared
+sub viterbiPdlFilter {
+  my $hmm = shift;
+  require MUDL::Corpus::Filter::PdlFilter::Viterbi;
+  return MUDL::Corpus::Filter::PdlFilter::Viterbi->new(hmm=>$hmm,@_);
 }
 
 ## \@sentence = $hmm->viterbiTagSentence(\@sentence)
@@ -1451,6 +1456,7 @@ sub viterbiTagSentence {
   }
   return $s;
 }
+
 
 
 ##--------------------------------------------------------------
