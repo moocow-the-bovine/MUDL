@@ -169,7 +169,8 @@ sub finishPdlProfile {
   my $tag1enum = $eval->{tag1enum} = $buf1->{enums}[$eval->{tag1a}];
   my $tag2enum = $eval->{tag2enum} = $buf2->{enums}[$eval->{tag2a}];
   my $txtenum  = $eval->{txtenum} = $buf2->{enums}[0];
-  delete($eval->{txtenum});       ##-- don't save text enum
+  delete($eval->{txtenum});                ##-- don't save text enum
+  $tag1enum->addSymbol($eval->{unknown1}); ##-- ensure that 'unknown' pseudo-tag exists
 
   my $Ntags1   = $tag1enum->size; ##-- $Ntags1:  number of (tag1) types (including unknowns)
   my $Ntags2   = $tag2enum->size; ##-- $Ntags2:  number of (tag2) types
