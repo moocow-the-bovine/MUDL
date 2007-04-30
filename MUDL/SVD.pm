@@ -19,7 +19,11 @@ our @ISA = qw(MUDL::Object);
 ## $svd = $class_or_obj->new(%args)
 ##  + %args
 ##    ##-- configuration
-##    r        => $ndims,     ##-- number of target dimensions (0 for no svd)
+##    r        => $r,         ##-- number of target dimensions (0 for no svd)
+##                            ##   + if ( 1 <= $r <= $d ) : number of reduced dimensions
+##                            ##   + if ( 0 <= $r <   1 ) : coefficient: r' = ceil($r*$d)
+##                            ##   + if (-1 <  $r <   0 ) : log-coeff  : r' = ceil(exp($r*log($d)))
+##    rdims    => $ndims,     ##-- expanded number of dimensions corresponding to $r
 ##    maxiters => $maxiters,  ##-- max Lanczos iterations (default = 2*$r)
 ##    kappa    => $kappa,     ##-- tolerance (default=1e-6)
 ##    endl     => $end_l,     ##-- left interval endpoint for unwanted eigenvalues (-1e-30)
@@ -78,20 +82,30 @@ sub computeccs {
   my $d = $ptr->dim(0);
   $n    = $rowids->max+1 if (!$n);
 
+  ##-- detect $r coefficients
+  if ($r < 0) {
+    $r = int(0.5+exp(-$r*log($d)));
+  } elsif ($r < 1) {
+    $r = int(0.5+$r*$d);
+  }
+
+  $r = $d if ($r > $d); ##-- weak sanity check
+  $svd->{rdims} = $r;   ##-- ... set dims
+
   ##-- pointer hacking
   $ptr->reshape($ptr->nelem+1);
   $ptr->set(-1, $rowids->nelem);
 
   ##-- defaults
-  $svd->{maxiters} ||= 2*$r;
   my $maxiters = $svd->{maxiters};
+  $maxiters ||= 2*$r;
 
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
   my $vt = zeroes(double, $d, $r);
 
   svdlas2($ptr,$rowids,$nzvals,$n,
-	  $svd->{maxiters}, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
+	  $maxiters, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
 	  $ut, $s, $vt);
 
   $svd->{u} = $ut->xchg(0,1);
@@ -112,9 +126,6 @@ sub compute {
   $svd->{r} = $r;
   return $svd if (!$r);
 
-  $svd->{maxiters} ||= 2*$r;
-  my $maxiters = $svd->{maxiters};
-
   my ($d,$n) = $a->dims;
 
   ##-- sanity check: no svd if $r >= $d
@@ -127,14 +138,26 @@ sub compute {
   #  return $svd;
   #}
 
+  ##-- detect $r coefficients
+  if ($r < 0) {
+    $r = int(0.5+exp(-$r*log($d)));
+  } elsif ($r < 1) {
+    $r = int(0.5+$r*$d);
+  }
+
   ##-- back to ye olde grinde
-  $r = $svd->{r} = $d if ($r > $d); ##-- weak sanity check
+  $r = $d if ($r > $d); ##-- weak sanity check
+  $svd->{rdims} = $r;   ##-- ... set dims
+
+  my $maxiters = $svd->{maxiters};
+  $maxiters   ||= 2*$r;
+
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
   my $vt = zeroes(double, $d, $r);
 
   svdlas2d($a,
-	   $svd->{maxiters}, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
+	   $maxiters, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
 	   $ut, $s, $vt);
 
   $svd->{u} = $ut->xchg(0,1);
@@ -155,7 +178,7 @@ sub compute {
 ##  + just returns $a unless $svd->{r} is set to a true value
 sub apply {
   my ($svd,$a) = @_;
-  return $a if ($svd->{r} <= 0 || $svd->{r} >= $a->dim(0)); ##-- sanity check
+  return $a if ($svd->{r}==0 || $svd->{rdims} >= $a->dim(0)); ##-- sanity check
 
   ##-- sanity check(s)
   my ($d,$na) = $a->dims;

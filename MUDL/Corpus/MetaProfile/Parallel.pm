@@ -52,11 +52,10 @@ our @ISA = qw(MUDL::Corpus::MetaProfile::Attach);
 ##  clusterids => $pdl,     ## pdl($nclusters_total) : best cluster-ids
 ##  tenum_k    => $enum,    ## current (token) targets only
 ##  tenum_ltk  => $enum,    ## previous (token) targets only
-##  #tk2c => \%idmap,       ## maps current target-ids to previous cluster-ids: {$tid_k   => $cid_lek, ...}
-##  #c2tk => \%idmap,       ## maps previous cluster-ids to current target-ids: {$cid_lek => $tid_k,   ...}
-##  #tk2t => \%idmap,       ## maps current target-ids to global target-ids:    {$tid_k   => $tid_lek, ...}
-##  #t2tk => \%idmap,       ## maps global target-ids to current target-ids:    {$tid_lek => $tid_k,   ...}
-##  ugs_k => $pdl,          ## pdl($n): expected unigram pseudo-frequency (targets_k u clusters_{k-1})
+##  tk2t => $xlpdl,         ## maps current target-ids to global target-ids:    $tid_k   => $tid_lek
+##  #t2tk => $xlpdl,        ## maps global target-ids to current target-ids:    $tid_lek => $tid_k_or_-1
+##  ugs_k  => $pdl,         ## pdl($ntgs_k): empirical unigram frequency for T_k
+##  ugs_kz => $pdl,         ## pdl($ntgs_k): expected co-occurrence frequency for T_k
 ##  ##
 ##  ##-- messages
 ##  verbose => $level
@@ -178,32 +177,23 @@ sub update {
 
   ##-- tenum_k: new targets
   my $tenum_k = $mp->{tenum_k} = MUDL::Enum->new();
-  my $tk2t = $mp->{tk2t} = {};
-  my $t2tk = $mp->{t2tk} = {};
-  my ($tid,$tid_k);
-  foreach $tid (grep {!exists($tenum_ltk->{sym2id}{$_})} (@{$prof->{targets}{id2sym}})) {
-    $tid_k = $tenum_k->addSymbol($tid);
-    $t2tk->{$tid}   = $tid_k;
-    $tk2t->{$tid_k} = $tid;
-  }
-  $mp->vmsg($vl_info, "update(): ntargets_k   = ", $tenum_k->size, "\n");
-  $mp->{stage_info}{ntgs_k} = $tenum_k->size;
+  @{$tenum_k->{id2sym}}  = grep {!exists($tenum_ltk->{sym2id}{$_})} @{$prof->{targets}{id2sym}};
+  $tenum_k->{sym2id}{ $tenum_k->{id2sym}[$_] } = $_ foreach (0..$#{$tenum_k->{id2sym}});
+
+  my $tk2t = $mp->{tk2t} = $tenum_k->xlatePdlTo($mp->{tenum},badval=>-1); ##-- $tk2t->at($tid_k  ) = $tid_lek
+  #my $t2tk = $mp->{t2tk} = $mp->{tenum}->xlatePdlTo($tenum_k,badval=>-1); ##-- $t2tk->at($tid_lek) = $tid_k_or_-1
+  ##-- it should be the case that: all( $tk2t == sequence($tk2t->nelem)+256 )
+
+  ##-- update: stg2ntgs
+  $mp->{stg2ntgs} = $mp->{stg2ntgs}->reshape($mp->{stage});
+  $mp->{stg2ntgs}->set($mp->{stage}-1, $tenum_k->size);
 
   ##-- update: curprof
   $mp->vmsg($vl_info, "update(): curprof ~ f_{<=k}(d, c_b, t_k   )\n");
-  #my ($ctrprof,$curprof) = $mp->populateProfiles($prof); ##-- attach
   my $curprof = $mp->populateProfile($prof);
 
   ##-- update: info & report
-  my $ugs_tgs_k = $mp->{ugs_k}->slice("0:".($mp->{stage_info}{ntgs_k}-1));
-  @{$mp->{stage_info}}{qw(avg prms median min max adev rms)} = map { $_->sclr } $ugs_tgs_k->stats;
-  $mp->{stage_info}{logavg} = $ugs_tgs_k->log->average->exp->sclr;
-  $mp->vmsg($vl_info, sprintf("update(): unigrams: min(f_k(w))=%.2f\n", $mp->{stage_info}{min}));
-  $mp->vmsg($vl_info, sprintf("update(): unigrams: max(f_k(w))=%.2f\n", $mp->{stage_info}{max}));
-  $mp->vmsg($vl_info, sprintf("update(): unigrams: avg(f_k(w))=%.2f\n", $mp->{stage_info}{avg}));
-  $mp->vmsg($vl_info, sprintf("update(): unigrams: logavg(f_k(w))=%.2f\n", $mp->{stage_info}{logavg}));
-  $mp->vmsg($vl_info, sprintf("update(): unigrams: median(f_k(w))=%.2f\n", $mp->{stage_info}{median}));
-
+  $mp->{stage_info} = $mp->getStageInfo({});
 
   ##-- update: cluster: T_k: toPDL
   $mp->vmsg($vl_info, "update(): T_k : toPDL()\n");
@@ -295,31 +285,43 @@ sub populateProfile {
   my ($mp,$prof) = @_;
   $prof = $mp->{prof} if (!defined($prof));
 
-  ##-- profiles: step 0: copy profile (hack: shadow distributions)
+
+  ##-- profiles: step 0a: copy source profile (hack: shadow distributions)
   my $ctrprof = undef; ##-- we don't need to re-profile centers here
   my $curprof = $mp->{curprof} = $prof->shadow();
 
-  ##-- profiles: step 0: allocate unigram dist
-  $mp->{ugs_k} = zeroes(double, $mp->{tenum_k}->size);
+  ##-- map ids (profile->mp)
+  ##  + $pb2cb : ($NProfileBounds , $NMetaProfileBounds)
+  ##  + $pt2c  : ($NProfileTargets, $NMetaProfileClusters)
+  ##  + $pt2tk : ($NProfileTargets, $NTargets_k)
+  my $pb2cb         = $mp->{pb2cb}         = $mp->xlateBoundsPdl($prof->{bounds});
+  my ($pt2c,$pt2tk) = @$mp{qw(pt2c pt2tk)} = $mp->xlateTargetPdls($prof->{targets});
 
-  ##-- profiles: step 1: tweak profile neighbor-distributions
-  $mp->updateProfileDists($prof->{left},  undef,  $curprof->{left});
-  $mp->updateProfileDists($prof->{right}, undef,  $curprof->{right});
-  $mp->{ugs_k}  /= 2; ##-- factor out l,r doubling
+  ##-- update underlying profile (sparse) pdls
+  $mp->updateProfileDists($prof->{pleft},  undef, $curprof->{pleft});
+  $mp->updateProfileDists($prof->{pright}, undef, $curprof->{pright});
 
-  ##-- profiles: step 1b: update unigram dist(s)
+  ##-- update ugs_k, ugs_kz
+  my $pt2tk_xi = $mp->{pt2tk_xi};
+  my $pt2tk_xw = $mp->{pt2tk_xw};
+  my $ugs_p = $prof->targetUgPdl;
+  my $ugs_k = $mp->{ugs_k} = zeroes(double,$mp->{tenum_k}->size);
+  $ugs_k->index($pt2tk_xi->index($pt2tk_xw)) .= $ugs_p->index($pt2tk_xw);
+  ##
+  my $ugs_kz = $curprof->{pleft}{pdl}->xchg(0,1)->sumover->todense;
+  $ugs_kz   += $curprof->{pright}{pdl}->xchg(0,1)->sumover->todense;
+  $mp->{ugs_kz} = $ugs_kz->float / 2;
+
+  ##-- profiles: update unigram dists
   $mp->updateProfileUnigramDists($prof, undef, $curprof);
 
-  ##-- profiles: step 2a: replace enums: curprof
+  ##-- profiles: replace enums: curprof
   foreach (@{$curprof->{enum}{enums}}) {
     $_ = $mp->{cbenum}  if ($_ eq $curprof->{bounds});
     $_ = $mp->{tenum_k} if ($_ eq $curprof->{targets});
   }
   $curprof->{bounds}  = $mp->{cbenum};
   $curprof->{targets} = $mp->{tenum_k};
-
-  ##-- profiles: step 2b: replace enums: ctrprof
-  # (not needed)
 
   return $curprof;
 }
@@ -368,19 +370,20 @@ sub updatePhat {
   my $mp = shift;
 
   ##-- get ^p_{<k}( c_{k-1} | t_{<k} )  ~ previous iteration
-  $mp->vmsg($vl_info, "updatePhat(): ^p_{<k}( c_{k-1} | t_{<k} )\n");
+  #$mp->vmsg($vl_info, "updatePhat(): ^p_{<k}( c_{k-1} | t_{<k} )\n");
   my $phat_ltk  = $mp->{phat};
   my $phatm_ltk = $mp->{phatm};
 
   ##-- get id-translation pdl: [$id_Tk] = $id_Tlek
-  my $tk2t = pdl(long, [ @{$mp->{tenum}{sym2id}}{ @{$mp->{tenum_k}{id2sym}} } ]);
+  #my $tk2t = pdl(long, [ @{$mp->{tenum}{sym2id}}{ @{$mp->{tenum_k}{id2sym}} } ]);
+
 
   ##-- get ^p_k( c_k | t_k + c_{k-1} )  ~ current iteration
-  my $beta = $mp->beta;
-  $mp->vmsg($vl_info, "updatePhat(): avg(beta) = ", $beta->avg, "\n");
+  #my $beta = $mp->beta;
+  #$mp->vmsg($vl_info, "updatePhat(): avg(beta) = ", $beta->avg, "\n");
 
-  $mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
-  $mp->vmsg($vl_info, "            :         betamode  = ", $mp->{betamode}, "\n");
+  #$mp->vmsg($vl_info, "updatePhat(): membershipProbPdl ~ ^p_k( c_k | t_k + c_{k-1} )\n");
+  #$mp->vmsg($vl_info, "            :         betamode  = ", $mp->{betamode}, "\n");
   my $cm_k   = $mp->{cm_k};
   my $phat_k = zeroes(double, $cm_k->{nclusters}, $mp->{tenum_k}->size);
   my $d2pbeta = $mp->d2pbeta();
@@ -398,7 +401,7 @@ sub updatePhat {
   $mp->{tbeta}->slice("-".$phat_k->dim(1).":-1") .= $d2pbeta;
 
   ##-- allocate new ^p_{<=k}()
-  $mp->vmsg($vl_info, "updatePhat(): adjust ~ ^p_{<=k}( c_k | t_{<=k} )\n");
+  #$mp->vmsg($vl_info, "updatePhat(): adjust ~ ^p_{<=k}( c_k | t_{<=k} )\n");
   my $phat  = $mp->{phat}  = zeroes(double, $mp->{cenum}->size, $mp->{tenum}->size);
   my $phatm = $mp->{phatm} = zeroes(byte,   $phat->dims);
 
@@ -406,21 +409,19 @@ sub updatePhat {
   ## phat: create: ^p_{<=k} = p_k u p_{<k}
 
   ##-- phat: create: adopt old targets
-  $mp->vmsg($vl_info, "updatePhat(): add<k ~ ^p_{<=k} u= ^p_{<k}\n");
-  my $tenum     = $mp->{tenum};
-  my $tenum_ltk = $mp->{tenum_ltk};
-  my $tenum_k   = $mp->{tenum_k};
-  my $nC_ltk    = $phat_ltk->dim(0);
+  #$mp->vmsg($vl_info, "updatePhat(): add<k ~ ^p_{<=k} := p_{<k}\n");
+  my $tk2t = $mp->{tk2t};
   $phat->slice ("0:".($phat_ltk->dim(0)-1).",0:".($phat_ltk->dim(1)-1)) .= $phat_ltk;
   $phatm->slice("0:".($phat_ltk->dim(0)-1).",0:".($phat_ltk->dim(1)-1)) .= $phatm_ltk;
 
   ##-- phat: create: add new targets
-  $mp->vmsg($vl_info, "updatePhat(): add=k ~ ^p_{<=k} u= t_k\n");
+  #$mp->vmsg($vl_info, "updatePhat(): add=k ~ ^p_{<=k} u= t_k\n");
   $phat->slice ("-".($phat_k->dim(0)).":-1,:")->dice_axis(1,$tk2t) .= $phat_k;
   $phatm->slice("-".($phat_k->dim(0)).":-1,:")->dice_axis(1,$tk2t) .= $phatm_k;
 
   $mp->{phat}  = $phat;
   $mp->{phatm} = $phatm;
+
   return $phat;
 }
 
@@ -447,8 +448,9 @@ sub updateCm {
   my $cbenum  = $mp->{cbenum};
 
   ##-- id-translation pdl: [$id_Tk] = $id_Tlek
-  $tk2t = pdl(long, [ @{$mp->{tenum}{sym2id}}{ @{$mp->{tenum_k}{id2sym}} } ])
-    if (!defined($tk2t));
+  #  $tk2t = pdl(long, [ @{$mp->{tenum}{sym2id}}{ @{$mp->{tenum_k}{id2sym}} } ])
+  #    if (!defined($tk2t));
+  $tk2t = $mp->{tk2t} if (!defined($tk2t));
 
   ##-- update: cm: create new cm
   $mp->vmsg($vl_info, "updateCm(): cm\n");
@@ -471,6 +473,7 @@ sub updateCm {
 
   $cids->slice("0:".($nT_ltk-1)) .= $cids_ltk;
   $cids->index($tk2t)            .= $cids_k + $nC_ltk;
+  $mp->{clusterids}               = $cids;
 
   ##-- update: cluster enum
   $mp->vmsg($vl_info, "updateCm(): cluster enum(s)\n");

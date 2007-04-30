@@ -9,8 +9,11 @@
 package MUDL::Corpus::MetaProfile;
 use MUDL::Corpus::Profile;
 use MUDL::Cluster::Method;
+use MUDL::Corpus::Profile::PdlProfile::Bigrams;
+use MUDL::PdlDist::SparseNd;
 use PDL;
 use PDL::Cluster;
+use PDL::CCS::Nd;
 use MUDL::CmdUtils qw();
 use Carp;
 
@@ -234,7 +237,7 @@ sub toMap {
 ## Export: to HMM
 ##======================================================================
 
-## $hmm = $mp->toHMM($bigrams,%args)
+## $hmm = $mp->toHMM($bigrams_pdldist_sparsend,%args)
 ##   + %args are passed to MUDL::HMM->New(),
 ##     execpt for:
 ##      arcmode => $mode, ##-- either 'uniform' (default) or 'estimate'
@@ -244,7 +247,7 @@ sub toMap {
 ##   + $unigrams is a MUDL::Dist (or similar) representing word-unigrams,
 ##     used for inversion
 sub toHMM {
-  my ($mp,$bgd,%args) = @_;
+  my ($mp,$bgpd,%args) = @_;
   require MUDL::HMM;
 
   $mp->vmsg($vl_info, "toHMM(): new HMM\n");
@@ -263,25 +266,20 @@ sub toHMM {
   ##-- add enums
   $mp->vmsg($vl_info, "toHMM(): enums\n");
   my $tenum = $mp->{tenum};
-
   #my $cenum = $mp->{cm}->clusterEnum;
   my $cbenum = $mp->{cbenum};
   my $lbenum = $mp->lbenum(); ##-- use method here for backwards-compatibility
-  my $qenum = $hmm->{qenum};
-  my $oenum = $hmm->{oenum};
-
-  $qenum->addSymbol($_)
-    foreach (grep
-	     #{ $_ ne $mp->{bos} && $_ ne $mp->{eos}  }
-	     { !exists($lbenum->{sym2id}{$_}) }
-	     @{$cbenum->{id2sym}}
-	    );
-
-  $oenum->addSymbol($_)
-    foreach (grep
-	     { $_ ne $mp->{bos} && $_ ne $mp->{eos} }
-	     @{$tenum->{id2sym}}
-	    );
+  my $qenum  = $hmm->{qenum};
+  my $oenum  = $hmm->{oenum};
+  my $wenum  = $bgpd->{enum}{enums}[0]; ##-- bigram enum
+  ##
+  ##-- HMM enums: qenum
+  push(@{$qenum->{id2sym}}, grep {!exists($lbenum->{sym2id}{$_})} @{$cbenum->{id2sym}});
+  $qenum->{sym2id}{$qenum->{id2sym}[$_]}=$_ foreach (0..$#{$qenum->{id2sym}});
+  ##
+  ##-- HMM enums: oenum
+  push(@{$oenum->{id2sym}}, @{$tenum->{id2sym}});
+  $oenum->{sym2id}{$oenum->{id2sym}[$_]}=$_ foreach (0..$#{$oenum->{id2sym}});
 
   $N = $qenum->size;
   $M = $oenum->size;
@@ -292,15 +290,22 @@ sub toHMM {
   my $unknown = $hmm->{unknown};
   my $uid     = $oenum->{sym2id}{$unknown};
 
-  ##-- $o2o : HMM O indices of all known observations
-  my $o2o = sequence(long,$M);
-  $o2o    = $o2o->where($o2o != $uid);
+  ##-- $o2o : HMM "O" indices of all known observations
+  my ($o2o);
+  if    ($uid==0)      { $o2o = sequence(long,$M-1)+1; }
+  elsif ($uid==($M-1)) { $o2o = sequence(long,$M-1); }
+  else                 { $o2o = sequence(long,$uid)->append(sequence(long,$M-($uid+1))+($uid+1)); }
 
   ##-- $q2c->at($qid) = $clusterid
   my $q2c = pdl(long, [ @{$cbenum->{sym2id}}{ @{$qenum->{id2sym}} } ]);
 
   ##-- $o2t->at($oid) = $targetid
   my $o2t = pdl(long, [ @{$tenum->{sym2id}}{ @{$oenum->{id2sym}}[$o2o->list] } ]);
+
+  ##-- $t2w : $targetid => $wid
+  ##   $t2o : $oid      => $wid
+  my $t2w = pdl(long, [ @{$wenum->{sym2id}}{ @{$tenum->{id2sym}} } ]);
+  my $o2w = pdl(long, [ @{$wenum->{sym2id}}{ @{$oenum->{id2sym}}[$o2o->list] } ]);
 
   ##----------------------------
   ## create observation frequency matrix
@@ -344,13 +349,7 @@ sub toHMM {
   elsif ($bmode =~ /^invert/) {
     ##-- create observation probability matrix: step 1: unigrams (old indices)
     $mp->vmsg($vl_info, "toHMM(): target unigram PDL\n");
-    my $ugd = $bgd->project1(0);
-    my $ugp = zeroes($args{type}, 1, $tenum->size);
-    my ($w,$f,$wid);
-    while (($w,$f)=each(%$ugd)) {
-      next if (!defined($wid=$tenum->index($w))); ##-- ignore non-targets (?)
-      $ugp->set(0,$wid, $f);
-    }
+    my $ugp = $bgpd->{pdl}->sumover->todense->index($t2w)->convert($args{type})->slice("*1,");
 
     ##-- create observation probability matrix: step 2: invert
     $mp->vmsg($vl_info, "toHMM(): observation probabilities\n");
@@ -366,7 +365,7 @@ sub toHMM {
     ##
     #$bf->dice_axis(1,$o2o) .= $phat->dice($q2c,$o2t) * $ugp->dice_axis(1,$o2t);
     my $bf_o = $bf->dice_axis(1,$o2o);
-    $bf_o .= $phat->dice($q2c,$o2t);
+    $bf_o   .= $phat->dice($q2c,$o2t);
 
     if ($bmode =~ /\+bonus-(\d+)/) {
       my $bonus = $1;
@@ -439,7 +438,10 @@ sub toHMM {
     #($cstr=$qenum->symbol($cid)) ~= tr/0-9/A-J/;
     #$cstr .= join('_', map { $oenum->symbol($_) } $q2o->slice(",($cid)")->list);
     ##--
-    $cstr = join('_', $qenum->symbol($cid), map { $oenum->symbol($_) } $o2o->index($q2o->slice(",($cid)"))->list);
+    $cstr = join('_',
+		 $qenum->{id2sym}[$cid],
+		 map { $oenum->{id2sym}[$_] } $o2o->index($q2o->slice(",($cid)"))->list
+		);
     $qenum->addIndexedSymbol($cstr, $cid);
   }
 
@@ -451,20 +453,19 @@ sub toHMM {
 
   if ($arcmode =~ /^est/) {
     $mp->vmsg($vl_info, "toHMM(): transition probabilities (mode=$arcmode)\n");
-    my ($w12, $f, $w1,$w2, $w1id,$w2id);
 
     ##-- bos,eos detection
     my ($bos,$eos) = @$mp{qw(bos eos)};
 
     ##-- temporary
-    my $phatd = $phat->dice_axis(0,$q2c);
-    my $prod1 = zeroes($af->type, $af->dim(0));
-    my $prod2 = zeroes($af->type, $af->dims);
+    #my $phatd = $phat->dice_axis(0,$q2c);
+    #my $prod1 = zeroes($af->type, $af->dim(0));
+    #my $prod2 = zeroes($af->type, $af->dims);
 
     ##-- 'estimate1': use hard assignments to estimate arc probabilities
     if ($arcmode eq 'estimate1') {
 
-      ##-- get hard cluster-id assignment
+      ##-- arcmode==estimate1: get hard cluster-id assignment
       my ($cids);
       if (defined($mp->{clusterids})) {
 	$cids = $mp->{clusterids};
@@ -474,37 +475,41 @@ sub toHMM {
 	$cids = $phat->maximum_ind;
       }
 
-      ##-- get translation vector: $c2q->at($cid) == $qid
-      my $c2q = pdl(long, [
-			   #@{$qenum->{sym2id}}{ @{$cbenum->{id2sym}} }
-			   #@{$qenum->{sym2id}}{ grep {!exists($lbenum->{sym2id}{$_})} @{$cbenum->{id2sym}} }
-			   @{$qenum->{sym2id}}{ @{$mp->{cenum}{id2sym}} }
-			  ]);
+      ##-- arcmode==estimate1: get (word->state) PDL::CCS::Nd translation matrix:
+      ##     $w2q($NWords,$NStates) : $wid -> cid(tid($w))
+      ##   + no BOS, EOS here yet
+      my $cenum  = $mp->{cenum};
+      my $w2t_xi = $wenum->xlatePdlTo($tenum, badval=>-1); ##-- $wid => $tid
+      my $w2t_xw = which($w2t_xi>=0);                      ##-- good($wid=>$tid)
+      my $xw2c   = $cids->index($w2t_xi->index($w2t_xw));  ##-- $wid => $cid
+      my $w2q    = PDL::CCS::Nd->newFromWhich(
+					      $w2t_xw->cat($xw2c)->xchg(0,1),
+					      ones(byte, $w2t_xw->dim(0)),
+					      missing => 0,
+					      pdims   => pdl(long, $wenum->size, $cenum->size),
+					     );
 
-      while (($w12,$f)=each(%{$bgd->{nz}})) {
-	($w1,$w2) = $bgd->split($w12);
+      ##-- arcmode==estimate1: get (state->state) transition frequencies: $af
+      ##     ( w2q (W, Q ) x bgww (W1,W2) ) -> bgwq(W1,Q2)
+      ##     ( bgwq(W1,Q2) x w2q^T(Q, W)  ) -> bgqq(Q1,Q2)
+      my $bgwq = $w2q  x $bgpd->{pdl};
+      my $bgqq = $bgwq x $w2q->xchg(0,1);
+      $bgqq->decode($af);
 
-	$w1id=$tenum->index($w1);
-	$w2id=$tenum->index($w2);
+      ##-- arcmode==estimate1: get (bos->state) transition frequencies: $pif
+      ##     ( w2q(W,Q) x bg_bosw(1, W2) ) -> bg_bosq(1,Q)
+      my $bg_bosw = $bgpd->{pdl}->dice_axis(0,$wenum->{sym2id}{$bos}); ##-- bg_bosw(1,W2)
+      my $bg_bosq = $w2q x $bg_bosw;
+      $pif .= $bg_bosq->decode->flat;
 
-	##-- dispatch
-	if (defined($w1id) && defined($w2id)) {
-	  ##-- normal case: w1 and w2 are 'real' targets: update af
-	  $af->dice( $c2q->at($cids->at($w1id)), $c2q->at($cids->at($w2id)) ) += $f;
-	}
-	elsif ($w1 eq $bos && defined($w2id)) {
-	  ##-- w1==bos: update pi
-	  $pif->dice( $c2q->at($cids->at($w2id)) ) += $f;
-	}
-	elsif ($w2 eq $eos && defined($w1id)) {
-	  ##-- w2==eos: update omega
-	  $omegaf->dice( $c2q->at($cids->at($w1id)) ) += $f;
-	} else {
-	  next;			##-- ignore "real" unknowns (?)
-	}
-      }
+      ##-- arcmode==estimate1: get (state->eos) transition frequencies: $omegaf
+      ##     ( bg_eosw(W1, 1) x w2q^T(Q,W) ) -> bg_eosq(Q,1)
+      my $bg_eosw = $bgpd->{pdl}->dice_axis(1,$wenum->{sym2id}{$eos});
+      my $bg_eosq = $bg_eosw x $w2q->xchg(0,1);
+      $omegaf .= $bg_eosq->decode->flat;
     }
-    ##-- 'estimateb': use unigram probabilities drawn from 'bf' matrix
+    ##--------------------------------------------------------------
+    ## 'estimateb': use unigram probabilities drawn from 'bf' matrix
     elsif ($arcmode eq 'estimateb') {
       ##-- (later)
       $mp->vmsg($vl_info, "toHMM(): arcmode='estimateb': delayed.\n");
@@ -513,37 +518,50 @@ sub toHMM {
       $omegaf .= 1;
     }
     else { #if ($arcmode eq 'estimate')
-      ##-- loop: 'estimate'
-      while (($w12,$f)=each(%{$bgd->{nz}})) {
-	($w1,$w2) = $bgd->split($w12);
+      ##--------------------------------------------------------------
+      ## 'estimate': use $phat to estimate transition probabilities
 
-	$w1id=$tenum->index($w1);
-	$w2id=$tenum->index($w2);
+      ##-- arcmode==estimate: get (word->state) PDL::CCS::Nd translation matrix:
+      ##   $w2q($NWords,$NStates) : ($wid,$cid) -> p($cid|$wid)
+      my $cenum   = $mp->{cenum};
+      my $w2t_xi  = $wenum->xlatePdlTo($tenum, badval=>-1);      ##-- $wid       => $tid
+      my $w2t_xw  = which($w2t_xi>=0);                           ##-- sequence() => $wid : good($wid=>$tid)
+      my $xw_phat = $phat * $mp->{phatm};                        ##-- ($cid,$tid) => p($cid|$tid)
+      $xw_phat = $xw_phat->dice($q2c,$w2t_xi->index($w2t_xw));   ##-- ($qid,good($tid)) => p($qid|$tid)
+      my $xw_phat_which  = $xw_phat->whichND;                    ##-- ($cid,$tid)
+      my $xw_phat_nzvals = $xw_phat->indexND($xw_phat_which);
 
-	##-- dispatch
-	if (defined($w1id) && defined($w2id)) {
-	  ##-- normal case: w1 and w2 are 'real' targets: update af
-	  PDL::mult( $phatd->slice(",($w1id)"),  $f,  $prod1, 0 );
-	  PDL::mult( $prod1, $phatd->slice(",$w2id")->xchg(0,1), $prod2, 0 );
-	  $af += $prod2;
-	} elsif ($w1 eq $bos && defined($w2id)) {
-	  ##-- w1==bos: update pi
-	  PDL::mult( $phatd->slice(",($w2id)"), $f, $prod1, 0 );
-	  $pif  += $prod1;
-	} elsif ($w2 eq $eos && defined($w1id)) {
-	  ##-- w2==eos: update omega
-	  PDL::mult( $phatd->slice(",($w1id)"), $f, $prod1, 0 );
-	  $omegaf += $prod1;
-	} else {
-	  next;			##-- ignore "real" unknowns (?)
-	}
-      }
+      my $w2q  = PDL::CCS::Nd->newFromWhich(
+					    $w2t_xw->cat($xw_phat_which->slice("(0),"))->xchg(0,1),
+					    $xw_phat_nzvals,
+					    missing => 0,
+					    pdims   => pdl(long, $wenum->size, $cenum->size),
+					   );
+
+      ##-- arcmode==estimate: get (state->state) transition frequencies: $af
+      ##     ( w2q (W, Q ) x bgww (W1,W2) ) -> bgwq(W1,Q2)
+      ##     ( bgwq(W1,Q2) x w2q^T(Q, W)  ) -> bgqq(Q1,Q2)
+      my $bgwq = $w2q  x $bgpd->{pdl};
+      my $bgqq = $bgwq x $w2q->xchg(0,1);
+      $bgqq->decode($af);
+
+      ##-- arcmode==estimate: get (bos->state) transition frequencies: $pif
+      ##     ( w2q(W,Q) x bg_bosw(1, W2) ) -> bg_bosq(1,Q)
+      my $bg_bosw = $bgpd->{pdl}->dice_axis(0,$wenum->{sym2id}{$bos}); ##-- bg_bosw(1,W2)
+      my $bg_bosq = $w2q x $bg_bosw;
+      $pif .= $bg_bosq->decode->flat;
+
+      ##-- arcmode==estimate: get (state->eos) transition frequencies: $omegaf
+      ##     ( bg_eosw(W1, 1) x w2q^T(Q,W) ) -> bg_eosq(Q,1)
+      my $bg_eosw = $bgpd->{pdl}->dice_axis(1,$wenum->{sym2id}{$eos});
+      my $bg_eosq = $bg_eosw x $w2q->xchg(0,1);
+      $omegaf .= $bg_eosq->decode->flat;
     }
   }
   else {
     $mp->vmsg($vl_info, "toHMM(): transition probabilities (mode=uniform)\n");
-    $af .= 1;
-    $pif .= 1;
+    $af     .= 1;
+    $pif    .= 1;
     $omegaf .= 1;
   }
 
