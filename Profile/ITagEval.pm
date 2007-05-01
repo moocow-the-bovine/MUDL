@@ -875,7 +875,7 @@ sub finish {
     while (($tag,$tagi)=each(%$tag1i)) {
       $tagi->{nwtypes} = $tag_to_ntypes{$tag}||0;
       $tagi->{wtype_density} = $tagi->{nwtypes} / $nwtypes;
-      $tag2i->{$tagi->{tbest}}{nwtypesi} += $tagi->{nwtypes};  ##-- inverse
+      $tag2i->{$tagi->{tbest}}{nwtypesi} += $tagi->{nwtypes} if (defined($tagi->{tbest}));  ##-- inverse
     }
 
     ##-- word-type info: tag2

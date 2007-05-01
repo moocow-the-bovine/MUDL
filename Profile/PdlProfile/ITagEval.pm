@@ -238,7 +238,7 @@ sub finishPdlProfile {
   ##-- dense joint matrix, handy here, but not stored
   my $jpdl                 = zeroes(long, $Ntags1,$Ntags2);
   $jpdl->indexND($vwhich) .= $vfreq;
-  my $jpdld                = $jpdl->convert(double); ##-- as double
+  my $jpdld                = $jpdl->convert(double);  ##-- as double
 
   ##-- basic data: txttag1: <tag1,text> -> f(tag1 && text) [sparse]
   $vvecs = zeroes($txtpdl->type, 2, $txtpdl->nelem);
@@ -329,7 +329,7 @@ sub finishPdlProfile {
   my $tag2i  = $eval->{tag2i} = {}; ##-- $tag2 => \%info_tag2
   my $tag2ia = [];
 
-  ##-- get unigram (tag1),(tag2) distributions
+  ##-- get unigram (tag1),(tag2) frequency distributions
   my $tag1d   = MUDL::PdlDist->new(enum=>$tag1enum, pdl=>$tag12_pdl->xchg(0,1)->sumover->todense);
   my $tag1dp  = $tag1d->{pdl};
   my $tag2d   = MUDL::PdlDist->new(enum=>$tag2enum, pdl=>$tag12_pdl->sumover->todense);
@@ -367,19 +367,19 @@ sub finishPdlProfile {
   $isbest12     *= $tag1kmask;                                 ##-- no "best" match for 'unknown'
   my $nbest2i    = $isbest12->convert(long)->sumover;          ##-- $tag2 => |{tag1 | tag2==best(tag2|tag1)}|
 
-  my $isbest21   = zeroes(ushort,$Ntags2,$Ntags1);             ##-- <tag2,tag1> =>  I($tag1==best(tag1|tag2))
+  my $isbest21   = zeroes(byte,$Ntags2,$Ntags1);               ##-- <tag2,tag1> =>  I($tag1==best(tag1|tag2))
   $isbest21->index2d(sequence(long,$Ntags2), $tag21best) .= 1;
   my $nbest1i    = $isbest21->convert(long)->sumover;          ##-- $tag1 => |{tag2 | tag1==best(tag1|tag2)}|
 
   ##-- get number of unknowns
-  my $nunk2 = $jpdl->slice("($unkid),:");
+  my $nunk2 = $jpdl->slice("($unkid),:");                      ##-- $tag2 => f(UNKNOWN,$tag2)
 
   ##-- f(u,tag1) = \sum_{tag2} p(u,tag1,tag2)    * N                 ##-- ML, marginals
-  ##             = \sum_{tag2} p(u|tag1,tag2)    * p(tag1,tag2) * N  ##-- assume u !<- tag1 | tag2
-  ##             = \sum_{tag2} p(u|     tag2)    * f(tag1,tag2)      ##-- ML
+  ##             = \sum_{tag2} p(u|tag1,tag2)    * p(tag1,tag2) * N  ##-- mult rule
+  ##             = \sum_{tag2} p(u|     tag2)    * f(tag1,tag2)      ##-- assume u !<- tag1 | tag2
   ##             = \sum_{tag2} f(u,tag2)/f(tag2) * f(tag1,tag2)      ##-- ML
   my $nunk1 = ($nunk2->convert(double)/$tag2dp * $jpdl->xchg(0,1))->sumover;
-  #$nunk1->set($unkid,0);                                             ##-- chop out 'unknowns'
+  #$nunk1->set($unkid,0);                                             ##-- chop out estimated f(unknown,unknown)?
   #$nunk1  = ($nunk1/$nunk1->sumover * $nunk2->sumover);
 
   ##-- initialize: tag1i
