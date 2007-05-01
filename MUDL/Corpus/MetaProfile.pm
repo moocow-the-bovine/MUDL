@@ -299,6 +299,9 @@ sub toHMM {
   ##-- $q2c->at($qid) = $clusterid
   my $q2c = pdl(long, [ @{$cbenum->{sym2id}}{ @{$qenum->{id2sym}} } ]);
 
+  ##-- $c2q->at($cid) = $qid
+  my $c2q = $mp->{cenum}->xlatePdlTo($qenum, badval=>-1);
+
   ##-- $o2t->at($oid) = $targetid
   my $o2t = pdl(long, [ @{$tenum->{sym2id}}{ @{$oenum->{id2sym}}[$o2o->list] } ]);
 
@@ -483,10 +486,10 @@ sub toHMM {
       my $w2t_xw = which($w2t_xi>=0);                      ##-- good($wid=>$tid)
       my $xw2c   = $cids->index($w2t_xi->index($w2t_xw));  ##-- $wid => $cid
       my $w2q    = PDL::CCS::Nd->newFromWhich(
-					      $w2t_xw->cat($xw2c)->xchg(0,1),
+					      $w2t_xw->cat($c2q->index($xw2c))->xchg(0,1),
 					      ones(byte, $w2t_xw->dim(0)),
 					      missing => 0,
-					      pdims   => pdl(long, $wenum->size, $cenum->size),
+					      pdims   => pdl(long, $wenum->size, $qenum->size),
 					     );
 
       ##-- arcmode==estimate1: get (state->state) transition frequencies: $af
@@ -527,15 +530,19 @@ sub toHMM {
       my $w2t_xi  = $wenum->xlatePdlTo($tenum, badval=>-1);      ##-- $wid       => $tid
       my $w2t_xw  = which($w2t_xi>=0);                           ##-- sequence() => $wid : good($wid=>$tid)
       my $xw_phat = $phat * $mp->{phatm};                        ##-- ($cid,$tid) => p($cid|$tid)
-      $xw_phat = $xw_phat->dice($q2c,$w2t_xi->index($w2t_xw));   ##-- ($qid,good($tid)) => p($qid|$tid)
+      $xw_phat   /= $xw_phat->sumover->slice("*1,");
+      #$xw_phat = $xw_phat->dice($q2c,$w2t_xi->index($w2t_xw));   ##-- ($qid,good($tid)) => p($qid|$tid)
       my $xw_phat_which  = $xw_phat->whichND;                    ##-- ($cid,$tid)
       my $xw_phat_nzvals = $xw_phat->indexND($xw_phat_which);
+      my $t2w_xi  = $tenum->xlatePdlTo($wenum, badval=>-1);
+      $xw_phat_which->slice("(1),") .= $t2w_xi->index($xw_phat_which->slice("(1),"));
+      $xw_phat_which->slice("(0),") .= $c2q->index($xw_phat_which->slice("(0),"));
 
       my $w2q  = PDL::CCS::Nd->newFromWhich(
-					    $w2t_xw->cat($xw_phat_which->slice("(0),"))->xchg(0,1),
+					    $xw_phat_which->slice("-1:0,"),
 					    $xw_phat_nzvals,
 					    missing => 0,
-					    pdims   => pdl(long, $wenum->size, $cenum->size),
+					    pdims   => pdl(long, $wenum->size, $qenum->size),
 					   );
 
       ##-- arcmode==estimate: get (state->state) transition frequencies: $af
@@ -611,7 +618,7 @@ sub toHMM {
 }
 
 ########################################################################
-## Description Length
+## Description Length : BUGGY
 ########################################################################
 
 ##------------------------------------------------------

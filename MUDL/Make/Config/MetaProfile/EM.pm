@@ -10,7 +10,7 @@
 package MUDL::Make::Config::MetaProfile::EM;
 use MUDL::Make::Config::MetaProfile;
 use MUDL::CmdUtils qw(load loadModule);
-use MUDL::Corpus::Profile::PdlFile::ITagEval::Summary;
+use MUDL::Corpus::Profile::PdlProfile::ITagEval;
 use IO::File;
 use Carp;
 use strict;

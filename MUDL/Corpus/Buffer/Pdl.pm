@@ -4,6 +4,8 @@
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: in-memory corpus buffer: Pdls
+##  + (was) only used by PDL::HMM
+##  + OBSOLETE
 ##======================================================================
 
 package MUDL::Corpus::Buffer::Pdl;
@@ -13,6 +15,10 @@ use PDL;
 use Carp;
 
 our @ISA = qw(MUDL::Corpus::Buffer);
+
+BEGIN {
+  carp( __PACKAGE__ , " is deprecated: use of MUDL::Corpus::Buffer::PdlTT is reccommended!");
+}
 
 ##======================================================================
 ## MUDL::Corpus::Buffer: Constructor
@@ -263,6 +269,16 @@ sub new {
 
 ## $bool = $cw->flush
 sub flush { return 1; }
+
+## undef = $cw->putBuffer($cr)
+##  + inherited
+
+## undef = $cw->putReader($cr)
+sub putReader {
+  my ($cw,$cr) = @_;
+  return $cw->putPdlTTBuffer($cr->{buffer}) if ($cr->isa('MUDL::CorpusReader::PdlTT'));
+  return $cw->SUPER::putReader($cr);
+}
 
 ## undef = $cw->putSentence(\@sent);
 sub putSentence {

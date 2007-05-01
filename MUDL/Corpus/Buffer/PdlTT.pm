@@ -66,6 +66,14 @@ sub new {
 ##======================================================================
 ## new API
 
+## $bool = $pb->isEmptyBuffer()
+sub isEmptyBuffer {
+  return (!@{$_[0]{enums}}
+	  && !@{$_[0]{pdls}}
+	  && !@{$_[0]{sents}}
+	  && (!defined($_[0]{begins}) || $_[0]{begins}->isempty));
+}
+
 ## $bool = $pb->nSentences()
 ##  + returns the number of stored sentences
 sub nSentences {
@@ -637,6 +645,65 @@ sub new {
 
 our $STATE_DIRTY = ~($MUDL::Corpus::Buffer::PdlTT::STATE_PACKED
 		     |$MUDL::Corpus::Buffer::PdlTT::STATE_INDEXED);
+
+## undef = $cw->putBuffer($corpusBuffer)
+##  + justs steals $corpusBuffer if already defined
+sub putBuffer {
+  if ($_[1]->isa(ref($_[0]{buffer}))) {
+    if ($_[0]{buffer}->isEmptyBuffer) {
+      ##-- steal input buffer's contents
+      %{$_[0]{buffer}} = %{$_[1]};
+      return;
+    }
+    ##-- append input buffer
+    my $wbuf = $_[0]{buffer};
+    my $rbuf = $_[1];
+
+    ##-- append: enums
+    $wbuf->updateEnums();
+    $rbuf->updateEnums();
+    foreach (0..$#{$wbuf->{enums}}) {
+      next if (!defined($rbuf->{enums}[$_]));
+      $wbuf->{enums}[$_]->addEnum($rbuf->{enums}[$_]);
+    }
+    foreach (scalar(@{$wbuf->{enums}})..$#{$rbuf->{enums}}) {
+      #$wbuf->{enums}[$_] = $rbuf->{enums}[$_]->clone; ##-- clone
+      $wbuf->{enums}[$_] = $rbuf->{enums}[$_];         ##-- share
+    }
+    $wbuf->{state} &= ~$STATE_INDEXED; ##-- ... we might have grown beyond some type limit
+
+    ##-- append: pdls
+    $wbuf->packPdls();
+    $rbuf->packPdls();
+    my $ntoks_old = defined($wbuf->{pdls}[0]) ? $wbuf->{pdls}[0]->nelem : 0;
+    foreach (0..$#{$wbuf->{pdls}}) {
+      next if (!defined($rbuf->{pdls}[$_]));
+      $wbuf->{pdls}[$_] = $wbuf->{pdls}[$_]->append($rbuf->{pdls}[$_]);
+    }
+    foreach (scalar(@{$wbuf->{pdls}})..$#{$rbuf->{pdls}}) {
+      $wbuf->{pdls}[$_] = zeroes($rbuf->{pdls}[$_]->type,$ntoks_old)->append($rbuf->{pdls}[$_]);
+    }
+
+    ##-- sents
+    if (defined($wbuf->{begins})) {
+      $wbuf->{begins} = $wbuf->{begins}->append($rbuf->{begins}+$ntoks_old);
+      $wbuf->{ends}   = $wbuf->{ends}->append($rbuf->{ends}+$ntoks_old);
+    }
+
+    ##-- flags
+    $wbuf->{fixedWidth} &&= $rbuf->{fixedWidth};
+
+    return;
+  }
+  $_[0]->SUPER::putBuffer($_[1]);
+}
+
+## undef = $cw->putReader($corpusReader)
+sub putReader {
+  return $_[0]->putBuffer($_[1]{buffer})
+    if (defined($_[1]{buffer}) && $_[1]{buffer}->isa(ref($_[0]{buffer})));
+  $_[0]->SUPER::putReader($_[1]);
+}
 
 ## undef = $cw->putSentence(\@sent);
 sub putSentence {

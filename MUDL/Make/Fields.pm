@@ -243,7 +243,8 @@ our %FIELDS =
    ##-- Action-specific field aliases
    'listDefault' => [ qw(auto) ],
    'sortDefault' => [
-		     qw(nT stage emi ci xvars->fcorpus corpus xvars->tcclass mplabel lrlab),
+		     #qw(nT),
+		     qw(stage emi ci xvars->fcorpus corpus xvars->tcclass mplabel lrlab),
 		     qw(svdlabel svdr),
 		     qw(bdlabel nlbds nbds tglabel ntgs),
 		     qw(auto),

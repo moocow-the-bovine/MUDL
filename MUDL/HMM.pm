@@ -81,7 +81,7 @@ our $ONE  = 0;
 ##                             #   $b(i,k) = ( $bjp(i,k) + $lambdab ) / sum_m( $bjp(i,m) + $lambdab )
 ##                             #   p(w|c) [default=min(f(w,c))/max(f(c))]
 ##
-##    smoothbcoeff=>$coeff    ## for smoothb=>'unfiform' probability coefficient $coeff
+##    smoothbcoeff=>$coeff    ## for smoothb=>'uniform' probability coefficient $coeff
 ##                             #   used to compute $lambdab as:
 ##                             #     $lambdab = $coeff * min( {$b(i,k) | $b(i,k) !~ 0}_{i<N, k<M} )
 ##                             #   default=0.01
@@ -256,6 +256,11 @@ sub af {
   return $af;
 }
 
+sub a1f {
+  my $hmm=shift;
+  return ($hmm->{a1}+log($hmm->{atotal}))->exp;
+}
+
 ##--------------------------------------------------------------
 ## $bf = $hmm->bf(%args)
 ##   + get observation join frequency pdl ($N,$M)
@@ -278,6 +283,10 @@ sub bf {
   return $bf;
 }
 
+sub b1f {
+  my $hmm=shift; 
+  return ($hmm->{b1}+log($hmm->{btotal}))->exp;
+}
 
 ##--------------------------------------------------------------
 ## $pif = $hmm->pif(%args)
@@ -946,6 +955,17 @@ sub growFromReader {
   return $hmm;
 }
 
+## $hmm = $hmm->growFromEnum($enum,%args)
+##  + adds unknown word-types in $enum to $hmm->{oenum} and (possibly) calls grow()
+##  + %args are passed to $hmm->grow(), except for:
+##    dogrow=>$bool,  ##-- grow() is called iff $bool is true (default=1)
+sub growFromEnum {
+  my ($hmm,$enum,%args) = @_;
+  $hmm->{oenum}->addEnum($enum);
+  $hmm->grow(%args) if (!defined($args{dogrow}) || $args{dogrow});
+  return $hmm;
+}
+
 ##======================================================================
 ## Text-probability
 ##======================================================================
@@ -1298,20 +1318,85 @@ sub emReader {
 ##  + %args: (none)
 sub expectBuffer {
   my ($hmm,$buf,%args) = @_;
-  if (UNIVERSAL::isa($buf,'MUDL::Corpus::Buffer::Pdl')) {
-    ##-- special handling for pdl-ized buffers
-    return $hmm->expectPdlBuffer($buf,@_);
+  if (UNIVERSAL::isa($buf,'MUDL::Corpus::Buffer::PdlTT')) {
+    ##-- special handling for PdlTT buffers
+    return $hmm->expectPdlTTBuffer($buf,%args);
+  }
+  elsif (UNIVERSAL::isa($buf,'MUDL::Corpus::Buffer::Pdl')) {
+    ##-- special handling for sentence-pdl listed buffers : DEPRECATED
+    return $hmm->expectPdlBuffer($buf,%args);
   }
   ##-- use inherited method otherwise
   return $hmm->expectReader($buf->reader());
 }
 
+## ($log_prod_ps, $ea,$eb,$epi,$eomega) = $hmm->expectPdlTTBuffer($corpusBufferPdlTT,%args)
+##  + run a single E- part of an EM-iteration on the sentences from $corpusBufferPdlTT
+##  + %args: (none)
+sub expectPdlTTBuffer {
+  my ($hmm,$buf,%args) = @_;
+
+  ##-- map buffered text types to HMM observation enum
+  $buf->packPdls();
+  my $txtenum = $buf->{enums}[0];
+  my $oenum   = $hmm->{oenum};
+  my $txt2o   = $txtenum->xlatePdlTo($oenum, badval=>$hmm->{oenum}->addSymbol($hmm->{unknown}));
+  my $txtpdl  = $txt2o->index( $buf->{pdls}[0] );
+
+  ##-- E-step variables
+  my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
+  my ($ea,$eb,$epi,$eomega) = $hmm->expect0();
+  my ($o,$oq,$oq2Ti, $alpha,$beta);
+  my $log_prod_ps = 0;
+
+  ##-- sentence extraction variables
+  my @soff = ($buf->{begins}->list, $txtpdl->nelem);
+  my ($si);
+
+  ##-- ye olde loope
+  foreach $si (1..$#soff) {
+    $o    = $txtpdl->slice( $soff[$si-1].":".($soff[$si]-1) );
+
+    if ($hmm->{dorestrict}) {
+      $oq    = $hmm->{oq}->dice_axis(1,$o);
+
+      ##-- get alpha,beta
+      ## + NOTE that using PDL::PP return value is *faster*
+      ##   than repeatedly reshaping a dedicated PDL
+      $alpha = hmmalphaq($a,$b,$pi,    $o,$oq);
+      $beta  = hmmbetaq ($a,$b,$omega, $o,$oq);
+
+      hmmexpectq($a,$b,$pi,$omega, $o,$oq, $alpha,$beta, $ea,$eb,$epi,$eomega);
+
+      ##-- save text probability (multiply)
+      $oq2Ti = $oq->slice(",(-1)")->where($oq->slice(",(-1)")>=0);
+      $log_prod_ps += logsumover($alpha->slice('0:'.($oq2Ti->nelem-1).',-1') + $hmm->{omega}->index($oq2Ti));
+    }
+    else {
+      ## + NOTE that using PDL::PP return value is *faster*
+      ##   than repeatedly reshaping a dedicated PDL
+      $alpha = hmmalpha($a,$b,$pi,    $o);
+      $beta  = hmmbeta ($a,$b,$omega, $o);
+
+      hmmexpect($a,$b,$pi,$omega, $o,$alpha,$beta, $ea,$eb,$epi,$eomega);
+
+      ##-- save text probability (multiply)
+      $log_prod_ps += logsumover($alpha->slice(',-1') + $omega);
+    }
+  }
+
+  return ($log_prod_ps, $ea,$eb,$epi,$eomega);
+}
+
+
 ## ($log_prod_ps, $ea,$eb,$epi,$eomega) = $hmm->expectPdlBuffer($corpusBufferPdl,%args)
 ##  + run a single E- part of an EM-iteration on the sentences from $corpusBufferPdl,
 ##    which should use hmm's enums and bash to $hmm->{unknown}
 ##  + %args: (none)
+##  + DEPRECATED!
 sub expectPdlBuffer {
   my ($hmm,$buf,%args) = @_;
+  carp(ref($hmm),"::expectPdlBuffer() is deprecated!");
 
   my ($a,$b,$pi,$omega,$N) = @$hmm{qw(a b pi omega N)};
   my ($ea,$eb,$epi,$eomega) = $hmm->expect0();

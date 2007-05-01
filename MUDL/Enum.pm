@@ -1,4 +1,4 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Enum.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -131,7 +131,11 @@ sub removeIndex {
 *merge = *union = \&addEnum;
 sub addEnum {
   my ($e1,$e2) = @_;
-  $e1->addSymbol($_) foreach (@{$e2->{id2sym}});
+  #$e1->addSymbol($_) foreach (@{$e2->{id2sym}});
+  ##--
+  my $oldsize = scalar(@{$e1->{id2sym}});
+  push(@{$e1->{id2sym}}, grep {!exists($e1->{sym2id}{$_})} @{$e2->{id2sym}});
+  $e1->{sym2id}{$e1->{id2sym}[$_]} = $_ foreach ($oldsize..$#{$e1->{id2sym}});
   return $e1;
 }
 
