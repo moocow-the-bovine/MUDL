@@ -1075,7 +1075,7 @@ sub loadGenericString {
 }
 
 ## $obj = $obj->loadGenericFile($filename,@args)
-*loadFile = \&loadGenericFile;
+*load = *loadFile = \&loadGenericFile;
 sub loadGenericFile {
   my ($that,$filename,%args) = @_;
   my $mode = $args{mode};
@@ -1196,7 +1196,7 @@ sub saveGenericString {
 }
 
 ## $bool = $obj->saveGenericFile($filename,%args)
-*saveFile = \&saveGenericFile;
+*save = *saveFile = \&saveGenericFile;
 sub saveGenericFile {
   my ($that,$filename,%args) = @_;
   my $mode = $args{mode};
