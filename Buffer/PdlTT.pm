@@ -25,6 +25,15 @@ our $STATE_UNPACKED = 1;                      ##-- all UNpacked
 our $STATE_INDEXED  = 2;                      ##-- all enumerated
 our $STATE_PACKED   = 4;                      ##-- all packed up (only useful with +INDEXED)
 
+##-- pdl imports
+BEGIN {
+  *byte = \&PDL::byte;
+  *short = \&PDL::short;
+  *ushort = \&PDL::ushort;
+  *long = \&PDL::long;
+  *longlong = \&PDL::longlong;
+}
+
 ##======================================================================
 ## MUDL::Corpus::Buffer::PackedTT : Constructor
 ##======================================================================
