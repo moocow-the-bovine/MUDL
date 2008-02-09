@@ -74,7 +74,7 @@ sub fromPDL {
 sub toPDL {
   my $de = shift;
   #my $pdl = zeroes(double, max(pdl([keys %{$de->{nz}}]))+1);
-  my $pdl = zeroes(double, $de->{enum}->size);
+  my $pdl = zeroes(PDL::double, $de->{enum}->size);
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
 }
@@ -149,7 +149,7 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  my $pdl = zeroes(double, $de->enum->size);
+  my $pdl = zeroes(PDL::double, $de->enum->size);
   $pdl->set($_, $de->{nz}{$_}) foreach (keys(%{$de->{nz}}));
   return $pdl;
 }
@@ -240,7 +240,7 @@ sub fromPDL {
 ## $pdl = $de->toPDL()
 sub toPDL {
   my $de = shift;
-  my $pdl = zeroes(double, map { scalar(@{$_->{id2sym}}) } @{$de->{enum}{enums}} );
+  my $pdl = zeroes(PDL::double, map { scalar(@{$_->{id2sym}}) } @{$de->{enum}{enums}} );
   $de->{nfields} = $pdl->ndims;
   foreach (keys(%{$de->{nz}})) {
     $pdl->set($de->split($_), $de->{nz}{$_});
@@ -272,8 +272,8 @@ sub toSparsePdlDist {
 
   ##-- setup whichND,vals
   my $nnz   = scalar(keys(%{$de->{nz}}));
-  my $which = zeroes(long, $de->{enum}{nfields}, $nnz);
-  my $vals  = zeroes(double,$nnz+1);
+  my $which = zeroes(PDL::long, $de->{enum}{nfields}, $nnz);
+  my $vals  = zeroes(PDL::double,$nnz+1);
 
   my ($key,$val,@keys,$ki);
   my $i=0;
@@ -288,7 +288,7 @@ sub toSparsePdlDist {
 
   ##-- encode
   my $pdl = PDL::CCS::Nd->newFromWhich($which,$vals,
-				       pdims  => pdl(long,map {$_->size} @{$enum->{enums}}),
+				       pdims  => pdl(PDL::long,map {$_->size} @{$enum->{enums}}),
 				       missing=> $de->zeroCount,
 				       flags  => $MUDL::PdlDist::SparseNd::CCSND_FLAGS_DEFAULT,
 				      );

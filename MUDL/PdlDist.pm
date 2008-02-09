@@ -41,7 +41,7 @@ sub new {
 
   $dims = [1] if (!defined($dims));
   if (!defined($PDL)) {
-    $PDL = zeroes(double,@$dims);
+    $PDL = zeroes(PDL::double,@$dims);
   }
 
   my $self = $that->SUPER::new(
@@ -89,7 +89,7 @@ sub size { return $_[0]->{pdl}->nelem; }
 
 ## $d = $d->clear()
 sub clear {
-  $_[0]{pdl} = null;
+  $_[0]{pdl} = PDL::null;
   $_[0]{enum}->clear;
   return $_[0];
 }

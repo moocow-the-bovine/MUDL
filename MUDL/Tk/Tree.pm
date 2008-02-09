@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Tk::Tree.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -79,7 +79,7 @@ sub view {
 		       -width=>$tkt->{canvasWidth},
 		       -height=>$tkt->{canvasHeight},
 		      );
-  $c->pack(qw(-fill both expand 1));
+  $c->pack(qw(-fill both -expand 1));
 
   $c->CanvasBind("<ButtonPress-2>",
 		 [sub {
