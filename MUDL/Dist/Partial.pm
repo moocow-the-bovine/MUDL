@@ -1,4 +1,4 @@
-##-*- Mode: Perl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Dist::Partial.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -147,7 +147,10 @@ sub nNonZero { return $_[0]->size - $_[0]->nZero; }
 ## $zmass1 = $d->zeroCount()
 ##  + returns quantity of missing mass alotted to any single zero-count event
 ##  + uses $d->size()
-sub zeroCount { return $_[0]->{zmass} / $_[0]->nZero; }
+sub zeroCount {
+  my $nz = $_[0]->nZero;
+  return $nz ? ($_[0]->{zmass} / $_[0]->nZero) : 0;
+}
 
 ## $zmass = $dist->smoothGTLogLin()
 ##  + Good-Turing smoothing, log-linear
