@@ -1,4 +1,4 @@
-#-*- Mode: Perl -*-
+#-*- Mode: CPerl -*-
 
 ## File: MUDL::Ngrams.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -74,6 +74,28 @@ sub expand {
     $ngs2->{nz}{join($sep,@ng[0..$_])} += $f foreach (0..($#ng-1));
   }
   $ngs2->{nfields} = 0;
+  return $ngs2;
+}
+
+## $ngs2 = $ngs->expandEOS()
+## $ngs2 = $ngs->expandEOS($eos_str)
+##   + expands BOS/EOS ngrams to $nmax
+##   + assumes BOS/EOS occur only at n-gram indices 0 or $nmax (as for tnt,moot .123 files)
+sub expandEOS {
+  my ($ngs,$eos) = @_;
+  $eos = '__$' if (!defined($eos));
+  my $sep  = $ngs->{sep};
+  my $ngs2 = $ngs->copy;
+  my ($k,$f,@ng);
+  while (($k,$f)=each(%{$ngs->{nz}})) {
+    @ng = $ngs->split($k);
+    if ($ng[0] eq $eos) {
+      $ngs2->{nz}{join($sep, (map {$eos} (0..($_-1))), @ng[0..($#ng-$_)])} += $f foreach (1..($#ng-1));
+    }
+    if ($ng[$#ng] eq $eos) {
+      $ngs2->{nz}{join($sep, @ng[($#ng-$_)..$#ng], (map {$eos} (1..($#ng-$_))))} += $f foreach (1..($#ng-1));
+    }
+  }
   return $ngs2;
 }
 
