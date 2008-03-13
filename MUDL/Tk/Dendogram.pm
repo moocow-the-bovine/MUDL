@@ -156,9 +156,18 @@ sub view {
 		  -accelerator=>'Ctrl+x',
 		  -variable=>\$dg->{info}{searchregex},
 		 );
-  $dg->{info}{searchregex}=1;
+  #$dg->{info}{searchregex}=1;
+  $dg->{info}{searchregex}=0;
   $w->bind('all', '<Control-KeyPress-x>',
 	   sub { $dg->{info}{searchregex} = !$dg->{info}{searchregex} });
+
+  ##-- tag search mode
+  $mbo->menu->add('checkbutton',
+		  -label=>'Tag Search Mode',
+		  #-accelerator=>'Ctrl+x',
+		  -variable=>\$dg->{info}{searchtags},
+		 );
+  $dg->{info}{searchtags}=1;
 
   ##-- search results window
   $mbo->menu->add('checkbutton',
@@ -670,6 +679,11 @@ sub ddg_search {
   if (!$c2m) { $c2m = $dg->{search}{cid2match} = {}; }
   %$c2m = qw();
 
+  if ($dg->{info}{searchtags}) {
+    return $dg->ddg_canvas_select($stxt);
+  }
+
+  ##-- search cids (leaf-only mode)
   my ($txt, $cid, $gid, $nid);
   foreach $cid (
 		grep {

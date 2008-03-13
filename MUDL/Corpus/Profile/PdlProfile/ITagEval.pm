@@ -47,6 +47,7 @@ our @ISA = qw(MUDL::Corpus::Profile::PdlProfile); #)
 ##
 ##     ##-- basic runtime data (new)
 ##     ntoks   => $ntokens,     ##-- total number of tokens processed
+##     nktoks  => $ntokens,     ##-- total number of known tokens processed (those not mapped to $unk1)
 ##     jpdist  => $sparseNd,    ##-- MUDL::PdlDist::SparseNd: <tag1,tag2> => f(tag1 && tag2)
 ##     tag1txt => $sparseNd,    ##-- MUDL::PdlDist::SparseNd: <tag1,txt>  => f(txt  && tag1)
 ##     tag2txt => $sparseNd,    ##-- MUDL::PdlDist::SparseNd: <tag2,txt>  => f(txt  && tag2)
@@ -125,6 +126,7 @@ sub new {
 
 			       ##-- basic runtime data
 			       ntoks=>0,
+			       nktoks=>0,
 
 			       ##-- user args
 			       %args,
@@ -341,6 +343,7 @@ sub finishPdlProfile {
   my $unkid     = $tag1enum->{sym2id}{$eval->{unknown1}};
   my $tag1kmask = ones(byte,$Ntags1);
   $tag1kmask->set($unkid, 0);
+  my $nktoks    = $eval->{nktoks} = ($tag1dp*$tag1kmask)->sum;
 
   ##-- get probabilities
   my $tag1dpd   = $tag1dp->convert(double); ##-- tag1 freq, as double
@@ -849,7 +852,7 @@ sub fromEval {
   my @dup = (
 	     qw(label1 label2),
 	     qw(tag1i tag2i),
-	     qw(ntoks ntypes nanals1 nanals2 arate1 arate2 nwtypes ntags1 ntags2),
+	     qw(ntoks nktoks ntypes nanals1 nanals2 arate1 arate2 nwtypes ntags1 ntags2),
 	     (map { "meta_$_" } qw(precision recall F)),
 	     (map { "ameta_$_" } qw(precision recall F)),
 	     (map { "avg_$_" } qw(precision recall F)),

@@ -1077,7 +1077,7 @@ sub getprofile {
 
   ##-- returned cached values if present
   if (defined($cm->{tpdata}) && defined($cm->{tpmask}) && defined($cm->{tpcids})) {
-    return @$cm{qw(tpdata tpmask tpcids)};
+    return @$cm{qw(tpdata tpmask tpcids)}; #)}
   }
 
   ##-- check & set recursion-detection flag
@@ -1102,7 +1102,7 @@ sub getprofile {
     if (!defined($msub));
 
   ##-- dispatch & cache
-  my ($tpdata,$tpmask,$tpcids) = @$cm{qw(tpdata tpmask tpcids)} = $msub->($cm);
+  my ($tpdata,$tpmask,$tpcids) = @$cm{qw(tpdata tpmask tpcids)} = $msub->($cm);  #)}
 
   ##-- unset recursion detection flag
   delete($cm->{_in_getprofile});
