@@ -9,7 +9,6 @@
 package MUDL::PDL::Ranks;
 use PDL;
 
-package PDL;
 
 ##======================================================================
 ## Ranks
@@ -21,6 +20,7 @@ package PDL;
 ##     order=>$asc_or_desc, ##-- one of 'asc' (default) or 'desc'
 ##     ranks=>$rankpdl,     ##-- pre-allocated output pdl
 ##     ?
+BEGIN { *PDL::ranks = \&ranks; }
 sub ranks {
   my ($pdl,%opts) = @_;
 
@@ -48,6 +48,7 @@ sub ranks {
 ##     order=>$asc_or_desc, ##-- one of 'asc' (default) or 'desc'
 ##     ranks=>$rankpdl,     ##-- pre-allocated output pdl
 ##     ?
+BEGIN { *PDL::avgranks = \&avgranks; }
 sub avgranks {
   my ($pdl,%opts) = @_;
 
@@ -73,8 +74,6 @@ sub avgranks {
   return $pdl_ranks;
 }
 
-
-package MUDL::Pdl::Ranks;
 1;
 
 ##======================================================================
