@@ -19,9 +19,10 @@ our @ISA = qw(MUDL::Corpus::Profile::LRFBigrams); #)
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
 ##   + new %args:
+##       rank_min    => $rank_min,       ## minimum rank (default=0)
 ##       rank_order  => $asc_or_desc,    ## rank order, one of 'asc' or 'desc' (default: 'asc')
-##       rank_shared => $bool,           ## allow Spearman-style rank-sharing (default: true)
-##       rank_indep  => $bool,           ## rank left and right independently (default: false)
+##       rank_shared => $bool,           ## allow Spearman-style rank-sharing? (default: true)
+##       rank_indep  => $bool,           ## rank left and right independently? (default: false)
 ##
 ##   + %args:
 ##       eos => $eos_str,
@@ -38,6 +39,7 @@ sub new {
 			   rank_order=>'asc',
 			   rank_shared=>1,
 			   rank_indep=>0,
+			   rank_min=>0,
 			   %args,
 			  );
 }
@@ -84,8 +86,11 @@ sub finishPdl {
     }
   } else {
     ##-- "dependent" left- and right-ranks
-    $zpdl  = $lr->clump(2);
+    $zpdl  = $pdl->clump(2);
     $zpdl .= $lr->rankpdl($zpdl);
+  }
+  if (defined($lr->{rank_min}) && $lr->{rank_min} != 0) {
+    $pdl += $lr->{rank_min};
   }
 
   return $pdl;
