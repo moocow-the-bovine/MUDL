@@ -53,6 +53,9 @@ sub smearvals {
   return $Zrv;
 }
 
+##======================================================================
+## Log-linear fit
+
 ## ($fit,$coeffs) = $vals->loglinfit()
 ## ($fit,$coeffs) = $vals->loglinfit($keys)
 ##  + $keys defaults to $vals->xvals()+1
@@ -80,6 +83,10 @@ sub loglinfit {
   $coeffs->slice("(0)")->inplace->exp;
   return ($cfit,$coeffs);
 }
+
+##======================================================================
+## Good-Turing smoothing (TODO)
+
 
 1;
 
