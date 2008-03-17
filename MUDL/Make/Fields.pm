@@ -772,6 +772,8 @@ our %FIELDS =
    'emam'     => { path=>[qw(xvars)], title=>'emam', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{emam}' },
    'embm'     => { path=>[qw(xvars)], title=>'embm', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{embm}' },
    'emum'     => { path=>[qw(xvars)], title=>'emum', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{emum}' },
+   'emas0'    => { path=>[qw(xvars)], title=>'emas0', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{emas0}' },
+   'embs0'    => { path=>[qw(xvars)], title=>'embs0', condense=>0, eval=>'$_->{emi}<0 ? "n/a" : $_->{embs0}' },
 
    'emamlab'   => 'emamlabel',
    'emamlabel' => { path=>[qw(xvars emamlabel)], title=>'AM', condense=>0 },
