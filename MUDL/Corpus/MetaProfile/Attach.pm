@@ -831,6 +831,7 @@ sub updateProfileDists {
   if (defined($wbdist)) {
     my $wbpdl = $xbpdl x $pt2tk->xchg(0,1);     ##-- (xbpdl(T_p,B_m) x pt2tk^T(T_k,T_p)) --> tbpdl(T_k,B_m)
     $wbdist->{pdl}  = $wbpdl;
+    $wbdist->{pdl}->missing($wvpdl->missing->sclr);
     $wbdist->{enum} = MUDL::Enum::Nary->new(nfields=>2, #$wvdist->{enum}{nfields},
 					    enums  =>[$mp->{tenum_k},$mp->{cbenum}],
 					   );
@@ -841,6 +842,7 @@ sub updateProfileDists {
     my $cbpdl = $xbpdl x $pt2c->xchg(0,1);      ##-- (xbpdl(T_p,B_m) x pt2c^T ( C, T_p)) --> cbpdl( C ,B_m)
 
     $cbdist->{pdl}  = $cbpdl;
+    $cbdist->{pdl}->missing($wvpdl->missing->sclr);
     $cbdist->{enum} = MUDL::Enum::Nary->new(nfields=>2, #$wvdist->{enum}{nfields},
 					    enums  =>[$mp->{cenum},$mp->{cbenum}],
 					   );

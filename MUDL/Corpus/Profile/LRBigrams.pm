@@ -191,18 +191,16 @@ sub addSentence_OLD {
 ## Profiling:: Deprecated: addBigrams($bg)
 
 ## $lr = $lr->addBigrams($bg,%args);
-##  + %args or $lr flags:
-##      #smoothgt => $which,  ##-- call smoothGTLogLin on bigrams, sets $lr->{norm_zero_f} if $which eq 'bigrams'
+##  + %args or $lr flags: passed to addPdlBigrams()
 ##  + profiles to EDists
-
 sub addBigrams {
-  my ($lr,$bg) = @_;
+  my ($lr,$bg,%args) = @_;
 
   ##-- warn
   warn(ref($lr),"::addBigrams() is deprecated");
 
   ##-- fast dispatch to pdl
-  return $lr->addPdlBigrams($bg)
+  return $lr->addPdlBigrams($bg,%args)
     if ($bg->isa('MUDL::Corpus::Profile::PdlProfile::Bigrams'));
 
   ##-- standard bigrams: pdl-ize 'em
@@ -313,8 +311,10 @@ sub addBigrams_OLD {
 ##  + called by default finish() method
 ##    - when this method is called, the buffer (if any) has been filled and pdl-ized
 ##    - after this completes, the buffer (if any) is deleted
+##  + %args or $lr keys: passed to $lr->addPdlBigrams()
+##      smoothgt => $which,  ##-- call smoothGTLogLin on bigrams and sets $lr->{norm_zero_f} if $which eq 'bigrams'
 sub finishPdlProfile {
-  my $lr = shift;
+  my ($lr,%args) = @_;
 
   ##-- get raw bigrams
   my $bgpd = MUDL::Corpus::Profile::PdlProfile::Bigrams->new(bos=>$lr->{bos},
@@ -334,7 +334,14 @@ sub finishPdlProfile {
 ## $lr = $lr->addPdlBigrams($bg,%args);
 ##   + profiles to PDLs
 sub addPdlBigrams {
-  my ($lr,$bgpd) = @_;
+  my ($lr,$bgpd,%args) = @_;
+
+  ##-- maybe smooth
+  $lr->{smoothgt} = $args{smoothgt} if (defined($args{smoothgt}));
+  if ($lr->{smoothgt} && $lr->{smoothgt} eq 'bigrams') {
+    $bgpd->smoothGTLogLin();
+    $lr->{norm_zero_f} += $bgpd->zeroCount->sclr;
+  }
 
   ##-- get enums
   my $bge  = $bgpd->{enum}{enums}[0];

@@ -11,6 +11,7 @@ use MUDL::EDist;
 use IO::File;
 use PDL;
 use PDL::Fit::Linfit;
+use MUDL::PDL::Smooth;
 
 ## PDL::IO::Storable
 ##  + very tricky: can cause errors "%Config::Config is read-only"
@@ -26,8 +27,9 @@ our @ISA = qw(MUDL::Object);
 ## Constructor
 ## $pd = $class_or_obj->new(%args)
 ##  + object structure:
-##     pdl=>$pdl,   ##-- pdl representing the distribution
-##     enum=>$enum, ##-- event enum
+##     pdl=>$pdl,    ##-- pdl representing the distribution
+##     enum=>$enum,  ##-- event enum
+##     zmass=>$mass, ##-- "missing" mass (may be undef)
 ##  + additional %args:
 ##     dims=>\@dimensions, ##-- specify initial pdl size
 sub new {
@@ -137,6 +139,8 @@ sub conditionalize {
 }
 
 ## $ccounts = $d->countcounts()
+##  + returns a MUDL::Dist
+##  + see also MUDL::Smooth::valcounts()
 sub countcounts {
   my $pd = shift;
   my $ccounts = MUDL::Dist->new();
@@ -222,6 +226,36 @@ sub mutualInformation {
 
   return $mi->sum;
 }
+
+##======================================================================
+## Smoothing
+##======================================================================
+
+## $zmass = $d->missingMass()
+##  + get total missing mass
+*zmass = \&missingMass;
+sub missingMass { return defined($_[0]{zmass}) ? $_[0]{zmass} : 0; }
+
+## $zmass1 = $d->zeroCount()
+##  + returns quantity of missing mass alotted to any single zero-count event
+##  + uses $d->size()
+sub zeroCount {
+  my $nz = $_[0]->nZero;
+  return $nz ? ($_[0]->{zmass} / $_[0]->nZero) : 0;
+}
+
+## $zmass = $dist->smoothGTLogLin()
+## $zmass = $dist->smoothGTLogLin($minval=1)
+##  + Good-Turing smoothing, log-linear
+##  + sets key 'zmass' for missing mass
+##  + sets key 'coeffs' = [$a,$e] for GT-smoothing (see MUDL::PDL::Smooth::loglinfit())
+sub smoothGTLogLin {
+  my ($pd,$minval)=@_;
+  @$pd{qw(pdl coeffs zmass)} = $pd->{pdl}->smoothGTLogLin($minval);
+  return $zmass;
+}
+
+
 
 ##======================================================================
 ## Pruning

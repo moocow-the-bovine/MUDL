@@ -9,6 +9,7 @@
 package MUDL::PdlDist::SparseNd;
 use MUDL::PdlDist;
 use MUDL::EDist;
+use MUDL::PDL::Smooth;
 use IO::File;
 use PDL;
 use PDL::CCS;
@@ -147,6 +148,40 @@ sub normalize {
 }
 
 ##-- TODO: conditionalize, etc.
+
+##======================================================================
+## Smoothing
+
+## $zmass = $d->missingMass()
+##  + get total missing mass
+*zmass = \&missingMass;
+sub missingMass {
+  return defined($_[0]{zmass}) ? $_[0]{zmass} : $_[0]{pdl}->missing*$_[0]{pdl}->nmissing;
+}
+
+## $zmass1 = $d->zeroCount()
+##  + returns quantity of missing mass alotted to any single zero-count event
+sub zeroCount { return $_[0]{pdl}->missing(); }
+
+## $zmass = $dist->smoothGTLogLin()
+## $zmass = $dist->smoothGTLogLin($minval=1)
+##  + Good-Turing smoothing, log-linear
+##  + sets key 'zmass' for missing mass
+##  + sets key 'coeffs' = [$a,$e] for GT-smoothing (see MUDL::PDL::Smooth::loglinfit())
+sub smoothGTLogLin {
+  my ($pd,$minval)=@_;
+  my $ccs = $pd->{pdl};
+  $ccs->inplace->convert(double);
+
+  my $whichVals = $ccs->whichVals;
+  my ($vfit,$coeffs,$zmass) = $whichVals->smoothGTLogLin($minval);
+  $whichVals .= $vfit;
+  $ccs->missing($zmass/$ccs->nmissing);
+
+  @$pd{qw(coeffs zmass)} = ($coeffs,$zmass);
+  return $zmass;
+}
+
 
 ##======================================================================
 ## Metrics, etc.

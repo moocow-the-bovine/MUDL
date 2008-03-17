@@ -10,6 +10,7 @@ package MUDL::PDL::Smooth;
 use PDL;
 use PDL::CCS;
 
+use strict;
 
 ##======================================================================
 ## Value Counts
@@ -78,15 +79,44 @@ use PDL::Fit::Linfit;
 sub loglinfit {
   my ($Zc,$v) = @_;
   $v = ($Zc->xvals+1)->double if (!defined($v));
-  my ($cfit,$coeffs) = $Zc->log->linfit1d($Zc->ones->cat($v->log));
+  my ($cfit,$coeffs) = $Zc->log->linfit1d($Zc->ones->cat($v->log->setnantobad->setbadtoval(0)));
   $cfit->inplace->exp;
   $coeffs->slice("(0)")->inplace->exp;
   return ($cfit,$coeffs);
 }
 
 ##======================================================================
-## Good-Turing smoothing (TODO)
+## Good-Turing smoothing
 
+## ($valfit_pdl,$coeffs_pdl,$zmass) = $pdl->smoothGTLogLin()
+## ($valfit_pdl,$coeffs_pdl,$zmass) = $pdl->smoothGTLogLin($minval=1)
+##  + $minval is the minimum (1) value for GT-smoothing (default=1)
+##  + in scalar context, returns only $valfit_pdl
+BEGIN { *PDL::smoothGTLogLin = \&smoothGTLogLin; }
+sub smoothGTLogLin {
+  my ($pdl,$vmin) = @_;
+  $vmin = 1 if (!defined($vmin));
+
+  my ($v,$c) = $pdl->valcounts();
+  my $Zc     = $c->double->smearvals($v);
+  my ($fitc,$coeffs) = $Zc->loglinfit($v);
+  my $S_a = $coeffs->index(0);
+  my $S_e = $coeffs->index(1);
+
+  my $p_fit  = zeroes(double,$pdl->dims);
+  my $p_mask = ($pdl>=$vmin);
+  my $p_srcv = $pdl->where($p_mask);
+  my $p_fitv = $p_fit->where($p_mask);
+  $p_fitv   .= ($p_srcv+1)*($S_a*($p_srcv+1)**$S_e) / ($S_a * $p_srcv**$S_e);
+
+  my $N1    = $c->where($v<=$vmin)->sumover->double;
+  my $zmass = $N1/$c->flat->sumover->double;
+
+  my $z_mask = $p_mask->not;
+  $p_fit->where($z_mask) .= $zmass / $z_mask->which->nelem if ($z_mask->any);
+
+  return wantarray ? ($p_fit,$coeffs,$zmass) : $p_fit;
+}
 
 1;
 

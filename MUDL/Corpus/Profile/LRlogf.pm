@@ -77,7 +77,7 @@ sub finishPdl {
   ##
   ##-- eps: simple: use constant
   $eps  = 1 if (!defined($eps));
-  $pdl += $eps;
+  $pdl += $eps if ($eps != 0);
 
   ##-- do log
   $pdl->inplace->log;
