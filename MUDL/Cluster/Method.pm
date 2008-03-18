@@ -594,7 +594,7 @@ sub profileDistanceMatrix {
 
 ## $cdmatrix = $cm->clusterDistanceMatrix(%args)
 ##  + gets cluster-to-datum distance matrix $cdmatrix = $cm->{cdmatrix}
-##  + WARNING: O($n^2)
+##  + WARNING: O($rowids * $n_clustered_data_rows) ~= O($n^2)
 ##  + see profileDistanceMatrix() for another option
 ##  + %args:
 ##     cdprofile => $bool,  ## if true, this method wraps profileDistanceMatrix()
@@ -899,7 +899,10 @@ sub ctrmode {
 ##  + returns d2c_mean() if $cweights is not defined
 sub d2c_wsum {
   my $cm = shift;
-  return $cm->d2c_mean(@_) if (!defined($cm->{cweights}));
+  if (!defined($cm->{cweights})) {
+    carp(ref($cm),"::d2c_wsum(): no {cweights} defined -- falling back to d2c_mean() method");
+    return $cm->d2c_mean(@_);
+  }
   my ($cdata,$cmask) = $cm->d2c_pdls(@_);
   getclusterwsum(@$cm{qw(data mask cweights)}, $cdata,$cmask);
   return ($cdata,$cmask);
@@ -1006,7 +1009,8 @@ sub d2c_weighted {
   #$cweights->xchg(0,1) /= $cweights->sumover;   ##-- ... normalize by cluster
   ##-- ... for hard mask, at this point, $cweights==$celtmask!
 
-  my $cweights = $celtmask * $dprobs->slice("*1,:"); ##-- apply row-weights
+  my $cweights = $cm->{cweights}
+               = $celtmask * $dprobs->slice("*1,:"); ##-- apply row-weights
   $cweights   /= $cweights->xchg(0,1)->sumover;      ##-- ... and normalize
 
   ##-- get centroid data as weighted sum
