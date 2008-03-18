@@ -1,0 +1,45 @@
+uses of Corpus::MetaProfile::*->{cm}:
+
+Corpus/MetaProfile.pm:
++ toHMM()
+  - $mp->{cm}->clusterSizes()
+  - $mp->{cm}->clusterElementMask()
+  - $mp->{cm}{clusterids}
++ modelDescriptionLength_vx
+  - $mp->{cm}->clusterSizes()
++ toTree
+ - $cm->toTree
+
+Corpus/MetaProfile/Attach.pm:
++ bootstrap()
+  - $cm->clusterEnum()->copy;
++ d2pbeta (bstage,bistage)
+  - $mp->{cm}{d2pb}
++ populatePHat
+  - $mp->{cm}->membershipProbPdl(@_, ...)
+  - $mp->{cm}{cdbonus} = 0 if ($mp->{cm}{cdmethod} !~ /\+bb/);
+  - $mp->{cm}->membershipSimMask($phat, d2pbeta=>$d2pbeta);
++ update()
+  - $cm_k = $cm->shadow(class=>'MUDL::Cluster::Method',enum=>$mp->{tenum_k});
+  - $cm->{svd} & friends
+  - $cm_k->{mask}   = ones(long, $cmdata_k->dims);
+  - $cm_k->{weight} = ones(double, $cmdata_k->dim(0));
+  - $cm_k->{dataweights} ##-- =, .= (for ctr & targets
+!!- clusterdistancematrix(@$cm_k{qw(data mask weight)}, $trowids, ...)
+!!- attachtonearestd($cdm, $trowids, ...)
+  - $cm_k->clusterElementMask;
++ updatePhat()
+  - $cm_k->membershipProbPdl(@_,...)
+  - $cm_k->membershipSimMask($phat_k, d2pbeta=>$d2pbeta);
++ updateCm()
+  - $cm_ltk->shadow(class=>'MUDL::Cluster::Method',enum=>$mp->{tenum});
+  - $cm_ltk->{clusterids}, $cm_k->{clusterids}
+  - $cm->{nfeatures}  = $mp->{cbenum}->size;
+  - $cm->{ndata}     = $cids->nelem;         
+  - $cm->{cdmatrix}, $cm->{nclusters}, $cm->{ndata}
+  - $cm_ltk->{dataweights}
++ getSummaryInfo()
+  - = $mp->{cm}{d2pn}
+  - = $mp->{cm}{d2pmethod}
+  - = $mp->{cm}->cddist;
+  - = $mp->{cm}->cdmethod;
