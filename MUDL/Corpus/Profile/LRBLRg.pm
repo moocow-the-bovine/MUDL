@@ -4,16 +4,16 @@
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profile:
-##    L-R log-binomial likelihood ratio
+##    L-R log-binomial likelihood ratio (using global freqs)
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRBLR;
-use MUDL::Corpus::Profile::LRBigrams;
+package MUDL::Corpus::Profile::LRBLRg;
+use MUDL::Corpus::Profile::LRBLR;
 use MUDL::Object;
 use MUDL::EDist;
 use PDL;
 use Carp;
-our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
+our @ISA = qw(MUDL::Corpus::Profile::LRBLR);
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -44,66 +44,29 @@ sub new {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
-
-## $pdl3d = $lr->finishPdl($pdl3d);
-sub finishPdl0 {
+*finishPdl1 = \&finishPdl; ##-- for LRBLR-compatibility
+sub finishPdl {
   my ($lr,$pdl) = @_;
+
+  my $pbugs = $lr->{pbugs}{pdl}->double;
+  my $ptugs = $lr->{ptugs}{pdl}->double;
+  my $ftotal = $lr->{ftotal};
 
   my ($N,$Nbt,$Nt,$Nb, $nbt,$nt,$nb);
   foreach my $dir (0,1) {
-    $Nbt  = $pdl->slice("($dir),,");
-    $N    = $Nbt->sum;
-    #$Ptb /= $Ptb->sum;
+    $Nbt  = $pdl->slice("($dir),,");    ##-- [b,t] -> f(b,t)
+    $N    = $ftotal;                    ##-- []    -> f_total
 
-    $Nt   = $Nbt->sumover;
-    $Nb   = $Nbt->xchg(0,1)->sumover;
+    $Nt   = $ptugs;                     ##-- [t]   -> f(t)
+    $Ntx  = $Nt->slice("*1");           ##-- [0,t] -> f(t)
+    $Nb   = $pbugs;                     ##-- [b]   -> f(b)
 
-    foreach my $t (0..($Nt->nelem-1)) {
-      $nt = $Nt->at($t);
-      foreach my $b (0..($Nb->nelem-1)) {
-	$nbt = $Nbt->at($b,$t);
-	$nb  = $Nb->at($b);
+    $Pb              = $Nb  / $N;       ##-- [b]   -> p(b)
+    $Nb_minus_Nbt    = $Nb-$Nbt;        ##-- [b,t] -> f(b,¬t)
+    $N_minus_Nt      = $N-$Ntx;         ##-- [0,t] -> f(¬t)
 
-	$Nbt->set($b, $t,
-		  logL($nbt, $nt, $nb/$N)   + logL($nb-$nbt, $N-$nt, $nb/$N)
-		  -
-		  logL($nbt, $nt, $nbt/$nt) - logL($nb-$nbt, $N-$nt, ($nb-$nbt)/($N-$nt))
-		 );
-      }
-    }
-  }
-  $pdl->inplace->setnantobad->inplace->setbadtoval(0);
-
-  return $pdl;
-}
-
-*finishPdl = \&finishPdl1;
-sub finishPdl1 {
-  my ($lr,$pdl) = @_;
-
-  ##-- DEBUG
-  #print STDERR
-  #  (('~' x 80), "\n",
-  #   ref($lr), "::finishPdl1(): called\n",
-  #   ('~' x 80), "\n",
-  #  );
-
-  my ($N,$Nbt,$Nt,$Nb, $nbt,$nt,$nb);
-  foreach my $dir (0,1) {
-    $Nbt  = $pdl->slice("($dir),,");
-    $N    = $Nbt->sum;
-    #$Ptb /= $Ptb->sum;
-
-    $Nt   = $Nbt->sumover;
-    $Ntx  = $Nt->slice("*1");
-    $Nb   = $Nbt->xchg(0,1)->sumover;
-
-    $Pb              = $Nb  / $N;
-    $Nb_minus_Nbt    = $Nb-$Nbt;
-    $N_minus_Nt      = $N-$Ntx;
-
-    $Pb_given_t      = $Nbt/$Ntx;
-    $Pb_given_not_t  = $Nb_minus_Nbt / $N_minus_Nt;
+    $Pb_given_t      = $Nbt/$Ntx;                     ##-- [b,t] -> p(b|t)
+    $Pb_given_not_t  = $Nb_minus_Nbt / $N_minus_Nt;   ##-- [b,t] -> p(b|¬t)
 
     $Nbt .= -2*(logLp($Nbt, $Ntx, $Pb)         + logLp($Nb_minus_Nbt, $N_minus_Nt, $Pb)
 		-
@@ -115,7 +78,7 @@ sub finishPdl1 {
     ##-- hack: bash to zero when p(b | t) << p(b | !t)
     #$Nbt *= ($Pb_given_t > $Pb_given_not_t);
   }
-  $pdl->inplace->setnantobad->inplace->setbadtoval(0);
+  $pdl->inplace->setnantobad->inplace->setbadtoval(0); ##-- should not be necessary
 
   return $pdl;
 }
@@ -195,7 +158,7 @@ sub likelihoodPdl {
 sub helpString {
   my $that = shift;
   return
-    (qq(Extract left- and right-MI profile wrt. fixed boundary set.\n)
+    (qq(Extract left- and right- binomial-log-likelihood profile wrt. fixed boundary set.\n)
      .qq(Options:\n)
      .qq(  bounds=ENUM      [default=empty]\n)
      .qq(  targets=ENUM     [default=empty]\n)
