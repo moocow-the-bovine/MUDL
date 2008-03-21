@@ -7,6 +7,7 @@
 ##======================================================================
 
 package MUDL::PDL::Smooth;
+use MUDL::PDL::Ranks;
 use PDL;
 use PDL::CCS;
 
@@ -17,6 +18,9 @@ use strict;
 
 ## ($values,$valcounts) = $pdl->valcounts()  ##-- array context, suitable for PDL::primitive::interpol(ate)
 ##  + flat only (?)
+##  + returned PDLs are suitable for back-fitting into $pdl indices with:
+##    $i2valcount = $pdl->interpol($values,$valcounts);
+##  + see interpol() and interpolate() in PDL::Primitive
 BEGIN { *PDL::valcounts = \&valcounts; }
 sub valcounts {
   my ($pdl,%opts) = @_;
@@ -24,6 +28,9 @@ sub valcounts {
   my $counts_mask      = ($counts>0);
   return ($values->where($counts_mask),$counts->where($counts_mask));
 }
+
+##======================================================================
+## Value Smearing (GT-style)
 
 ## ($v_smeared) = $vals->smearvals();
 ## ($v_smeared) = $vals->smearvals($keys);
@@ -52,6 +59,25 @@ sub smearvals {
   $Zrv->index($r_qsi) .= 2*$Nr / ($r_hi-$r_lo);
 
   return $Zrv;
+}
+
+##======================================================================
+## Zipf fit
+
+## ($zipf_constant,$freq_fit) = zipf_fit($freq_pdl)   ##-- array context
+## $zipf_constant             = zipf_fit($freq_pdl)   ##-- scalar context
+## + fits $freq_pdl to best Zipfian distribution
+##     $freq = $zipf_constant / $rank_desc
+BEGIN { *PDL::zipf_fit = \&zipf_fit; }
+sub zipf_fit {
+  my $freq    = shift;
+  my $f_ranks = $freq->ranks(order=>'desc')+1;
+  my $total   = ($freq*$f_ranks)->sumover;
+  my $nitems  = pdl(double,$freq->nelem);
+  my $zipf_c  = $total / $nitems;
+  return $zipf_c if (!wantarray);
+  my $freq_fit = $zipf_c / $f_ranks;
+  return ($zipf_c,$freq_fit);
 }
 
 ##======================================================================
