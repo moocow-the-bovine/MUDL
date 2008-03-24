@@ -23,7 +23,9 @@ BEGIN {
 BEGIN { *PDL::variance = \&variance; }
 sub variance {
   my $p = shift;
-  return ($p**2)->average - $p->average->slice("*1");
+  return
+    ($p**2)->average - ($p->average**2)->slice("*1"); ##-- Var(X) = E(X^2) - E(X)^2
+    #(($p - $p->average->slice("*1"))**2)->average;    ##-- Var(X) = E( (X - E(X))^2 )
 }
 
 ## $stddev = $pdl->stddev()

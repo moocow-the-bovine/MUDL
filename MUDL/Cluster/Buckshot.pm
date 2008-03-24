@@ -336,32 +336,6 @@ sub attach0 {
   return $bc;
 }
 
-sub attach0__OLD {
-  my $bc = shift;
-
-  ##-- get prototype centroid data
-  my ($cdata,$cmask) = $bc->getprotocenters();
-
-  ##-- get attachment targets
-  my ($d,$k,$n) = ($cdata->dims, $bc->{data}->dim(1));
-  my $atgmask = ones(byte,$n);
-  $atgmask->index($bc->{protos}) .= 0;
-  my $atgids = $atgmask->which;
-  my $natgs  = $atgids->nelem;
-
-  ##-- call superclass attach()
-  my ($acids,$acdist) = $bc->SUPER::attach(rowids=>$atgids,
-					   mask=>$bc->{mask},
-					   cdata=>$cdata,
-					   cmask=>$cmask);
-
-  ##-- get grand total output
-  my $cids = $bc->{clusterids} = zeroes(long,$n);
-  $cids->index($bc->{protos}) .= $bc->{tree}{clusterids};
-  $cids->index($atgids)       .= $acids;
-
-  return $bc;
-}
 
 ##======================================================================
 ## $bc = $bc->attachN(%args)
@@ -397,55 +371,6 @@ sub attachN {
 
     ##-- invalidate data depending on previous cluster assignment
     $bc->flushCache();
-  }
-
-  return $bc;
-}
-
-sub attachN__OLD {
-  my $bc = shift;
-
-  ##-- iteration control params
-  my $niters = $bc->{niters};
-
-  ##-- centroid data
-  my ($cdata,$cmask);
-
-  ##-- target data
-  my $atgids = sequence(long,$bc->{data}->dim(1));
-
-  ##-- output data
-  my $cids_1 = $bc->{clusterids}; ##-- previous assignment, to check for changes
-  my $cdist  = zeroes(double, $atgids->nelem);
-  my $cids   = pdl($cids_1);
-
-  my ($i);
-  for ($i=0; $niters>0 && $i<$niters; $i++) {
-    ($cdata,$cmask) = $bc->getcenters(@_);   ##-- get centroid data
-
-    #if (!defined($bc->{cdmatrix})) {
-      ##-- compute cluster-to-centroid distances on-the-fly
-      attachtonearest(@$bc{qw(data mask weight)},
-		      $atgids,
-		      $cdata, $cmask,
-		      $cids,  $cdist,
-		      $bc->cddist, $bc->cdmethod);
-    #} else {
-    #  ##-- we already have row-to-centroid distances: use 'em
-    #  attachtonearestd($bc->{cdmatrix}, $atgids, $cids, $cdist);
-    #}
-
-    ##-- BUG: we get empty clusters here sometimes!
-
-    last if (all($cids==$cids_1));     ##-- check for changes
-    $bc->{clusterids} = $cids;         ##-- update {clusterids} flag
-    ($cids_1,$cids) = ($cids,$cids_1); ##-- swap temps
-
-    ##-- invalidate data depending on previous cluster assignment
-    delete(@$bc{qw(csizes celtmask celts cdmatrix cweights),
-		#qw(rprobs),
-		qw(r2cprobs beta),
-	       });
   }
 
   return $bc;
