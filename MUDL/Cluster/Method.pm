@@ -437,13 +437,13 @@ sub cddist {
 }
 
 ## $tpcdmatrix = $cm->profileDistanceMatrix(%args)
-##  + gets (trimmed-)cluster-to-datum distance matrix $tcdmatrix = $cm->{tpcdmatrix}
+##  + gets (trimmed-)cluster-to-datum distance matrix $tcdmatrix = $cm->{tpcdmatrix} # pdl($k,$nr)
 ##  + Complexity: O($n * $nTrimmed)
 ##  + %args:
 ##     tpdata   => $tpdata, ## pdl($d,$nTrimmed): trimmed profile data (default: from getprofile())
 ##     tpmask   => $tpmask, ## pdl($d,$nTrimmed): trimmed profile mask (default: from getprofile())
 ##     tpcids   => $tpcids, ## pdl($nTrimmed)   : trimmed profile clusterids (default: from getprofile())
-##     rowids   => $pdl,    ## rows to populate (default: sequence($n))
+##     rowids   => $pdl,    ## pdl($nr)         : rows to populate (default: sequence($n))
 ##     cddist   => $dist,   ## default/clobber: $cm->{cddist}
 ##     cdmethod => $method, ## default/clobber: $cm->{cdmethod}
 ##     cdbonus  => $bool,   ## default/clobber: $cm->{cdbonus} : apply hard bonus
@@ -524,12 +524,16 @@ sub profileDistanceMatrix {
   if ($args{cdmethod} =~ /\+b/ && $args{cdbonus} && defined($cm->{clusterids})) {
     print STDERR
       ("<<<DEBUG>>>: ", ref($cm),
-       "::profileDistanceMatrix() adding bonus for nRows=$nRows rowids.\n",
+       "::profileDistanceMatrix() adding bonus for nRows=$nRows rowids [buggy???].\n",
       );
-
+    ##-- BUG (???): this should probably operate on 'tpcdmatrix', not on underlying 'clusterids','celtmask'!
     my $cemask        = $cm->clusterElementMask();
     my $row_cemask    = $cemask->dice_axis(1, $rowids);
     $cm->{tpcdmatrix}->where($row_cemask) .= 0;
+    #
+    ##-- this might be a better way to do it (implied attach())
+    #my $tpcdmat = $cm->{tpcdmatrix};
+    #$tpcdmat->where($tpcdmat->xvals == $tpcdmat->minimum_ind->slice("*1,")) .= 0;
   }
 
   ##-- unset recursion detection flag
