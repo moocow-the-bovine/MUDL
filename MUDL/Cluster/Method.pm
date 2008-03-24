@@ -310,59 +310,6 @@ sub attach {
 }
 
 
-## ($cids, $cdists, @other) = $cm->attach(%args)
-##  + %args:
-##      data=>$data,     # double($d,$n2) (default: $cm->data() [implied svd application])
-##      mask=>$mask,     # long($d,$n2)   (default: !$data->isbad)
-##      rowids=>$rowids  # long($nrows)   (default: sequence($n2))
-##      cdata=>$cdata,   # double($d,$k)  (default: $cm->getcenters)
-##      cmask=>$cmask,   # long($d,$k)    (default: $cm->getcenters)
-##      cddist=>$cdd,    # for PDL::Cluster::clusterdistance() (default: $cm->cddist)
-##      cdmethod=>$cdm,  # for PDL::Cluster::clusterdistance() (default: $cm->cdmethod)
-##  + attaches $rowids rows of $data to nearest cluster center,
-##    as returned by $cm->getcenters()
-sub attach__OLD {
-  my ($cm,%args) = @_;
-
-  ##-- arg parsing
-  my ($data,$mask,$rowids,$cdata,$cmask) = @args{qw(data mask rowids cdata cmask)};
-  delete @args{qw(data mask rowids cdata cmask)};
-  @$cm{keys %args} = values %args;
-
-  ##-- defaults
-  if (!defined($data)) {
-    $data   = $cm->{data};
-  } elsif (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $data->dim(0)) {
-    ##-- apply svd
-    require MUDL::SVD;
-    $data = $cm->{svd}->apply($data);
-    $mask = !$data->isbad;
-  }
-  $mask   = !$data->isbad if (!defined($mask));
-  $rowids = sequence(long, $data->dim(1)) if (!defined($rowids));
-  if (!defined($cdata)) {
-    my @ctrs = $cm->getcenters();
-    $cdata = shift(@ctrs);
-    $cmask = shift(@ctrs) if (!defined($cmask));
-  }
-
-  ##-- output data
-  my $nrows = $rowids->nelem;
-  my $cids  = zeroes(long,$nrows);
-  my $cdist = zeroes(double,$nrows);
-
-  ##-- attachment
-  attachtonearest($data,$mask,
-		  (defined($cm->{weight}) ? $cm->{weight} : ($cm->{weight}=ones(double,$data->dim(0)))),
-		  $rowids,
-		  $cdata, $cmask,
-		  $cids,  $cdist,
-		  $cm->cddist, $cm->cdmethod);
-
-  ##-- return
-  return ($cids,$cdist);
-}
-
 ########################################################################
 ## Utilities
 ########################################################################
