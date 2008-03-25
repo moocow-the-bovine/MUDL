@@ -5,14 +5,82 @@ use MUDL;
 use MUDL::CmdUtils;
 use PDL;
 use PDL::Cluster;
+use MUDL::PDL::Stats;
+use MUDL::PDL::Ranks;
 use MUDL::Cluster::Method;
 use MUDL::Cluster::Tree;
 use MUDL::Cluster::Buckshot;
+use MUDL::Cluster::Distance;
 use Benchmark qw(cmpthese timethese);
 
 use MUDL::Corpus::MetaProfile::Attach;
 
 BEGIN { $, = ' '; }
+
+##----------------------------------------------------------------------
+## test: perl distance func
+##----------------------------------------------------------------------
+
+#use MUDL::Cluster::Distance::L1;
+#use MUDL::Cluster::Distance::L2;
+#use MUDL::Cluster::Distance::Pearson;
+sub test_perl_distance {
+  my $data = pdl(double,[ [1,2,3,4],[1,3,2,1],[4,3,2,1] ]);
+  my ($d,$n) = $data->dims;
+  my $mask   = ones(long,$d,$n);
+  my $wt     = ones(double,$d);
+
+  ##-- what to compare?
+  #my ($class,$dflag) = ('L1','b'); ##-- ok
+  #my ($class,$dflag) = ('L2','e'); ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
+  #my ($class,$dflag) = ('Pearson','c'); ##-- ok
+  #my ($class,$dflag) = ('Cosine','u'); ##-- ok
+  my ($class,$dflag) = ('Spearman','s'); ##-- ?
+
+  my $cd = MUDL::Cluster::Distance->new(class=>$class);
+  my ($rows1,$rows2) = cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
+  my $cmpvec   = $cd->compare(data1=>$data,data2=>$data,rows1=>$rows1,rows2=>$rows2);
+  my $dmat     = $cd->distanceMatrix(data=>$data);
+
+  ##-- get data matrix using builtin funcs
+  my ($dmatb);
+  if ($dflag ne 's') {
+    $dmatb = distancematrix($data,$mask,$wt, $dflag);
+  } else {
+    $dmatb = distancematrix($data->ranks,$mask,$wt, 'c');
+  }
+  print STDERR "dmat(class=$class)==dmat(flag=$dflag) ? ", (all($dmat->approx($dmatb)) ? "ok" : "NOT ok"), "\n";
+
+  print STDERR "$0: test_perl_distance() done: what now?\n";
+}
+test_perl_distance();
+
+## ($i1,$i2)     = cmp_pairs($n) ##-- list context
+## pdl(2,$ncmps) = cmp_pairs($n) ##-- scalar context; returned pdl is as for whichND()
+##  + returns all index pairs ($i1,$i2) s.t. 0 <= $i1 < $i2 < $n
+##  + stupid-but-easy version using sequence(), less-than, and whichND()
+sub cmp_pairs_v0 {
+  my $n = shift;
+  my $cmp_wnd  = (sequence(long,$n) < sequence(long,1,$n))->whichND();
+  return wantarray ? ($cmp_wnd->xchg(0,1)->dog) : $cmp_wnd;
+}
+
+## ($i1,$i2)     = cmp_pairs($n) ##-- list context
+## pdl(2,$ncmps) = cmp_pairs($n) ##-- scalar context; returned pdl is as for whichND()
+##  + returns all index pairs ($i1,$i2) s.t. 0 <= $i1 < $i2 < $n
+##  + smarter & a bit faster for medium-to-large $n [faster at ca. $n >= 16]
+BEGIN { *cmp_pairs = \&cmp_pairs_v1; }
+sub cmp_pairs_v1 {
+  my $n = shift;
+  my $ncmps     = ($n/2)*($n-1);
+  my $cmp0_vals = sequence(long,$n);#->reshape($ncmps);
+  my $cmp0_runl = sequence(long,$n)->slice("-1:0");#->reshape($ncmps);
+  my ($cmp0,$cmp0_lens);
+  $cmp0_runl->rld($cmp0_vals, $cmp0     =zeroes(long,$ncmps));
+  $cmp0_runl->rld($cmp0_runl, $cmp0_lens=zeroes(long,$ncmps));
+  my $cmp1 = 1 + $cmp0 + ($cmp0->sequence->slice("-1:0") % $cmp0_lens);
+  return wantarray ? ($cmp0,$cmp1) : $cmp0->cat($cmp1)->xchg(0,1);
+}
 
 ##----------------------------------------------------------------------
 ## test data
