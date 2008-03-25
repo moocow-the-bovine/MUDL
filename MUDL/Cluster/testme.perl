@@ -25,31 +25,57 @@ BEGIN { $, = ' '; }
 #use MUDL::Cluster::Distance::L2;
 #use MUDL::Cluster::Distance::Pearson;
 sub test_perl_distance {
-  my $data = pdl(double,[ [1,2,3,4],[1,3,2,1],[4,3,2,1] ]);
-  my ($d,$n) = $data->dims;
-  my $mask   = ones(long,$d,$n);
-  my $wt     = ones(double,$d);
+
+  my ($d,$n,$data,$mask,$wt);
+  if (0) {
+    ##-- literals
+    $data = pdl(double,[ [1,2,3,4],[1,3,3,0],[4,3,2,1] ]);
+    ($d,$n) = $data->dims;
+  } else {
+    ##-- random data
+    ($d,$n) = (200,256);
+    $data = grandom(double,$d,$n);
+  }
+  $mask   = ones(long,$d,$n);
+  $wt     = ones(double,$d);
+
 
   ##-- what to compare?
-  #my ($class,$dflag) = ('L1','b'); ##-- ok
-  #my ($class,$dflag) = ('L2','e'); ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
-  #my ($class,$dflag) = ('Pearson','c'); ##-- ok
-  #my ($class,$dflag) = ('Cosine','u'); ##-- ok
-  my ($class,$dflag) = ('Spearman','s'); ##-- ?
+  my @compare = (
+		 ['L1','b'], ##-- ok
+		 #['L2','e'], ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
+		 #['Pearson','c'], ##-- ok
+		 #['Cosine','u'], ##-- ok
+		 #['Spearman','s'], ##-- ok (via 'S')
+		);
+  foreach my $cfg (@compare) {
+    my ($class,$dflag) = @$cfg;
 
-  my $cd = MUDL::Cluster::Distance->new(class=>$class);
-  my ($rows1,$rows2) = cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
-  my $cmpvec   = $cd->compare(data1=>$data,data2=>$data,rows1=>$rows1,rows2=>$rows2);
-  my $dmat     = $cd->distanceMatrix(data=>$data);
+    my $cd = MUDL::Cluster::Distance->new(class=>$class);
+    my ($rows1,$rows2) = cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
 
-  ##-- get data matrix using builtin funcs
-  my ($dmatb);
-  if ($dflag ne 's') {
-    $dmatb = distancematrix($data,$mask,$wt, $dflag);
-  } else {
-    $dmatb = distancematrix($data->ranks,$mask,$wt, 'c');
+    ##-- get data matrix using builtin funcs
+    my $dmat     = $cd->distanceMatrix(data=>$data);
+    my ($dmatb);
+    if ($dflag eq 's') {
+      $dmatb = distancematrix($data->avgranks,$mask,$wt, 'S');
+    } else {
+      $dmatb = distancematrix($data,$mask,$wt, $dflag);
+    }
+    print STDERR "dmat(class=$class)==dmat(flag=$dflag) ? ", (all($dmat->approx($dmatb)) ? "ok" : "NOT ok"), "\n";
+
+    ##-- test: comparison vector
+    my $cmpvec  = $cd->compare (data1=>$data,data2=>$data, rows1=>$rows1,rows2=>$rows2);
+    my ($cdb,$cmpvecb);
+    if ($dflag eq 's') {
+      $cdb = MUDL::Cluster::Distance->new(distFlag=>'S');
+      $cmpvecb = $cdb->compare(data1=>$data->avgranks,data2=>$data->avgranks, rows1=>$rows1,rows2=>$rows2);
+    } else {
+      $cdb = MUDL::Cluster::Distance->new(distFlag=>$dflag);
+      $cmpvecb = $cdb->compare(data1=>$data,data2=>$data, rows1=>$rows1,rows2=>$rows2);
+    }
+    print STDERR "cmpvec(class=$class)==cmpvec(flag=$dflag) ? ", (all($cmpvec->approx($cmpvecb)) ? "ok" : "NOT ok"), "\n";
   }
-  print STDERR "dmat(class=$class)==dmat(flag=$dflag) ? ", (all($dmat->approx($dmatb)) ? "ok" : "NOT ok"), "\n";
 
   print STDERR "$0: test_perl_distance() done: what now?\n";
 }
@@ -414,6 +440,6 @@ sub itertest {
 ##----------------------------------------------------------------------
 
 #ltest1;
-foreach $i (0..100) {
+foreach $i (0..10) {
   print "--dummy[$i]--\n";
 }

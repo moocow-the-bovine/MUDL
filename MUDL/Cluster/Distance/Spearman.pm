@@ -48,8 +48,8 @@ sub new {
 sub compare {
   my ($cd,%args) = @_;
   $cd->compare_check(\%args) or croak(ref($cd)."::compare(): cowardly refusing to process inconsistent request");
-  my $rdata1 = $args{data1}->ranks()+$cd->{rank_min};
-  my $rdata2 = $args{data2}->ranks()+$cd->{rank_min};
+  my $rdata1 = $args{data1}->avgranks()+$cd->{rank_min};
+  my $rdata2 = $args{data2}->avgranks()+$cd->{rank_min};
   return $cd->SUPER::compare(%args, data1=>$rdata1, data2=>$rdata2);
 }
 

@@ -7,9 +7,9 @@
 
 package MUDL::Cluster::Distance;
 use PDL;
-use PDL::Cluster;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
+use MUDL::Cluster::Distance::Builtin;
 use Carp;
 
 use strict;
@@ -19,7 +19,7 @@ our @ISA = qw(MUDL::Object);
 ##======================================================================
 ## Globals: builtin distance functions
 
-## %DIST_BUILTIN = ($distFlag => $classSuffix, ...)
+## %DIST_BUILTIN = ($distFlag => $distName, ...)
 ##  + maps builtin suffixes to symbolic names
 our %DIST_BUILTIN =
   (
@@ -28,8 +28,16 @@ our %DIST_BUILTIN =
    's'=>'Spearman',
    'S'=>'SpearmanPre',
    'c'=>'Pearson',
-   'u'=>'Cos',
-   ##... and more ...
+   'u'=>'Cosine',
+   'D'=>'KLD',
+   'A'=>'KLD_avg',
+   'h'=>'Hoeffding_total',
+   'o'=>'Hoeffding_max',
+   'H'=>'Hoeffding_safe',
+   'O'=>'Hoeffding_max_safe',
+   'a'=>'Pearson_abs',
+   'x'=>'Cosine_abs',
+   ##... and maybe more ...
   );
 
 ##======================================================================
@@ -37,7 +45,8 @@ our %DIST_BUILTIN =
 
 ## $cm = MUDL::Cluster::Distance->new(%args);
 ##  + basic %args:
-##     class => $className,   # string: class-name or MUDL::Cluster::Distance:: suffix
+##     distFlag => $distFlag,    # string: distance-flag for builtin PDL::Cluster distance function
+##     class    => $className,   # string: class-name or MUDL::Cluster::Distance:: suffix; overrides $distFlag
 ##     #link  => $methodName,  # string: link-method name or MUDL::Cluster::LinkMethod:: suffix (?)
 ##  + for builtin methods:
 ##     #distFlag   => $distFlag, # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix()
@@ -50,25 +59,20 @@ sub new {
   my ($that,%args) = @_;
 
   ##-- optional class argument: dispatch
-  if (!ref($that) && exists($args{class})) {
-    $that = $args{class};
-    delete($args{class});
-    $that = "MUDL::Cluster::Distance::$that" if ($that !~ /::/);
-    MUDL::CmdUtils::loadModule($that);
-    return $that->new(%args);
+  if (!ref($that)) {
+    if (exists($args{class})) {
+      $that = $args{class};
+      delete($args{class});
+      $that = "MUDL::Cluster::Distance::$that" if ($that !~ /::/);
+      MUDL::CmdUtils::loadModule($that);
+      return $that->new(%args);
+    } elsif (defined($args{distFlag}) && exists($DIST_BUILTIN{$args{distFlag}})) {
+      $args{distName} = $DIST_BUILTIN{$args{distFlag}} if (!defined($args{distName}));
+      $that = 'MUDL::Cluster::Distance::Builtin';
+    }
   }
 
-  my $cd = $that->SUPER::new(
-			     ##-- args
-			     #link=>'Max',
-			     ##
-			     ##-- PDL::Cluster builtin wrappers
-			     #distFlag=>'b',
-			     #linkFlag=>'m',
-			     ##
-			     ##--
-			     %args,
-			    );
+  my $cd = $that->SUPER::new(%args);
   return $cd;
 }
 
