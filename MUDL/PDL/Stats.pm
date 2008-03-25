@@ -20,12 +20,18 @@ BEGIN {
 }
 
 ## $var = $pdl->variance()
-BEGIN { *PDL::variance = \&variance; }
-sub variance {
+BEGIN {
+  *PDL::variance0 = \&variance0;
+  *PDL::variance1 = \&variance1;
+  *PDL::variance = *variance = \&variance0; ##-- a tiny bit faster
+}
+sub variance0 {
   my $p = shift;
-  return
-    ($p**2)->average - ($p->average**2)->slice("*1"); ##-- Var(X) = E(X^2) - E(X)^2
-    #(($p - $p->average->slice("*1"))**2)->average;    ##-- Var(X) = E( (X - E(X))^2 )
+  return ($p**2)->average - ($p->average**2);               ##-- Var(X) = E(X^2) - E(X)^2
+}
+sub variance1 {
+  my $p = shift;
+  return (($p - $p->average->slice("*1"))**2)->average;     ##-- Var(X) = E( (X - E(X))^2 )
 }
 
 ## $stddev = $pdl->stddev()
