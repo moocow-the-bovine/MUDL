@@ -9,7 +9,7 @@ package MUDL::Cluster::Distance;
 use PDL;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
-use MUDL::Cluster::Distance::Builtin;
+#use MUDL::Cluster::Distance::Builtin;
 use Carp;
 
 use strict;
@@ -19,36 +19,38 @@ our @ISA = qw(MUDL::Object);
 ##======================================================================
 ## Globals: builtin distance functions
 
-## %DIST_BUILTIN = ($distFlag => $distName, ...)
+## %DIST_ALIAS = ($alias => [$CLASS_OR_SUFFIX, %class_new_args], ...)
 ##  + maps builtin suffixes to symbolic names
-our %DIST_BUILTIN =
-  (
-   'e'=>'Euclid',
-   'b'=>'L1',
-   's'=>'Spearman',
-   'S'=>'SpearmanPre',
-   'c'=>'Pearson',
-   'u'=>'Cosine',
-   'D'=>'KLD',
-   'A'=>'KLD_avg',
-   'h'=>'Hoeffding_total',
-   'o'=>'Hoeffding_max',
-   'H'=>'Hoeffding_safe',
-   'O'=>'Hoeffding_max_safe',
-   'a'=>'Pearson_abs',
-   'x'=>'Cosine_abs',
-   ##... and maybe more ...
-  );
+our (%DIST_ALIAS);
+BEGIN {
+  %DIST_ALIAS =
+    (
+     ##-- PDL::Cluster built-in distance functions
+     'e'=>['Builtin', distFlag=>'e', distName=>'Euclid'],
+     'b'=>['Builtin', distFlag=>'b', distName=>'L1'],
+     's'=>['Builtin', distFlag=>'s', distName=>'Spearman'],
+     'S'=>['Builtin', distFlag=>'S', distName=>'SpearmanPre'],
+     'c'=>['Builtin', distFlag=>'c', distName=>'Pearson'],
+     'u'=>['Builtin', distFlag=>'u', distName=>'Cosine'],
+     'D'=>['Builtin', distFlag=>'D', distName=>'KLD'],
+     'A'=>['Builtin', distFlag=>'A', distName=>'KLD_avg'],
+     'h'=>['Builtin', distFlag=>'h', distName=>'Hoeffding_total'],
+     'o'=>['Builtin', distFlag=>'o', distName=>'Hoeffding_max'],
+     'H'=>['Builtin', distFlag=>'H', distName=>'Hoeffding_safe'],
+     'O'=>['Builtin', distFlag=>'O', distName=>'Hoeffding_max_safe'],
+     'a'=>['Builtin', distFlag=>'a', distName=>'Pearson_abs'],
+     'x'=>['Builtin', distFlag=>'x', distName=>'Cosine_abs'],
+     ##... and maybe more ...
+    );
+}
 
 ##======================================================================
 ## Generic constructor
 
 ## $cm = MUDL::Cluster::Distance->new(%args);
 ##  + basic %args:
-##     distFlag => $distFlag,    # string: distance-flag for builtin PDL::Cluster distance function
-##     class    => $className,   # string: class-name or MUDL::Cluster::Distance:: suffix; overrides $distFlag
-##     #link  => $methodName,  # string: link-method name or MUDL::Cluster::LinkMethod:: suffix (?)
-##  + for builtin methods:
+##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::Distance:: suffix
+##  + for builtin methods (see MUDL::Cluster::Distance::Builtin)
 ##     #distFlag   => $distFlag, # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix()
 ##     #methodFlag => $linkFlag, # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix()
 ##  + distance class names
@@ -59,21 +61,17 @@ sub new {
   my ($that,%args) = @_;
 
   ##-- optional class argument: dispatch
-  if (!ref($that)) {
-    if (exists($args{class})) {
-      $that = $args{class};
-      delete($args{class});
-      $that = "MUDL::Cluster::Distance::$that" if ($that !~ /::/);
-      MUDL::CmdUtils::loadModule($that);
-      return $that->new(%args);
-    } elsif (defined($args{distFlag}) && exists($DIST_BUILTIN{$args{distFlag}})) {
-      $args{distName} = $DIST_BUILTIN{$args{distFlag}} if (!defined($args{distName}));
-      $that = 'MUDL::Cluster::Distance::Builtin';
-    }
+  if (!ref($that) && defined($args{class})) {
+    $that = $args{class};
+    delete($args{class});
+    my %implied_args = qw();
+    ($that,%implied_args) = @{$DIST_ALIAS{$that}} if (defined($DIST_ALIAS{$that}));
+    $that = "MUDL::Cluster::Distance::$that" if ($that !~ /::/);
+    MUDL::CmdUtils::loadModule($that);
+    return $that->new(%implied_args,%args);
   }
 
-  my $cd = $that->SUPER::new(%args);
-  return $cd;
+  return $that->SUPER::new(%args);
 }
 
 
@@ -82,11 +80,12 @@ sub new {
 
 ##--------------------------------------------------------------
 ## $dmat = $cd->distanceMatrix(%args)
+##  + row-row distances
 ##  + %args:
-##     data   => $data,   ##-- pdl($d,$n) : $d=N_features, $n=N_data
-##     mask   => $mask,   ##-- pdl($d,$n) : "feature-is-good" boolean mask [default=ones()]
-##     weight => $weight, ##-- pdl($d)    : feature-weight mask (weights distances)
-##  [o]dmat  => $dmat,   ##-- pdl($n,$n) : output matrix [optional]
+##     data   => $data,   ##-- dbl ($d,$n) : $d=N_features, $n=N_data
+##     mask   => $mask,   ##-- int ($d,$n) : "feature-is-good" boolean mask          [default=$data->isgood()]
+##     weight => $weight, ##-- dbl ($d)    : feature-weight mask (weights distances) [default=ones($d)]
+##  [o]dmat  => $dmat,    ##-- dbl ($n,$n) : output matrix [optional]
 ##  + default implementation calls $cd->compare()
 sub distanceMatrix {
   my ($cd,%args) = @_;
@@ -95,10 +94,14 @@ sub distanceMatrix {
   ##-- get non-redundant comparison vector
   my $n = $args{data}->dim(1);
   my ($rows1,$rows2) = $cd->cmp_pairs($n);
-  my $cmpvec = $cd->compare(data1=>$args{data}, data2=>$args{data},
-			    mask1=>$args{mask}, mask2=>$args{mask},
-			    rows1=>$rows1,      rows2=>$rows2,
-			    weight=>$args{weight});
+  my $cmpvec = $cd->compare(data=>$args{data},
+			    rows1=>$rows1,
+			    rows2=>$rows2,
+			    mask=>$args{mask},
+			    weight=>$args{weight},
+			    #data1=>$args{data}, data2=>$args{data},
+			    #mask1=>$args{mask}, mask2=>$args{mask},
+			   );
 
   ##-- roll $cmpvec into square distance matrix
   my $dmat = $args{dmat};
@@ -115,10 +118,10 @@ sub distanceMatrix {
 ##     cdata  => $cdata,    ##-- pdl($d,$nce)   : $d=N_features, $nce=N_clustered_elts
 ##     cmask  => $cmask,    ##-- pdl($d,$nce)   : boolean "feature-is-good" mask for $cdata [default=ones()]
 ##     cids   => $cids,     ##-- pdl($nce)      : [$ce_i] -> $clusterid_for_cdata_row_i
-##     data   => $data,     ##-- pdl($d,$nne)   : $d=N_features, $nne=N_new_elts
-##     mask   => $mask,     ##-- pdl($d,$nne)   : boolean "feature-is-good" mask for $data [default=ones()]
+##     data   => $data,     ##-- pdl($d,$nde)   : $d=N_features, $nde=N_data_elts
+##     mask   => $mask,     ##-- pdl($d,$nde)   : boolean "feature-is-good" mask for $data [default=ones()]
 ##     weight => $weight,   ##-- pdl($d)        : feature-weight mask (weights distances) [default=ones()]
-##  [o]cdmat  => $cdmat,    ##-- pdl($nce,$nne) : output matrix [optional]
+##  [o]cdmat  => $cdmat,    ##-- pdl($nce,$nde) : output matrix [optional]
 sub clusterDistanceMatrix {
   my ($cd,%args) = @_;
   croak(ref($cd)."::distanceMatrix(): not yet implemented!");
@@ -164,17 +167,34 @@ sub cmp_pairs_v0 {
 ##--------------------------------------------------------------
 ## $cmpvec = $cd->compare(%args)
 ##  + %args:
-##     data1  => $data1,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data1                [REQUIRED]
-##     data2  => $data2,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data2                [REQUIRED]
-##     rows1  => $rows1,   ##-- pdl($ncmps) : [$i] -> $data1_rowid_for_cmp_i            [REQUIRED]
-##     rows2  => $rows2,   ##-- pdl($ncmps) : [$i] -> $data2_rowid_for_cmp_i            [REQUIRED]
-##     mask1  => $mask1,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data1 [default=ones()]
-##     mask2  => $mask2,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data2 [default=ones()]
-##     weight => $weight,  ##-- pdl($d)     : feature-weight mask (weights distances)   [default=ones()]
-##  [o]cmpvec => $cmpvec,  ##-- pdl($ncmps) : output pdl [optional]
+##     #data1  => $data1,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data1                [REQUIRED]
+##     #data2  => $data2,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data2                [REQUIRED]
+##     #mask1  => $mask1,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data1 [default=ones()]
+##     #mask2  => $mask2,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data2 [default=ones()]
+##     data   => $data,    ##-- dbl ($d,$n)  : $d=N_features, $n=N_data                  [REQUIRED]
+##     mask   => $mask,    ##-- int ($d,$n)  : $d=N_features, $n=N_data                  [default=$data->isgood()]
+##     rows1  => $rows1,   ##-- int ($ncmps) : [$i] -> $data1_rowid_for_cmp_i            [REQUIRED]
+##     rows2  => $rows2,   ##-- int ($ncmps) : [$i] -> $data2_rowid_for_cmp_i            [REQUIRED]
+##     weight => $weight,  ##-- dbl ($d)     : feature-weight mask (weights distances)   [default=ones()]
+##  [o]cmpvec => $cmpvec,  ##-- dbl ($ncmps) : output pdl [optional]
 sub compare {
   my ($cd,%args) = @_;
   croak(ref($cd)."::compare(): not yet implemented!");
+}
+
+##======================================================================
+## Data-mangling utilities (funcs)
+
+##--------------------------------------------------------------
+## $mat12 = $cd->matrixCat($mat1,$mat2)
+##  + equivalent to $mat1->glue(1,$mat2)
+##  + Signature:
+##         $mat1 (m,n1)
+##         $mat2 (m,n2)
+##      [o]$mat12(m,n1+n2)
+sub matrixCat {
+  shift if (UNIVERSAL::isa($_[0], __PACKAGE__));
+  return $_[0]->glue(1,$_[1]);
 }
 
 ##======================================================================
@@ -187,72 +207,73 @@ sub compare {
 sub compare_check {
   my ($cd,$args) = @_;
   my $rc=1;
-  if (!defined($args->{data1})) { carp(ref($cd)."::compare_check(): no 'data1' matrix specified!"); $rc=0; }
-  if (!defined($args->{data2})) { carp(ref($cd)."::compare_check(): no 'data2' matrix specified!"); $rc=0; }
-  if (!defined($args->{rows1})) { carp(ref($cd)."::compare_check(): no 'rows1' vector specified!"); $rc=0; }
-  if (!defined($args->{rows2})) { carp(ref($cd)."::compare_check(): no 'rows2' vector specified!"); $rc=0; }
-  if ($args->{data1}->dim(0) != $args->{data2}->dim(0)) {
-    ##-- check: d($data1) == d($data2)
-    carp(ref($cd)."::compare_check(): dimension mismatch: "
-	 ."data1->dim(0)==".$args->{data1}->dim(0)
-	 ." != "
-	 ."data2->dim(0)==".$args->{data2}->dim(0));
-    $rc=0;
-  }
-  if ($args->{rows1}->nelem != $args->{rows2}->nelem) {
+  my ($data,$rows1,$rows2) = @$args{qw(data rows1 rows2)};
+  if (!defined($data))  { carp(ref($cd)."::compare_check(): no 'data' matrix specified!"); $rc=0; }
+  if (!defined($rows1)) { carp(ref($cd)."::compare_check(): no 'rows1' vector specified!"); $rc=0; }
+  if (!defined($rows2)) { carp(ref($cd)."::compare_check(): no 'rows2' vector specified!"); $rc=0; }
+
+  my ($d,$n,$nr) = ($data->dim(0),$data->dim(1),$rows1->nelem);
+
+  if ($nr != $rows2->nelem) {
     ##-- check: ncmps($rows1) == ncmps($rows2)
     carp(ref($cd)."::compare_check(): dimension mismatch: "
-	 ."rows1->nelem==".$args->{rows1}->nelem
-	 ." != "
-	 ."rows2->nelem==".$args->{rows2}->nelem
+	 ."(rows1->nelem==$nr) != (rows2->nelem==".$rows2->nelem.")"
 	);
     $rc=0;
   }
-  if (defined($args->{mask1})
-      && (pdl(long,$args->{mask1}->dims) != pdl(long,$args->{data1}->dims))->any)
+
+  if (defined($args->{mask}) && ($args->{mask}->dim(0) != $d || $args->{mask}->dim(1) != $n)) {
+    ##-- check: dims($mask) == dims($data)
+    carp(ref($cd)."::compare_check(): dimension mismatch: "
+	 ."(mask->dims==(".join(',',$args->{mask}->dims)."))"
+	 ." != "
+	 ."(data->dims==".join(',',$data->dims)."))"
+	);
+    $rc=0;
+    }
+
+  if (defined($args->{weight}) && $args->{weight}->dim(0) != $d)
     {
-      ##-- check: dims($mask1) == dims($data1)
+      ##-- check: d($weight) == d($data)
       carp(ref($cd)."::compare_check(): dimension mismatch: "
-	   ."mask1->dims==(".join(',',$args->{mask1}->dims).")"
+	   ."(weight->dim(0)==".$args->{weight}->dim(0).")"
 	   ." != "
-	   ."data1->dims==".join(',',$args->{data1}->dims).")"
+	   ."(data->dim(0)==$d)"
 	  );
       $rc=0;
     }
-  if (defined($args->{mask2})
-      && (pdl(long,$args->{mask2}->dims) != pdl(long,$args->{data2}->dims))->any)
-    {
-      ##-- check: dims($mask2) == dims($data2)
-      carp(ref($cd)."::compare_check(): dimension mismatch: "
-	   ."mask2->dims==(".join(',',$args->{mask2}->dims).")"
-	   ." != "
-	   ."data2->dims==".join(',',$args->{data2}->dims).")"
-	  );
-      $rc=0;
-    }
-  if (defined($args->{weight}) && $args->{weight}->dim(0) != $args->{data1}->dim(0))
-    {
-      ##-- check: d($weight) == d($data1)
-      carp(ref($cd)."::compare_check(): dimension mismatch: "
-	   ."weight->dim(0)==".$args->{weight}->dim(0)
-	   ." != "
-	   ."data1->dim(0)==".$args->{data1}->dim(0)
-	  );
-      $rc=0;
-    }
+
+  my ($min,$max);
+  ($min,$max) = $rows1->minmax();
+  if ($min < 0  || $max >= $n) {
+    ##-- check: index range for {rows1}
+    carp(ref($cd)."::compare_check(): index out of range in 'rows1': "
+	 ."(rows1 c= [$min..$max]) !c= (data_rows = [0..".($n-1)."]"
+	);
+    $rc=0;
+  }
+
+  ($min,$max) = $rows2->minmax();
+  if ($min < 0  || $max >= $n) {
+    ##-- check: index range for {rows2}
+    carp(ref($cd)."::compare_check(): index out of range in 'rows2': "
+	 ."(rows2 c= [$min..$max]) !c= (data_rows = [0..".($args->{data}->dim(1)-1)."]"
+	);
+    $rc=0;
+  }
+
   return $rc;
 }
 
 ##--------------------------------------------------------------
 ## undef = $cd->compare_defaults(\%args)
 ##  + %args: as for compare()
-##  + instantiates default 'mask*' and 'weight' keys in \%args
+##  + instantiates default 'mask' and 'weight' keys in \%args
 ##  + assumes that \%args is 'sane', e.g. $cd->compare_check(\%args) returned true
 sub compare_defaults {
   my ($cd,$args) = @_;
-  $args->{mask1} = ones(long,$args->{data1}->dims) if (!defined($args->{mask1}));
-  $args->{mask2} = ones(long,$args->{data2}->dims) if (!defined($args->{mask2}));
-  $args->{weight} = ones(double,$args->{data1}->dim(0)) if (!defined($args->{weight}));
+  $args->{mask}   = $args->{data}->isgood->long if (!defined($args->{mask}));
+  $args->{weight} = ones(double,$args->{data}->dim(0)) if (!defined($args->{weight}));
   return;
 }
 
@@ -265,6 +286,17 @@ sub compare_cmpvec {
   my ($cd,$args) = @_;
   return $args->{cmpvec} if (defined($args->{cmpvec}));
   return $args->{cmpvec} = zeroes(double,$args->{rows1}->nelem);
+}
+
+##--------------------------------------------------------------
+## $cmpvec = $cd->compare_set_cmpvec($cmpvec_arg,$cmpvec_vals)
+##  + %args: as for compare()
+##  + returns output pdl $cmpvec_arg, setting it to $cmpvec_vals if undefined
+sub compare_set_cmpvec {
+  #my ($cd,$arg,$vals) = @_;
+  return $_[2] if (!defined($_[1]) || $_[1]->isnull);
+  $_[1] .= $_[2];
+  return $_[1];
 }
 
 

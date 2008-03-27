@@ -38,13 +38,14 @@ sub new {
 ## $dmat = $cd->distanceMatrix(%args)
 ##  + %args:
 ##     data   => $data,   ##-- pdl($d,$n) : $d=N_features, $n=N_data
-##     mask   => $mask,   ##-- pdl($d,$n) : "feature-is-good" boolean mask [default=ones()]
-##     weight => $weight, ##-- pdl($d)    : feature-weight mask (weights distances)
-##  [o]dmat  => $dmat,   ##-- pdl($n,$n) : output matrix [optional]
+##     mask   => $mask,   ##-- pdl($d,$n) : "feature-is-good" boolean mask [default=$data->isgood()]
+##     weight => $weight, ##-- pdl($d)    : feature-weight mask            [default=ones()]
+##  [o]dmat  => $dmat,   ##-- pdl($n,$n)  : output matrix [optional]
 ##  + default implementation calls $cd->compare()
 sub distanceMatrix {
   my ($cd,%args) = @_;
   croak(ref($cd)."::distanceMatrix(): cowardly refusing undefined 'data' matrix") if (!defined($args{data}));
+  $cd->compare_defaults(\%args); ##-- default 'mask', 'weight'
 
   ##-- dispatch to PDL::Cluster::distancematrix()
   my $n    = $args{data}->dim(1);
@@ -60,26 +61,24 @@ sub distanceMatrix {
 ##--------------------------------------------------------------
 ## $cmpvec = $cd->compare(%args)
 ##  + %args:
-##     data1  => $data1,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data1                [REQUIRED]
-##     data2  => $data2,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data2                [REQUIRED]
+##     #data1  => $data1,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data1                [REQUIRED]
+##     #data2  => $data2,   ##-- pdl($d,$n2) : $d=N_features, $n1=N_data2                [REQUIRED]
+##     #mask1  => $mask1,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data1 [default=ones()]
+##     #mask2  => $mask2,   ##-- pdl($d,$n2) : "feature-is-good" boolean mask for $data2 [default=ones()]
+##     data   => $data,    ##-- pdl($d,$n)  : $d=N_features, $n=N_data                  [REQUIRED]
 ##     rows1  => $rows1,   ##-- pdl($ncmps) : [$i] -> $data1_rowid_for_cmp_i            [REQUIRED]
 ##     rows2  => $rows2,   ##-- pdl($ncmps) : [$i] -> $data2_rowid_for_cmp_i            [REQUIRED]
-##     mask1  => $mask1,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data1 [default=ones()]
-##     mask2  => $mask2,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data2 [default=ones()]
+##     mask   => $mask,    ##-- pdl($d,$n)  : "feature-is-good" boolean mask for $data1 [default=$data->isgood()]
 ##     weight => $weight,  ##-- pdl($d)     : feature-weight mask (weights distances)   [default=ones()]
 ##  [o]cmpvec => $cmpvec,  ##-- pdl($ncmps) : output pdl [optional]
 sub compare {
   my ($cd,%args) = @_;
   $cd->compare_check(\%args) or croak(ref($cd)."::compare(): cowardly refusing to process inconsistent request");
-  $cd->compare_defaults(\%args); ##-- ensure mask*, weight
+  $cd->compare_defaults(\%args); ##-- ensure mask, weight
 
   ##-- forwards-compatibility hack: roll data, mask into a Grand Unified Data Matrix
-  my ($d,$n1,$n2) = ($args{data1}->dims,$args{data2}->dim(1));
-  my $gudata = $args{data1}->glue(1,$args{data2});
-  my $gumask = $args{mask1}->glue(1,$args{mask2});
-  my $guwt   = $args{weight};
   my $cmpvec = $cd->compare_cmpvec(\%args);
-  PDL::Cluster::rowdistances($gudata,$gumask,$guwt, $args{rows1}, $args{rows2}+$n1, $cmpvec, $cd->{distFlag});
+  PDL::Cluster::rowdistances(@args{qw(data mask weight rows1 rows2)}, $cmpvec, $cd->{distFlag});
   return $cmpvec;
 }
 
