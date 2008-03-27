@@ -119,22 +119,35 @@ sub distanceMatrix {
 ##--------------------------------------------------------------
 ## $cdmat = $cd->clusterDistanceMatrix(%args)
 
+## [proposal, v3]: as for [v2] + aux method:
+## $ccmps = $cd->compare_clusters(%args):
+##  + returns comparison vector between each aligned pair of cluster-ids in ($cwhich1,$cwhich2):
+##  + %args
+##     data   => $data,     ##-- dbl ($d,$n)     : (joined): $d=N_feat, $n=N_elts            [REQUIRED]
+##     cwhich1=> $which1,   ##-- int ($ncmps)    : dim=0 comparison target cluster-ids       [REQUIRED]
+##     cwhich2=> $which2,   ##-- int ($ncmps)    : dim=1 comparison target cluster-ids       [REQUIRED]
+##     cids1  => $cids1,    ##-- int ($nce)      : dim=0 cluster-ids by row-id, 0<=$cid1<$k1 [default: sequence($n)]
+##     cids2  => $cids2,    ##-- int ($nce)      : dim=1 cluster-ids by row-id, 0<=$cid2<$k2 [default: sequence($n)]
+##     mask   => $mask,     ##-- int ($d,$n)     : boolean mask for $data                    [default=$data->isgood]
+##     weight => $weight,   ##-- dbl ($d)        : feature-wise distance weights             [default=ones($d)]
+##  [o]ccmps  => $ccmps,    ##-- dbl ($ncmps)    : output vector                             [optional]
+
 ## [proposal, v2]:
 ##  + returns distance matrix between each pair of cluster-id values in ($cids1,$cids2)
 ##  + %args
 ##     data   => $data,     ##-- dbl ($d,$n)     : (joined): $d=N_feat, $n=N_elts            [REQUIRED]
-##     cids1  => $cids1,    ##-- int ($nce)      : dim=0 cluster-ids by row-id, 0<=$cids<$k  [default: sequence($n)]
-##     cids2  => $cids2,    ##-- int ($nce)      : dim=1 cluster-ids by row-id, 0<=$cids<$k  [default: sequence($n)]
-##     mask   => $mask,     ##-- int ($d,$nde)   : boolean "feature-is-good" mask for $data  [default=$data->isgood]
-##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
-##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nde)   : output matrix                             [optional]
+##     cids1  => $cids1,    ##-- int ($nce)      : dim=0 cluster-ids by rowid, 0<=$cid1<$k1  [default: sequence($n)]
+##     cids2  => $cids2,    ##-- int ($nce)      : dim=1 cluster-ids by rowid, 0<=$cid2<$k2  [default: sequence($n)]
+##     mask   => $mask,     ##-- int ($d,$n)     : boolean mask for $data                    [default=$data->isgood]
+##     weight => $weight,   ##-- dbl ($d)        : feature-wise distance weights             [default=ones($d)]
+##  [o]cdmat  => $cdmat,    ##-- dbl ($k1,$k2)   : output matrix                             [optional]
 
 ## [proposal, v1]:
 ##  + returns distance matrix between each cluster-id listed in $cids() and each row in $data()
 ##  + %args
 ##     data   => $data,     ##-- dbl ($d,$nde)   : $d=N_features, $nde=N_data_elts           [REQUIRED]
 ##     cdata  => $cdata,    ##-- dbl ($d,$nce)   : $d=N_features, $nce=N_clustered_elts      [REQUIRED]
-##     cids   => $cids,     ##-- int ($nce)      : cluster-ids by $cdata row-id, 0<=$cids<$k [default: sequence($nce)]
+##     cids   => $cids,     ##-- int ($nce)      : cluster-ids by $cdata row-id, 0<=$cid<$k  [default: sequence($nce)]
 ##     mask   => $mask,     ##-- int ($d,$nde)   : boolean mask for $data                    [default=$data->isgood]
 ##     cmask  => $cmask,    ##-- int ($d,$nce)   : boolean mask for $cdata                   [default=$cdata->isgood]
 ##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
@@ -142,7 +155,7 @@ sub distanceMatrix {
 
 sub clusterDistanceMatrix {
   my ($cd,%args) = @_;
-  croak(ref($cd)."::distanceMatrix(): not yet implemented!");
+  croak(ref($cd)."::clusterDistanceMatrix(): not yet implemented!");
 }
 
 ##======================================================================
