@@ -2,7 +2,7 @@
 ## File: MUDL::Cluster::Distance.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL: generic cluster distance functions
+##  + MUDL: generic clustering (row-row) and (cluster-row) distance functions
 ##======================================================================
 
 package MUDL::Cluster::Distance;
@@ -20,7 +20,7 @@ our @ISA = qw(MUDL::Object);
 ## Globals: builtin distance functions
 
 ## %DIST_ALIAS = ($alias => [$CLASS_OR_SUFFIX, %class_new_args], ...)
-##  + maps builtin suffixes to symbolic names
+##  + maps builtin suffixes to constructor arguments
 our (%DIST_ALIAS);
 BEGIN {
   %DIST_ALIAS =
@@ -47,7 +47,7 @@ BEGIN {
 ##======================================================================
 ## Generic constructor
 
-## $cm = MUDL::Cluster::Distance->new(%args);
+## $cd = MUDL::Cluster::Distance->new(%args);
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::Distance:: suffix
 ##  + for builtin methods (see MUDL::Cluster::Distance::Builtin)
@@ -63,12 +63,16 @@ sub new {
   ##-- optional class argument: dispatch
   if (!ref($that) && defined($args{class})) {
     $that = $args{class};
+    my @alias_args = qw();
+    while (ref($that) && ref($that) eq 'ARRAY') {
+      ($that,@alias_args) = @$that;
+      $that = $DIST_ALIAS{$that} if (defined($DIST_ALIAS{$that}));
+      %args = (@alias_args,%args);
+    }
     delete($args{class});
-    my %implied_args = qw();
-    ($that,%implied_args) = @{$DIST_ALIAS{$that}} if (defined($DIST_ALIAS{$that}));
     $that = "MUDL::Cluster::Distance::$that" if ($that !~ /::/);
     MUDL::CmdUtils::loadModule($that);
-    return $that->new(%implied_args,%args);
+    return $that->new(%args);
   }
 
   return $that->SUPER::new(%args);
@@ -82,7 +86,7 @@ sub new {
 ## $dmat = $cd->distanceMatrix(%args)
 ##  + row-row distances
 ##  + %args:
-##     data   => $data,   ##-- dbl ($d,$n) : $d=N_features, $n=N_data
+##     data   => $data,   ##-- dbl ($d,$n) : $d=N_features, $n=N_data                [REQUIRED]
 ##     mask   => $mask,   ##-- int ($d,$n) : "feature-is-good" boolean mask          [default=$data->isgood()]
 ##     weight => $weight, ##-- dbl ($d)    : feature-weight mask (weights distances) [default=ones($d)]
 ##  [o]dmat  => $dmat,    ##-- dbl ($n,$n) : output matrix [optional]
@@ -114,14 +118,28 @@ sub distanceMatrix {
 
 ##--------------------------------------------------------------
 ## $cdmat = $cd->clusterDistanceMatrix(%args)
-##  + %args:
-##     cdata  => $cdata,    ##-- pdl($d,$nce)   : $d=N_features, $nce=N_clustered_elts
-##     cmask  => $cmask,    ##-- pdl($d,$nce)   : boolean "feature-is-good" mask for $cdata [default=ones()]
-##     cids   => $cids,     ##-- pdl($nce)      : [$ce_i] -> $clusterid_for_cdata_row_i
-##     data   => $data,     ##-- pdl($d,$nde)   : $d=N_features, $nde=N_data_elts
-##     mask   => $mask,     ##-- pdl($d,$nde)   : boolean "feature-is-good" mask for $data [default=ones()]
-##     weight => $weight,   ##-- pdl($d)        : feature-weight mask (weights distances) [default=ones()]
-##  [o]cdmat  => $cdmat,    ##-- pdl($nce,$nde) : output matrix [optional]
+
+## [proposal, v2]:
+##  + returns distance matrix between each pair of cluster-id values in ($cids1,$cids2)
+##  + %args
+##     data   => $data,     ##-- dbl ($d,$n)     : (joined): $d=N_feat, $n=N_elts            [REQUIRED]
+##     cids1  => $cids1,    ##-- int ($nce)      : dim=0 cluster-ids by row-id, 0<=$cids<$k  [default: sequence($n)]
+##     cids2  => $cids2,    ##-- int ($nce)      : dim=1 cluster-ids by row-id, 0<=$cids<$k  [default: sequence($n)]
+##     mask   => $mask,     ##-- int ($d,$nde)   : boolean "feature-is-good" mask for $data  [default=$data->isgood]
+##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
+##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nde)   : output matrix                             [optional]
+
+## [proposal, v1]:
+##  + returns distance matrix between each cluster-id listed in $cids() and each row in $data()
+##  + %args
+##     data   => $data,     ##-- dbl ($d,$nde)   : $d=N_features, $nde=N_data_elts           [REQUIRED]
+##     cdata  => $cdata,    ##-- dbl ($d,$nce)   : $d=N_features, $nce=N_clustered_elts      [REQUIRED]
+##     cids   => $cids,     ##-- int ($nce)      : cluster-ids by $cdata row-id, 0<=$cids<$k [default: sequence($nce)]
+##     mask   => $mask,     ##-- int ($d,$nde)   : boolean mask for $data                    [default=$data->isgood]
+##     cmask  => $cmask,    ##-- int ($d,$nce)   : boolean mask for $cdata                   [default=$cdata->isgood]
+##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
+##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nde)   : output matrix                             [optional]
+
 sub clusterDistanceMatrix {
   my ($cd,%args) = @_;
   croak(ref($cd)."::distanceMatrix(): not yet implemented!");

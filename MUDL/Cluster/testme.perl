@@ -44,8 +44,8 @@ sub test_perl_distance {
 
   ##-- what to compare?
   my @compare = (
-		 #['L1','b'], ##-- ok
-		 #['L2','e'], ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
+		 ['L1','b'], ##-- ok
+		 ['L2','e'], ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
 		 ['Pearson','c'], ##-- ok
 		 ['Cosine','u'], ##-- ok
 		 ['Spearman','s'], ##-- ok (via 'S')
