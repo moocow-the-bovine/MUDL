@@ -2,7 +2,7 @@
 ## File: MUDL::Cluster::LinkMethod.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL: generic clustering (cluster-row) distance linkage
+##  + MUDL: generic clustering (cluster-row & cluster-cluster) distance linkage, native perl
 ##======================================================================
 
 package MUDL::Cluster::LinkMethod;
@@ -21,25 +21,34 @@ our (%LINK_ALIAS);
 BEGIN {
   %LINK_ALIAS =
     (
-     ##-- PDL::Cluster::clusterdistance() built-in linkage methods
-     'a' => ['Builtin', linkFlag=>'a', linkName=>'mean'],
-     'm' => ['Builtin', linkFlag=>'m', linkName=>'median'],
-     's' => ['Builtin', linkFlag=>'s', linkName=>'minimum'],
-     'x' => ['Builtin', linkFlag=>'s', linkName=>'maximum'],
-     'x' => ['Builtin', linkFlag=>'s', linkName=>'average'],
+     ##-- Native linkage methods: aliases
+     'min' => ['Minimum'],
+     'max' => ['Maximum'],
+     'avg' => ['GroupAverage'],
+     'Min' => ['Minimum'],
+     'Max' => ['Maximum'],
+     'Avg' => ['GroupAverage'],
+     'Average' => ['GroupAverage'],
      ##
-     ##-- PDL::Cluster:treecluster() built-in linkage methods (for treecluster())
+     ##-- PDL::Cluster::clusterdistance() built-in linkage methods
+     #'a' => ['Builtin', linkFlag=>'a', linkName=>'mean'],
+     #'m' => ['Builtin', linkFlag=>'m', linkName=>'median'],
      #'s' => ['Builtin', linkFlag=>'s', linkName=>'minimum'],
-     #'m' => ['Builtin', linkFlag=>'m', linkName=>'maximum'],
-     #'a' => ['Builtin', linkFlag=>'a', linkName=>'average'],
-     #'c' => ['Builtin', linkFlag=>'a', linkName=>'centroid'],
+     #'x' => ['Builtin', linkFlag=>'s', linkName=>'maximum'],
+     #'x' => ['Builtin', linkFlag=>'s', linkName=>'average'],
+     ###
+     ###-- PDL::Cluster:treecluster() built-in linkage methods (for treecluster())
+     ##'s' => ['Builtin', linkFlag=>'s', linkName=>'minimum'],
+     ##'m' => ['Builtin', linkFlag=>'m', linkName=>'maximum'],
+     ##'a' => ['Builtin', linkFlag=>'a', linkName=>'average'],
+     ##'c' => ['Builtin', linkFlag=>'a', linkName=>'centroid'],
     );
 }
 
 ##======================================================================
 ## Generic constructor
 
-## $lm = MUDL::Cluster::LinkMethod->new(%args);
+## $clm = MUDL::Cluster::LinkMethod->new(%args);
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::LinkMethod:: suffix
 ##     ...
@@ -66,23 +75,66 @@ sub new {
 
 
 ##======================================================================
-## API: High-level
+## API: Low-level
 
 ##--------------------------------------------------------------
-## $cdmat = compare_link(%args)
-##  + cluster-row distances
+## ($lwhich,$lcmps) = $clm->compare_link(%args)
+##  + cluster-row and cluster-cluster linkage utility
 ##  + %args
-##     data   => $data,   ##-- dbl ($d,$n) : $d=N_features, $n=N_data                [REQUIRED]
-##     cids   => $cids,   ##-- int ($nc)  : cluster-ids by row-id     [REQUIRED]
-##     rids   => $rids,   ##-- int ($nr)  : row-ids
-##     mask   => $mask,   ##-- int ($d,$n) : "feature-is-good" boolean mask          [default=$data->isgood()]
-##     weight => $weight, ##-- dbl ($d)    : feature-weight mask (weights distances) [default=ones($d)]
+##     which   => $whichX, ##-- int (2,$ncmps) : link keys (cluster-ids) as for indexND [REQUIRED]
+##     cmps    => $cmps,   ##-- dbl ($ncmps)   : row-row distances                      [REQUIRED]
+##  [o]lwhich  => $lwhich, ##-- int (2,$k*$n)  : unique link keys                       [default=new]
+##  [o]lcmps   => $lcmp,   ##-- dbl ($k*$n)    : link-distances for unique link keys    [default=new]
+sub compare_link {
+  my ($clm,%args) = @_;
+  croak(ref($clm)."::compare_link(): not yet implemented!");
+}
 
 
-#	 ($clens,$cvals,$crows)=clusterenc($cids);
-#	 clusterdistancematrixenc($data,$mask,$wt, $clens,$crows, $rids->ones,$rids,
-#				  $cdmat_enc=zeroes(double,$k,$n),
-#				  $distFlag,$methodFlag);
+##======================================================================
+## Utilities: Low-level
+
+## $bool = $clm->compare_link_check(\%args)
+##  + checks sanity of \%args for $clm->compare_link()
+sub compare_link_check {
+  my ($clm,$args) = @_;
+  my $rc=1;
+
+  if (!defined($args->{which})) {
+    ##-- check: $which
+    carp(ref($clm)."::compare_link_check(): no 'which' parameter specified");
+    $rc=0;
+  }
+
+  if (!defined($args->{cmps})) {
+    ##-- check: $cmps
+    carp(ref($clm)."::compare_link_check(): no 'cmps' parameter specified");
+    $rc=0;
+  }
+
+  if ($args->{which}->dim(1) != $args->{cmps}->dim(0)) {
+    ##-- check: ncmps($which) == ncmps($cmps)
+    carp(ref($clm)."::compare_link_check(): dimension mismatch in 'ncmps': "
+	 ."ncmps(which)=".$args->{which}->dim(1)
+	 ." != "
+	 ."ncmps(cmps)=".$args->{cmps}->dim(0)
+	);
+    $rc=0;
+  }
+
+  return $rc;
+}
+
+
+## ($lwhich_ret,$lcmps_ret) = $clm->compare_link_set($lwhich,$lcmps,\%args)
+##  + returns ($lwhich,$lcmps), setting keys in \%args if required
+##  + %args are as for $clm->compare()
+sub compare_link_set {
+  my ($clm,$lwhich,$lcmps,$args) = @_;
+  if (defined($args->{lwhich})) { $lwhich = ($args->{lwhich} .= $lwhich); }
+  if (defined($args->{lcmps}))  { $lcmps  = ($args->{lcmps}  .= $lcmps);  }
+  return ($lwhich,$lcmps);
+}
 
 
 1;

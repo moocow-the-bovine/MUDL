@@ -51,12 +51,8 @@ BEGIN {
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::Distance:: suffix
 ##  + for builtin methods (see MUDL::Cluster::Distance::Builtin)
-##     #distFlag   => $distFlag, # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix()
-##     #methodFlag => $linkFlag, # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix()
-##  + distance class names
-##    - TODO: pass on to PDL::Cluster builtin funcs
-##  + link method names
-##    - TODO: (re-)implement PDL::Cluster builtin funcs
+##     #distFlag => $distFlag,  # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix(), ???
+##     #linkFlag => $linkFlag,  # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix(), ???
 sub new {
   my ($that,%args) = @_;
 
@@ -103,8 +99,6 @@ sub distanceMatrix {
 			    rows2=>$rows2,
 			    mask=>$args{mask},
 			    weight=>$args{weight},
-			    #data1=>$args{data}, data2=>$args{data},
-			    #mask1=>$args{mask}, mask2=>$args{mask},
 			   );
 
   ##-- roll $cmpvec into square distance matrix
@@ -118,19 +112,6 @@ sub distanceMatrix {
 
 ##--------------------------------------------------------------
 ## $cdmat = $cd->clusterDistanceMatrix(%args)
-
-## [proposal, v3]: as for [v2] + aux method:
-## $ccmps = $cd->compare_clusters(%args):
-##  + returns comparison vector between each aligned pair of cluster-ids in ($cwhich1,$cwhich2):
-##  + %args
-##     data   => $data,     ##-- dbl ($d,$n)     : (joined): $d=N_feat, $n=N_elts            [REQUIRED]
-##     cwhich1=> $which1,   ##-- int ($ncmps)    : dim=0 comparison target cluster-ids       [REQUIRED]
-##     cwhich2=> $which2,   ##-- int ($ncmps)    : dim=1 comparison target cluster-ids       [REQUIRED]
-##     cids1  => $cids1,    ##-- int ($nce)      : dim=0 cluster-ids by row-id, 0<=$cid1<$k1 [default: sequence($n)]
-##     cids2  => $cids2,    ##-- int ($nce)      : dim=1 cluster-ids by row-id, 0<=$cid2<$k2 [default: sequence($n)]
-##     mask   => $mask,     ##-- int ($d,$n)     : boolean mask for $data                    [default=$data->isgood]
-##     weight => $weight,   ##-- dbl ($d)        : feature-wise distance weights             [default=ones($d)]
-##  [o]ccmps  => $ccmps,    ##-- dbl ($ncmps)    : output vector                             [optional]
 
 ## [proposal, v2]:
 ##  + returns distance matrix between each pair of cluster-id values in ($cids1,$cids2)
