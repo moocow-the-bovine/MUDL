@@ -39,7 +39,7 @@ our @ISA = qw(MUDL::Cluster::LinkMethod);
 ##  [o]lcmps   => $lcmp,   ##-- dbl ($k*$n)    : link-distances for unique link keys    [default=new]
 sub compare_link {
   my ($clm,%args) = @_;
-  croak(ref($clm)."::compare_link(): cowardly refusing to inconsistent request") if (!$clm->compare_check(\%args));
+  croak(ref($clm)."::compare_link(): cowardly refusing to inconsistent request") if (!$clm->compare_link_check(\%args));
   my $qsi   = $args{which}->qsortveci;
   my $which = $args{which}->dice_axis(1,$qsi);
   my $cmps  = $args{cmps}->index($qsi);

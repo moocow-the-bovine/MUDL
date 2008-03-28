@@ -59,8 +59,8 @@ sub new {
   if (!ref($that) && defined($args{class})) {
     $that = $args{class};
     my @alias_args = qw();
-    while (ref($that) && ref($that) eq 'ARRAY') {
-      ($that,@alias_args) = @$that;
+    while ( (ref($that) && ref($that) eq 'ARRAY') || exists($LINK_ALIAS{$that}) ) {
+      ($that,@alias_args) = @$that if (ref($that) && ref($that) eq 'ARRAY');
       $that = $LINK_ALIAS{$that} if (defined($LINK_ALIAS{$that}));
       %args = (@alias_args,%args);
     }

@@ -10,6 +10,7 @@ use PDL;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
 #use MUDL::Cluster::Distance::Builtin;
+use MUDL::Cluster::LinkMethod;
 use Carp;
 
 use strict;
@@ -60,8 +61,8 @@ sub new {
   if (!ref($that) && defined($args{class})) {
     $that = $args{class};
     my @alias_args = qw();
-    while (ref($that) && ref($that) eq 'ARRAY') {
-      ($that,@alias_args) = @$that;
+    while ( (ref($that) && ref($that) eq 'ARRAY') || exists($DIST_ALIAS{$that}) ) {
+      ($that,@alias_args) = @$that if (ref($that) && ref($that) eq 'ARRAY');
       $that = $DIST_ALIAS{$that} if (defined($DIST_ALIAS{$that}));
       %args = (@alias_args,%args);
     }
