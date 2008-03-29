@@ -7,6 +7,7 @@
 
 package MUDL::Cluster::Distance;
 use PDL;
+#use PDL::CCS;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
 #use MUDL::Cluster::Distance::Builtin;
@@ -51,9 +52,8 @@ BEGIN {
 ## $cd = MUDL::Cluster::Distance->new(%args);
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::Distance:: suffix
-##  + for builtin methods (see MUDL::Cluster::Distance::Builtin)
-##     #distFlag => $distFlag,  # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix(), ???
-##     #linkFlag => $linkFlag,  # for PDL::Cluster::distancematrix(), PDL::Cluster::clusterdistancematrix(), ???
+##     #link    => $linkSpec,   # MUDL::Cluster::LinkMethod object or 'class' specification : TODO
+##  + for PDL::Cluster built-in methods, see MUDL::Cluster::Distance::Builtin
 sub new {
   my ($that,%args) = @_;
 
@@ -114,34 +114,157 @@ sub distanceMatrix {
 ##--------------------------------------------------------------
 ## $cdmat = $cd->clusterDistanceMatrix(%args)
 
-## [proposal, v2]:
-##  + returns distance matrix between each pair of cluster-id values in ($cids1,$cids2)
-##  + %args
-##     data   => $data,     ##-- dbl ($d,$n)     : (joined): $d=N_feat, $n=N_elts            [REQUIRED]
-##     cids1  => $cids1,    ##-- int ($nce)      : dim=0 cluster-ids by rowid, 0<=$cid1<$k1  [default: sequence($n)]
-##     cids2  => $cids2,    ##-- int ($nce)      : dim=1 cluster-ids by rowid, 0<=$cid2<$k2  [default: sequence($n)]
-##     mask   => $mask,     ##-- int ($d,$n)     : boolean mask for $data                    [default=$data->isgood]
-##     weight => $weight,   ##-- dbl ($d)        : feature-wise distance weights             [default=ones($d)]
-##  [o]cdmat  => $cdmat,    ##-- dbl ($k1,$k2)   : output matrix                             [optional]
-
 ## [proposal, v1]:
-##  + returns distance matrix between each cluster-id listed in $cids() and each row in $data()
+##  + returns distance matrix between each cluster-id listed in $cids() and each row in $rids()
 ##  + %args
 ##     data   => $data,     ##-- dbl ($d,$nde)   : $d=N_features, $nde=N_data_elts           [REQUIRED]
-##     cdata  => $cdata,    ##-- dbl ($d,$nce)   : $d=N_features, $nce=N_clustered_elts      [REQUIRED]
-##     cids   => $cids,     ##-- int ($nce)      : cluster-ids by $cdata row-id, 0<=$cid<$k  [default: sequence($nce)]
+##     cdata  => $cdata,    ##-- dbl ($d,$nce)   : $d=N_features, $nce=N_clustered_elts      [default=$data]
+##     cids   => $cids,     ##-- int ($nce)      : $cdata cluster-ids by row-id, 0<=$cid<$k  [default=sequence($nce)]
+##     rids   => $rids,     ##-- int ($nde)      : $data  cluster-ids by row-id, 0<=$rid<$nr [default=sequence($nde)]
 ##     mask   => $mask,     ##-- int ($d,$nde)   : boolean mask for $data                    [default=$data->isgood]
 ##     cmask  => $cmask,    ##-- int ($d,$nce)   : boolean mask for $cdata                   [default=$cdata->isgood]
 ##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
-##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nde)   : output matrix                             [optional]
-
+##     k      => $k,        ##-- int ()          : number of clusters                        [default=$cids->max+1]
+##     nr     => $nr,       ##-- int ()          : number of target rows                     [default=$rids->max+1]
+##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nr)    : output matrix                             [optional]
 sub clusterDistanceMatrix {
   my ($cd,%args) = @_;
-  croak(ref($cd)."::clusterDistanceMatrix(): not yet implemented!");
+  croak(ref($cd)."::clusterDistanceMatrix(): cowardly refusing inconsistent request!") if (!$cd->cdm_check(\%args));
+
+  ##-- default: dispatch to $cd->compare(), $cd->linker->compare_link()
+  $cd->cdm_defaults(\%args);
+
+  ##-- get row-row distances
+  my $cmp_which = $cd->crossproduct($args{gucids}->nelem, $args{gurids}->nelem);
+  my $cmp_vals  = $cd->compare(%args,
+			       data=>$args{gudata},
+			       mask=>$args{mask},
+			       weight=>$args{weight},
+			       rows1=>$cmp_which->slice("(0),"),
+			       rows2=>$cmp_which->slice("(1),"),
+			      );
+
+  ##-- link row-row to cluster-cluster distances
+  my $linker = $cd->linker();
+  my $link_which_in = (
+		       $args{cids}->index($cmp_which->slice("(0),"))
+		       ->cat(
+			     $args{rids}->index($cmp_which->slice("(1),"))
+			    )
+		       ->xhcg(0,1)
+		      );
+  my ($link_which,$link_cmps) = $linker->compare_link(%args,
+						      which=>$link_which_in,
+						      cmps =>$cmp_vals,
+						     );
+
+  ##-- build output matrix
+  my $cdmat = $args{cdmat};
+  $cdmat = zeroes($link_cmps->type, $args{k},$args{nr}) if (!defined($cdmat));
+  $cdmat->indexND($link_which) .= $link_cmps;
+
+  return $cdmat;
+}
+
+##======================================================================
+## API: linker access
+
+##--------------------------------------------------------------
+## $clm = $cd->linker()
+##  + returns MUDL::Cluster::LinkMethod object associated with this distance function
+sub linker {
+  my $cd = shift;
+  croak(ref($cd)."::linker(): not yet implemented!");
 }
 
 ##======================================================================
 ## Utils: for high-level API
+
+##--------------------------------------------------------------
+## $bool = $cd->cdm_check(\%args)
+##  + checks argument sanity for clusterDistanceMatrix()
+sub cdm_check {
+  my ($cd,$args) = @_;
+  $rc=1;
+  if (!defined($args->{data})) { carp(ref($cd)."::cdm_check(): no 'data' matrix specified!"); $rc=0; }
+  return $rc;
+}
+
+##--------------------------------------------------------------
+## \%args = $cd->cdm_defaults(\%args)
+##  + sets defaults in %args for clusterDistanceMatrix()
+##  + "defaults" include setting up "Grand Unified Data Matrix"
+##  + checks/sets following %args keys:
+##     gudata => $gudata, ##-- dbl ($d,$N) : grand unified data matrix, $N=($nce+$nde)
+##     gumask => $gumask, ##-- int ($d,$N) : grand unified data mask
+##     gucids => $gucids, ##-- ==$cids
+##     gurids => $gurids, ##-- ==($rids + $nce)
+##     cids   => $cids,
+##     rids   => $rids,
+##     weight => $weight,
+##     k      => $k,
+##     nr     => $nr,
+sub cdm_defaults {
+  my ($cd,$args) = @_;
+  my $data = $args->{data};
+  my $cdata = defined($args->{cdata}) ? $args->{cdata} : $data;
+
+  ##-- common data: mask, weight
+  $args->{mask}   = $data->isgood()               if (!defined($args->{mask}));
+  $args->{weight} = ones(double,$data->dim(0))    if (!defined($args->{weight}));
+
+  ##-- common data: cdata cluster-ids by cdata row-id, k ~ N_cdata_clusters ~ cdmat->dim(0)
+  if (!defined($args->{cids})) {
+    $args->{cids} = sequence(long,$cdata->dim(1));
+    $args->{k}    = $data->dim(1)                 if (!defined($args->{k}));
+  } else {
+    $args->{k}    = $args->{cids}->max+1          if (!defined($args->{k}));
+  }
+
+  ##-- common data: data "cluster"-ids by data row-id, nr ~ N_data_clusters ~ cdmat->dim(1)
+  if (!defined($args->{rids})) {
+    $args->{rids} = sequence(long,$data->dim(1));
+    $args->{nr}   = $data->dim(1)                 if (!defined($args->{nr}));
+  } else {
+    $args->{nr}   = $args->{rids}->max+1          if (!defined($args->{nr}));
+  }
+
+  if (defined($args->{cdata})) {
+    ##-- concatenated GU-matrix: data
+    $args->{gudata} = $cd->matrixCat($cdata,$data);
+
+    ##-- concatenated GU-matrix: mask
+    $args->{cmask} = $cdata->isgood() if (!defined($args->{cmask}));
+    $args->{gumask} = $cd->matrixCat(@$args{qw(cmask mask)});
+
+    ##-- concatenated GU-matrix: ids
+    $args->{gucids} = $args->{cids};
+    $args->{gurids} = $args->{rids} + $cdata->dim(1);
+  } else {
+    ##-- shared GU-matrix
+    $args->{gudata} = $data;
+    $args->{gumask} = $args->{mask};
+    $args->{gucids} = $args->{cids};
+    $args->{gurids} = $args->{rids};
+  }
+
+  return $args;
+}
+
+##======================================================================
+## Utils: comparison-index generation
+
+##--------------------------------------------------------------
+## ($i1,$i2)     = $cd->crossproduct($n,$m); ##-- list context
+## pdl(2,$ncmps) = $cd->crossproduct($n,$m); ##-- scalar context; returned pdl is as for whichND()
+##  + index cross-product ($n x $m)
+sub crossproduct {
+  my ($cd,$n,$m) = @_;
+  $m = $n if (!defined($m));
+  my $x = xvals(long,$n,$m)->flat->cat(yvals(long,$n,$m)->flat);
+  return $x->xchg(0,1) if (!wantarray);
+  return $x->dog;
+}
 
 ##--------------------------------------------------------------
 ## ($i1,$i2)     = $cd->cmp_pairs($n) ##-- list context
@@ -180,10 +303,6 @@ sub cmp_pairs_v0 {
 ##--------------------------------------------------------------
 ## $cmpvec = $cd->compare(%args)
 ##  + %args:
-##     #data1  => $data1,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data1                [REQUIRED]
-##     #data2  => $data2,   ##-- pdl($d,$n1) : $d=N_features, $n1=N_data2                [REQUIRED]
-##     #mask1  => $mask1,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data1 [default=ones()]
-##     #mask2  => $mask2,   ##-- pdl($d,$n1) : "feature-is-good" boolean mask for $data2 [default=ones()]
 ##     data   => $data,    ##-- dbl ($d,$n)  : $d=N_features, $n=N_data                  [REQUIRED]
 ##     mask   => $mask,    ##-- int ($d,$n)  : $d=N_features, $n=N_data                  [default=$data->isgood()]
 ##     rows1  => $rows1,   ##-- int ($ncmps) : [$i] -> $data1_rowid_for_cmp_i            [REQUIRED]
@@ -313,53 +432,4 @@ sub compare_set_cmpvec {
 }
 
 
-1;
-
-##======================================================================
-## Docs
-=pod
-
-=head1 NAME
-
-MUDL - MUDL Unsupervised Dependency Learner
-
-=head1 SYNOPSIS
-
- use MUDL;
-
-=cut
-
-##======================================================================
-## Description
-=pod
-
-=head1 DESCRIPTION
-
-...
-
-=cut
-
-##======================================================================
-## Footer
-=pod
-
-=head1 ACKNOWLEDGEMENTS
-
-perl by Larry Wall.
-
-=head1 AUTHOR
-
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
-
-=head1 COPYRIGHT
-
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
-
-This package is free software.  You may redistribute it
-and/or modify it under the same terms as Perl itself.
-
-=head1 SEE ALSO
-
-perl(1)
-
-=cut
+1; ##-- be happy

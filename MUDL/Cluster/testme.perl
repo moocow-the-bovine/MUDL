@@ -83,7 +83,21 @@ sub test_perl_distance {
 
   print STDERR "$0: test_perl_distance() done: what now?\n";
 }
-test_perl_distance();
+#test_perl_distance();
+
+##-- test: cross product
+sub crossp1 {
+  my ($n,$m) = @_;
+  return xvals(long,$n,$m)->flat->cat(yvals(long,$n,$m)->flat)->xchg(0,1); #->qsortvec;
+}
+#sub crossp2 {
+#  my ($n,$m) = @_;
+#  return sequence(long,$n)->dummy(0,$m)->flat->cat(sequence(long,$m)->dummy(1,$n)->flat)->xchg(0,1);
+#}
+#sub crossp3 {
+#  my ($n,$m) = @_;
+#  return (sequence(long,$n*$m)->dummy(0,2) % pdl(long,$n,$m)); #->qsortvec;
+#}
 
 
 
