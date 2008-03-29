@@ -27,7 +27,7 @@ BEGIN { $, = ' '; }
 sub test_perl_distance {
   my ($d,$n,$data,$mask,$wt);
   my $RANDOM_DATA = 0;
-  $RANDOM_DATA = 1;
+  #$RANDOM_DATA = 1;
 
   if (!$RANDOM_DATA) {
     ##-- literals

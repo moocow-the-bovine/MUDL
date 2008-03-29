@@ -47,9 +47,11 @@ sub compare_link {
 
   my ($wlens,$wvals)  = $which->rlevec();
   my ($lwhich,$lcmps) = ccs_accum_sum($which,$cmps, 0,0);
-  $lcmps             /= $wlens->index($lcmps->xvals);
+  my $which2cmp_ccs   = PDL::CCS::Nd->newFromWhich($lwhich,$lcmps->append('inf'),sorted=>1,steal=>1);
+  my $which2len_ccs   = PDL::CCS::Nd->newFromWhich($wvals,$wlens->append(0),sorted=>1,steal=>1);
+  $which2cmp_ccs     /= $which2len_ccs;
 
-  return $clm->compare_link_set($lwhich,$lcmps,\%args);
+  return $clm->compare_link_set($which2cmp_ccs->_whichND, $which2cmp_ccs->_nzvals,\%args);
 }
 
 
