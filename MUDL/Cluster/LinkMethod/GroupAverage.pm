@@ -8,8 +8,9 @@
 package MUDL::Cluster::LinkMethod::GroupAverage;
 use MUDL::Cluster::LinkMethod;
 use PDL;
+use PDL::CCS::Nd;
 use PDL::CCS::Ufunc;
-use PDL::VectorValued;
+use PDL::CCS::VectorValued;
 use Carp;
 
 use strict;
@@ -46,12 +47,12 @@ sub compare_link {
   my $cmps  = $args{cmps}->index($qsi);
 
   my ($wlens,$wvals)  = $which->rlevec();
-  my ($lwhich,$lcmps) = ccs_accum_sum($which,$cmps, 0,0);
-  my $which2cmp_ccs   = PDL::CCS::Nd->newFromWhich($lwhich,$lcmps->append('inf'),sorted=>1,steal=>1);
-  my $which2len_ccs   = PDL::CCS::Nd->newFromWhich($wvals,$wlens->append(0),sorted=>1,steal=>1);
+  my ($lwhich,$lcmps) = $which->ccs_accum_sum($cmps, 0,0);
+  my $which2cmp_ccs   = PDL::CCS::Nd->newFromWhich($lwhich, $lcmps->append(0), sorted=>1,steal=>1);
+  my $which2len_ccs   = PDL::CCS::Nd->newFromWhich($wvals,  $wlens->append(0), sorted=>1,steal=>1);
   $which2cmp_ccs     /= $which2len_ccs;
 
-  return $clm->compare_link_set($which2cmp_ccs->_whichND, $which2cmp_ccs->_nzvals,\%args);
+  return $clm->compare_link_set($wc_avg->_whichND, $wc_avg->_nzvals,\%args);
 }
 
 
