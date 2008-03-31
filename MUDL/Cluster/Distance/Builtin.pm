@@ -10,25 +10,89 @@ use PDL;
 use PDL::Cluster;
 use MUDL::Object;
 #use MUDL::Cluster::Distance; ##-- this package gets read by MUDL::Cluster::Distance
+#use MUDL::Cluster::LinkMethod; ##-- this package gets read by MUDL::Cluster::Distance
 use Carp;
 
 use strict;
 
-our @ISA = qw(MUDL::Cluster::Distance);
+our @ISA = qw(MUDL::Cluster::Distance MUDL::Cluster::LinkMethod);
 
 
 ##======================================================================
 ## Constructor
 
-## $cm = MUDL::Cluster::Distance::Builtin->new(%args);
-##  + basic %args:
+## $cm = CLASS->new(%args);
+##  + basic %args (see MUDL::Cluster::Distance)
+##     class   => $className,   # string: class-name or MUDL::Cluster::Distance:: suffix; overrides $distFlag
+##  + new %args for MUDL::Cluster::Distance::Builtin
 ##     distFlag => $distFlag,    # string: distance-flag for builtin PDL::Cluster distance function
+##     linkFlag => $linkFlag,    # string: link-method-flag for builtin PDL::Cluster::clusterdistance() function
+##     tcLinkFlag=>$tcLinkFlag,  # string: link-method-flag for PDL::Cluster::treecluster()
+##                               #  + default: guess equivalent from $cd->{linkFlag}
 ##     distName => $distName,    # optional
-##     #class   => $className,   # string: class-name or MUDL::Cluster::Distance:: suffix; overrides $distFlag
+##     linkName => $linkName,    # optional
 sub new {
   my ($that,%args) = @_;
-  return $that->SUPER::new(distName=>'(builtin)',distFlag=>'e',%args); ##-- defaults
+  my $cd = $that->SUPER::new(
+			     distFlag=>'c',             ##-- default: Pearson's correlation coefficient
+			     linkFlag=>'v',             ##-- default: pairwise-average link
+			     %args,
+			    );
+  $cd->{distName} = "(builtin:".(defined($cd->{distFlag}) ? $cd->{distFlag} : '?').")" if (!defined($cd->{distName}));
+  $cd->{linkName} = "(builtin:".(defined($cd->{linkFlag}) ? $cd->{linkFlag} : '?').")" if (!defined($cd->{linkName}));
+
+  return $cd;
 }
+
+
+##======================================================================
+## API: linker access
+
+## $clm = $cd->linker()
+##  + just returns the literal $cd object for builtin distance+link functions
+sub linker { return $_[0]; }
+
+## $flag = $clm->cdLinkFlag()
+##  + returns equivalent "link-method" flag for PDL::Cluster::clusterdistance()
+sub cdLinkFlag { return $_[0]{linkFlag}; }
+
+## $flag = $clm->tcLinkFlag()
+##  + returns equivalent "link-method" flag for PDL::Cluster::treecluster()
+sub tcLinkFlag {
+  my $clm = shift;
+  return $clm->{tcLinkFlag} if (defined($clm->{tcLinkFlag})); ##-- cached or overridden {tcLinkFlag}
+
+  ##-- treecluster():
+  # s: min
+  # m: max
+  # a: pairwise-average
+  # c: centroid [data required]
+  #?f: arithmetic mean
+  ##
+  ##-- clusterdistance() ~ treecluster()
+  # a: arithmetic mean   ~ tc=f (?)
+  # m: cluster median    ~ tc=c (?)
+  # s: min               ~ tc=s
+  # x: max               ~ tc=m
+  # v: pairwise-avg      ~ tc=a
+  ##
+  my $lf = $clm->{linkFlag};
+  croak(ref($clm)."::tcLinkFlag(): no {linkFlag} key defined!") if (!defined($lf));
+  $lf = substr($lf,0,1);
+
+  my ($tclf);
+  if    ($lf eq 'a') { $tclf='f'; } ##-- arithmetic mean: cd='a', tc='f' (?)
+  elsif ($lf eq 'm') { $tclf='c'; } ##-- cluster median:  cd='m', tc='c' (?)
+  elsif ($lf eq 's') { $tclf='s'; } ##-- minimum link:    cd='s', tc='s'
+  elsif ($lf eq 'x') { $tclf='m'; } ##-- maximum link:    cd='x', tc='m'
+  elsif ($lf eq 'v') { $tclf='a'; } ##-- pairwise-avg:    cd='v', tc='a'
+  else {
+    croak(ref($clm)."::tcLinkFlag(): can't translate linkFlag='$clm->{linkFlag}' to treecluster() link flag!");
+  }
+
+  return $clm->{tcLinkFlag}=$tclf;
+}
+
 
 
 ##======================================================================
@@ -53,6 +117,55 @@ sub distanceMatrix {
   $dmat = zeroes(double, $n,$n) if (!defined($dmat));
   PDL::Cluster::distancematrix(@args{qw(data mask weight)}, $dmat, $cd->{distFlag});
   return $dmat;
+}
+
+##--------------------------------------------------------------
+## $cdmat = $cd->clusterDistanceMatrix(%args)
+##  + returns distance matrix between each cluster-id listed in $cids() and each row in $rids()
+##  + %args
+##     data   => $data,     ##-- dbl ($d,$nde)   : $d=N_features, $nde=N_data_elts           [REQUIRED]
+##     cdata  => $cdata,    ##-- dbl ($d,$nce)   : $d=N_features, $nce=N_clustered_elts      [default=$data]
+##     cids   => $cids,     ##-- int ($nce)      : $cdata cluster-ids by row-id, 0<=$cid<$k  [default=sequence($nce)]
+##     rids   => $rids,     ##-- int ($nde)      : $data  cluster-ids by row-id, 0<=$rid<$nr [default=sequence($nde)]
+##     mask   => $mask,     ##-- int ($d,$nde)   : boolean mask for $data                    [default=$data->isgood]
+##     cmask  => $cmask,    ##-- int ($d,$nce)   : boolean mask for $cdata                   [default=$cdata->isgood]
+##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
+##     #k      => $k,        ##-- int ()          : number of clusters                        [default=$cids->max+1]
+##     #nr     => $nr,       ##-- int ()          : number of target rows                     [default=$rids->max+1]
+##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nr)    : output matrix                             [optional]
+sub clusterDistanceMatrix {
+  my ($cd,%args) = @_;
+  croak(ref($cd)."::clusterDistanceMatrix(): cowardly refusing inconsistent request!") if (!$cd->cdm_check(\%args));
+
+  ##-- get defaults (gudata,...)
+  $cd->cdm_defaults(\%args);
+  my ($gucids,$gurids) = @args{'gucids','gurids'};
+
+  ##-- encode cluster-membership
+  my ($clens,$cvals,$crows) = clusterenc($gucids);
+  my ($rlens,$rvals,$rrows) = clusterenc($gurids);
+  my ($cdmat_raw);
+  clusterdistancematrixenc(@args{qw(gudata gumask weight)},
+			   $clens,$crows,   $rlens,$rrows,
+			   $cdmat_raw=zeroes(double,$clens->dim(0),$rlens->dim(0)),
+			   $cd->{distFlag}, $cd->cdLinkFlag,
+			  );
+
+  ##-- we might need to do some index-twiddling
+  if ( ($cvals!=$cvals->sequence)->any || ($rvals!=$rvals->sequence)->any ) {
+   my $cdmat0  = $cdmat_raw;
+   my ($k,$nr) = @args{qw(k nr)};
+   $k          = $cvals->max+1 if (!defined($k));
+   $nr         = $rvals->max+1 if (!defined($nr));
+   $cdmat_raw  = pdl(double,"inf")->slice("*$k,*$nr")->make_physical(); ##-- "missing" distances are infinite
+   $cdmat_raw->dice_axis(0,$cvals)->dice_axis(1,$rvals) .= $cdmat0;
+  }
+
+  ##-- return
+  return $cdmat_raw if (!defined($args{cdmat}));
+
+  $args{cdmat} .= $cdmat_raw;
+  return $args{cdmat};
 }
 
 ##======================================================================

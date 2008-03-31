@@ -113,8 +113,6 @@ sub distanceMatrix {
 
 ##--------------------------------------------------------------
 ## $cdmat = $cd->clusterDistanceMatrix(%args)
-
-## [proposal, v1]:
 ##  + returns distance matrix between each cluster-id listed in $cids() and each row in $rids()
 ##  + %args
 ##     data   => $data,     ##-- dbl ($d,$nde)   : $d=N_features, $nde=N_data_elts           [REQUIRED]
@@ -124,8 +122,8 @@ sub distanceMatrix {
 ##     mask   => $mask,     ##-- int ($d,$nde)   : boolean mask for $data                    [default=$data->isgood]
 ##     cmask  => $cmask,    ##-- int ($d,$nce)   : boolean mask for $cdata                   [default=$cdata->isgood]
 ##     weight => $weight,   ##-- dbl ($d)        : feature-weight mask (weights distances)   [default=ones($d)]
-##     k      => $k,        ##-- int ()          : number of clusters                        [default=$cids->max+1]
-##     nr     => $nr,       ##-- int ()          : number of target rows                     [default=$rids->max+1]
+##     #k      => $k,        ##-- int ()          : number of clusters                        [default=$cids->max+1]
+##     #nr     => $nr,       ##-- int ()          : number of target rows                     [default=$rids->max+1]
 ##  [o]cdmat  => $cdmat,    ##-- dbl ($k,$nr)    : output matrix                             [optional]
 sub clusterDistanceMatrix {
   my ($cd,%args) = @_;
@@ -160,7 +158,12 @@ sub clusterDistanceMatrix {
 
   ##-- build output matrix
   my $cdmat = $args{cdmat};
-  $cdmat = zeroes($link_cmps->type, $args{k},$args{nr}) if (!defined($cdmat));
+  if (!defined($cdmat)) {
+    my ($k,$nr) = @args{'k','nr'};
+    $k  = $link_which->slice("(0),")->max+1 if (!defined($k));
+    $nr = $link_which->slice("(1),")->max+1 if (!defined($nr));
+    $cdmat = zeroes($link_cmps->type, $k,$nr);
+  }
   $cdmat->indexND($link_which) .= $link_cmps;
 
   return $cdmat;
@@ -176,6 +179,27 @@ sub linker {
   my $cd = shift;
   croak(ref($cd)."::linker(): not yet implemented!");
 }
+
+## $flag = $cd->cdLinkFlag()
+##  + returns equivalent "link-method" flag for PDL::Cluster::clusterdistance()
+##  + croak()s if no equivalent link method exists
+sub cdLinkFlag {
+  my $cd   = shift;
+  my $flag = $cd->linker->cdLinkFlag();
+  croak(ref($cd)."::cdLinkFlag(): no equivalent built-in link method known!") if (!defined($flag));
+  return $flag;
+}
+
+## $flag = $cd->cdLinkFlag()
+##  + returns equivalent "link-method" flag for PDL::Cluster::treecluster(), PDL::Cluster::treeclusterd()
+##  + croak()s if no equivalent link method exists
+sub tcLinkFlag {
+  my $cd   = shift;
+  my $flag = $cd->linker->tcLinkFlag();
+  croak(ref($cd)."::tcLinkFlag(): no equivalent built-in link method known!") if (!defined($flag));
+  return $flag;
+}
+
 
 ##======================================================================
 ## Utils: for high-level API
@@ -202,8 +226,8 @@ sub cdm_check {
 ##     cids   => $cids,
 ##     rids   => $rids,
 ##     weight => $weight,
-##     k      => $k,
-##     nr     => $nr,
+##     #k      => $k,
+##     #nr     => $nr,
 sub cdm_defaults {
   my ($cd,$args) = @_;
   my $data = $args->{data};
@@ -213,21 +237,11 @@ sub cdm_defaults {
   $args->{mask}   = $data->isgood()               if (!defined($args->{mask}));
   $args->{weight} = ones(double,$data->dim(0))    if (!defined($args->{weight}));
 
-  ##-- common data: cdata cluster-ids by cdata row-id, k ~ N_cdata_clusters ~ cdmat->dim(0)
-  if (!defined($args->{cids})) {
-    $args->{cids} = sequence(long,$cdata->dim(1));
-    $args->{k}    = $data->dim(1)                 if (!defined($args->{k}));
-  } else {
-    $args->{k}    = $args->{cids}->max+1          if (!defined($args->{k}));
-  }
+  ##-- common data: $cids: cdata cluster-ids by cdata row-id
+  $args->{cids}   = sequence(long,$cdata->dim(1)) if (!defined($args->{cids}));
 
-  ##-- common data: data "cluster"-ids by data row-id, nr ~ N_data_clusters ~ cdmat->dim(1)
-  if (!defined($args->{rids})) {
-    $args->{rids} = sequence(long,$data->dim(1));
-    $args->{nr}   = $data->dim(1)                 if (!defined($args->{nr}));
-  } else {
-    $args->{nr}   = $args->{rids}->max+1          if (!defined($args->{nr}));
-  }
+  ##-- common data: $rids: data "cluster"-ids by data row-id
+  $args->{rids}   = sequence(long,$data->dim(1))  if (!defined($args->{rids}));
 
   if (defined($args->{cdata})) {
     ##-- concatenated GU-matrix: data
@@ -239,7 +253,9 @@ sub cdm_defaults {
 
     ##-- concatenated GU-matrix: ids
     $args->{gucids} = $args->{cids};
-    $args->{gurids} = $args->{rids} + $cdata->dim(1);
+    #$args->{gurids} = $args->{rids} + $cdata->dim(1);
+    $args->{gurids} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
+    $args->{gurids}->index($args->{rids}->xvals + $args->{cids}->dim(0)) .= $args->{rids};
   } else {
     ##-- shared GU-matrix
     $args->{gudata} = $data;
