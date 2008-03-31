@@ -10,7 +10,7 @@ use PDL;
 use PDL::Cluster;
 use MUDL::Object;
 #use MUDL::Cluster::Distance; ##-- this package gets read by MUDL::Cluster::Distance
-#use MUDL::Cluster::LinkMethod; ##-- this package gets read by MUDL::Cluster::Distance
+use MUDL::Cluster::LinkMethod; ##-- this package gets read by MUDL::Cluster::Distance (?)
 use Carp;
 
 use strict;
@@ -27,6 +27,7 @@ our @ISA = qw(MUDL::Cluster::Distance MUDL::Cluster::LinkMethod);
 ##  + new %args for MUDL::Cluster::Distance::Builtin
 ##     distFlag => $distFlag,    # string: distance-flag for builtin PDL::Cluster distance function
 ##     linkFlag => $linkFlag,    # string: link-method-flag for builtin PDL::Cluster::clusterdistance() function
+##                               #  + overrides $cd->{cdLinkFlag}
 ##     tcLinkFlag=>$tcLinkFlag,  # string: link-method-flag for PDL::Cluster::treecluster()
 ##                               #  + default: guess equivalent from $cd->{linkFlag}
 ##     distName => $distName,    # optional
@@ -38,15 +39,15 @@ sub new {
 			     linkFlag=>'v',             ##-- default: pairwise-average link
 			     %args,
 			    );
-  $cd->{distName} = "(builtin:".(defined($cd->{distFlag}) ? $cd->{distFlag} : '?').")" if (!defined($cd->{distName}));
-  $cd->{linkName} = "(builtin:".(defined($cd->{linkFlag}) ? $cd->{linkFlag} : '?').")" if (!defined($cd->{linkName}));
-
+  $cd->{cdLinkFlag} = $cd->{linkFlag}; ##-- override
+  $cd->{distName}   = "(builtin:".(defined($cd->{distFlag}) ? $cd->{distFlag} : '?').")" if (!defined($cd->{distName}));
+  $cd->{linkName}   = "(builtin:".(defined($cd->{linkFlag}) ? $cd->{linkFlag} : '?').")" if (!defined($cd->{linkName}));
   return $cd;
 }
 
 
 ##======================================================================
-## API: linker access
+## API: Distance, LinkMethod: linker access
 
 ## $clm = $cd->linker()
 ##  + just returns the literal $cd object for builtin distance+link functions
@@ -54,7 +55,10 @@ sub linker { return $_[0]; }
 
 ## $flag = $clm->cdLinkFlag()
 ##  + returns equivalent "link-method" flag for PDL::Cluster::clusterdistance()
-sub cdLinkFlag { return $_[0]{linkFlag}; }
+sub cdLinkFlag {
+  croak(ref($_[0])."::cdLinkFlag(): no {linkFlag} key defined!") if (!defined($_[0]{linkFlag}));
+  return $_[0]{linkFlag};
+}
 
 ## $flag = $clm->tcLinkFlag()
 ##  + returns equivalent "link-method" flag for PDL::Cluster::treecluster()
@@ -62,19 +66,12 @@ sub tcLinkFlag {
   my $clm = shift;
   return $clm->{tcLinkFlag} if (defined($clm->{tcLinkFlag})); ##-- cached or overridden {tcLinkFlag}
 
-  ##-- treecluster():
-  # s: min
-  # m: max
-  # a: pairwise-average
-  # c: centroid [data required]
-  #?f: arithmetic mean
-  ##
-  ##-- clusterdistance() ~ treecluster()
-  # a: arithmetic mean   ~ tc=f (?)
-  # m: cluster median    ~ tc=c (?)
-  # s: min               ~ tc=s
-  # x: max               ~ tc=m
-  # v: pairwise-avg      ~ tc=a
+  # LABEL           : clusterdistance()  ~ treecluster()
+  # arithmetic_mean : cd=a               ~ tc=f           (?)
+  # cluster_median  : cd=m               ~ tc=c           (?)
+  # min             : cd=s               ~ tc=s
+  # max             : cd=x               ~ tc=m
+  # pairwise-avg    : cd=v               ~ tc=a
   ##
   my $lf = $clm->{linkFlag};
   croak(ref($clm)."::tcLinkFlag(): no {linkFlag} key defined!") if (!defined($lf));
@@ -96,7 +93,7 @@ sub tcLinkFlag {
 
 
 ##======================================================================
-## API: High-level
+## API: Distance: High-level
 
 ##--------------------------------------------------------------
 ## $dmat = $cd->distanceMatrix(%args)
@@ -169,7 +166,7 @@ sub clusterDistanceMatrix {
 }
 
 ##======================================================================
-## API: Low-Level
+## API: Distance: Low-Level
 
 ##--------------------------------------------------------------
 ## $cmpvec = $cd->compare(%args)
@@ -193,6 +190,22 @@ sub compare {
   my $cmpvec = $cd->compare_cmpvec(\%args);
   PDL::Cluster::rowdistances(@args{qw(data mask weight rows1 rows2)}, $cmpvec, $cd->{distFlag});
   return $cmpvec;
+}
+
+##======================================================================
+## API: LinkMethod: Low-Level
+
+##--------------------------------------------------------------
+## ($lwhich,$lcmps) = $clm->compare_link(%args)
+##  + cluster-row and cluster-cluster linkage utility
+##  + %args
+##     which   => $whichX, ##-- int (2,$ncmps) : link keys (cluster-ids) as for indexND [REQUIRED]
+##     cmps    => $cmps,   ##-- dbl ($ncmps)   : row-row distances                      [REQUIRED]
+##  [o]lwhich  => $lwhich, ##-- int (2,$k*$n)  : unique link keys                       [default=new]
+##  [o]lcmps   => $lcmp,   ##-- dbl ($k*$n)    : link-distances for unique link keys    [default=new]
+sub compare_link {
+  my ($clm,%args) = @_;
+  croak(ref($clm)."::compare_link(): not yet implemented!");
 }
 
 1;

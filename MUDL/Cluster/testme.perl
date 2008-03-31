@@ -100,6 +100,47 @@ sub crossp1 {
 #}
 
 
+##----------------------------------------------------------------------
+## test: perl link func
+##----------------------------------------------------------------------
+use MUDL::Cluster::LinkMethod::GroupAverage;
+sub test_perl_link {
+  my ($d,$n,$k, $data, $cids);
+  my $RANDOM_DATA = 0;
+  $RANDOM_DATA = 1;
+  if (!$RANDOM_DATA) {
+    ##-- literals
+    $data   = pdl(double,[ [1,2,3,4],[1,3,3,0],[4,3,2,1],[1,42,24,7],[10,12,14,16] ]);
+    ($d,$n) = $data->dims;
+    $k      = 3;
+    $cids   = sequence(long,$n) % $k;
+  } else {
+    ##-- random data
+    ($d,$n) = (200,256);
+    $data   = grandom(double,$d,$n);
+    $k      = 32;
+    $cids   = (random($n)*$k)->long;
+  }
+
+  ##-- get target row-ids
+  #my $rids = sequence(long,$n);
+
+  my ($dclass,$dflag) = ('L1','b');
+  #my ($lclass,$lflag) = ('min','s');
+  #my ($lclass,$lflag) = ('max','x');
+  my ($lclass,$lflag) = ('avg','v');
+
+  my $cda = MUDL::Cluster::Distance->new(class=>$dclass, link=>$lclass);
+  my $cdb = MUDL::Cluster::Distance->new(class=>'Builtin', distFlag=>$dflag, linkFlag=>$lflag);
+
+  my $cdmata = $cda->clusterDistanceMatrix(data=>$data, cids=>$cids);
+  my $cdmatb = $cdb->clusterDistanceMatrix(data=>$data, cids=>$cids);
+
+  print "cdmata~cdmatb ? ", (all($cdmata->approx($cdmatb)) ? "ok" : "NOT ok"), "\n";
+
+  print STDERR "$0: test_perl_link() done: what now?\n";
+}
+test_perl_link();
 
 ##----------------------------------------------------------------------
 ## test data

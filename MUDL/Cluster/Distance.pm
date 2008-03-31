@@ -149,7 +149,7 @@ sub clusterDistanceMatrix {
 		       ->cat(
 			     $args{rids}->index($cmp_which->slice("(1),"))
 			    )
-		       ->xhcg(0,1)
+		       ->xchg(0,1)
 		      );
   my ($link_which,$link_cmps) = $linker->compare_link(%args,
 						      which=>$link_which_in,
@@ -175,26 +175,44 @@ sub clusterDistanceMatrix {
 ##--------------------------------------------------------------
 ## $clm = $cd->linker()
 ##  + returns MUDL::Cluster::LinkMethod object associated with this distance function
+##  + default implementation:
+##    - return $cd->{linker} if defined
+##    - otherwise, cache & return LinkMethod->new(class=>$cd->{link}) if $cd->{link} is defined
+##    - otherwise, croak()s
 sub linker {
   my $cd = shift;
-  croak(ref($cd)."::linker(): not yet implemented!");
+  return $cd->{linker} if (UNIVERSAL::isa($cd->{linker},'MUDL::Cluster::LinkMethod'));
+  if (defined($cd->{link})) {
+    return $cd->{linker}=$cd->{link}
+      if (UNIVERSAL::isa($cd->{link},'MUDL::Cluster::LinkMethod')); ##-- allow {link} to contain {linker} itself
+
+    $cd->{linker} = MUDL::Cluster::LinkMethod->new(class=>$cd->{link})
+      or croak(ref($cd)."::linker(): could not create new linker from {link}=$cd->{link}");
+
+    return $cd->{linker};
+  }
+  croak(ref($cd)."::linker(): no {linker} object or {link} class defined!");
 }
 
 ## $flag = $cd->cdLinkFlag()
+##  + returns $cd->{cdLinkFlag} if defined
 ##  + returns equivalent "link-method" flag for PDL::Cluster::clusterdistance()
-##  + croak()s if no equivalent link method exists
+##  + croak()s if no equivalent link method exists [default]
 sub cdLinkFlag {
   my $cd   = shift;
+  return $cd->{cdLinkFlag} if (defined($cd->{cdLinkFlag}));
   my $flag = $cd->linker->cdLinkFlag();
   croak(ref($cd)."::cdLinkFlag(): no equivalent built-in link method known!") if (!defined($flag));
   return $flag;
 }
 
-## $flag = $cd->cdLinkFlag()
+## $flag = $cd->tcLinkFlag()
 ##  + returns equivalent "link-method" flag for PDL::Cluster::treecluster(), PDL::Cluster::treeclusterd()
-##  + croak()s if no equivalent link method exists
+##  + returns $cd->{tcLinkFlag} if defined
+##  + croak()s if no equivalent link method exists [default]
 sub tcLinkFlag {
   my $cd   = shift;
+  return $cd->{tcLinkFlag} if (defined($cd->{tcLinkFlag}));
   my $flag = $cd->linker->tcLinkFlag();
   croak(ref($cd)."::tcLinkFlag(): no equivalent built-in link method known!") if (!defined($flag));
   return $flag;
@@ -209,7 +227,7 @@ sub tcLinkFlag {
 ##  + checks argument sanity for clusterDistanceMatrix()
 sub cdm_check {
   my ($cd,$args) = @_;
-  $rc=1;
+  my $rc=1;
   if (!defined($args->{data})) { carp(ref($cd)."::cdm_check(): no 'data' matrix specified!"); $rc=0; }
   return $rc;
 }

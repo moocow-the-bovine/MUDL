@@ -23,8 +23,17 @@ our @ISA = qw(MUDL::Cluster::LinkMethod);
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::LinkMethod:: suffix
 ##     ...
+sub new {
+  my ($that,%args) = @_;
+  delete($args{class});
+  return $that->SUPER::new(
+			   linkName=>'Maximum',
+			   tcLinkFlag=>'m',
+			   cdLinkFlag=>'x',
+			   %args,
+			  );
+}
 
-#(inherited from ../LinkMethod.pm)
 
 ##======================================================================
 ## API: Low-level

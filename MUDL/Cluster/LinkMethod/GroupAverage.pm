@@ -23,8 +23,16 @@ our @ISA = qw(MUDL::Cluster::LinkMethod);
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::LinkMethod:: suffix
 ##     ...
-
-#(inherited from ../LinkMethod.pm)
+sub new {
+  my ($that,%args) = @_;
+  delete($args{class});
+  return $that->SUPER::new(
+			   linkName=>'GroupAverage',
+			   tcLinkFlag=>'a',
+			   cdLinkFlag=>'v',
+			   %args,
+			  );
+}
 
 ##======================================================================
 ## API: Low-level
@@ -50,10 +58,11 @@ sub compare_link {
   #my $which2cmp_ccs   = PDL::CCS::Nd->newFromWhich($lwhich, $lcmps->append(0), sorted=>1,steal=>1);
   #my $which2len_ccs   = PDL::CCS::Nd->newFromWhich($wvals,  $wlens->append(0), sorted=>1,steal=>1);
   #$which2cmp_ccs     /= $which2len_ccs;
+  #return $clm->compare_link_set($which2cmp_ccs->_whichND, $which2cmp_ccs->_nzvals, \%args);
 
   my ($lwhich,$lcmps) = $which->ccs_accum_average($cmps, 0,0);
 
-  return $clm->compare_link_set($wc_avg->_whichND, $wc_avg->_nzvals,\%args);
+  return $clm->compare_link_set($lwhich, $lcmps, \%args);
 }
 
 

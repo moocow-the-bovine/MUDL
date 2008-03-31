@@ -50,8 +50,9 @@ BEGIN {
 
 ## $clm = MUDL::Cluster::LinkMethod->new(%args);
 ##  + basic %args:
-##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::LinkMethod:: suffix
-##     ...
+##     class      => $className,  # string: class-name or -alias or MUDL::Cluster::LinkMethod:: suffix
+##     tcLinkFlag => $tcFlag,     # string: equivalent 'method' flag for PDL::Cluster::treecluster()
+##     cdLinkFlag => $cdFlag,     # string: equivalent 'method' flag for PDL::Cluster::clusterdistance() & friends
 sub new {
   my ($that,%args) = @_;
 
@@ -72,6 +73,30 @@ sub new {
 
   return $that->SUPER::new(%args);
 }
+
+##======================================================================
+## API: PDL::Cluster equivalence (for treecluster() hacks)
+
+## $flag = $clm->cdLinkFlag()
+##  + returns $clm->{cdLinkFlag} if defined
+##  + returns equivalent "link-method" flag for PDL::Cluster::clusterdistance()
+##  + croak()s if no equivalent link method exists [default]
+sub cdLinkFlag {
+  my $clm   = shift;
+  return $clm->{cdLinkFlag} if (defined($clm->{cdLinkFlag}));
+  croak(ref($clm)."::cdLinkFlag(): no equivalent built-in link method known!");
+}
+
+## $flag = $cd->tcLinkFlag()
+##  + returns equivalent "link-method" flag for PDL::Cluster::treecluster(), PDL::Cluster::treeclusterd()
+##  + returns $cd->{tcLinkFlag} if defined
+##  + croak()s if no equivalent link method exists [default]
+sub tcLinkFlag {
+  my $clm = shift;
+  return $clm->{tcLinkFlag} if (defined($clm->{tcLinkFlag}));
+  croak(ref($clm)."::tcLinkFlag(): no equivalent built-in link method known!");
+}
+
 
 
 ##======================================================================
