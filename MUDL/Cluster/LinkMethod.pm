@@ -21,6 +21,7 @@ our (%LINK_ALIAS);
 BEGIN {
   %LINK_ALIAS =
     (
+     ##
      ##-- Native linkage methods: aliases
      'min' => ['Minimum'],
      'max' => ['Maximum'],

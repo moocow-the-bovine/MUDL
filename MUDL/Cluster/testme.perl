@@ -140,7 +140,77 @@ sub test_perl_link {
 
   print STDERR "$0: test_perl_link() done: what now?\n";
 }
-test_perl_link();
+#test_perl_link();
+
+##----------------------------------------------------------------------
+## test native vs. builtin clustering
+sub test_native_cluster {
+  our ($data,$d,$n,$k, $adata,$gdata,$arows);
+  my $RANDOM_DATA=0;
+  #$RANDOM_DATA=1;
+  if (!$RANDOM_DATA) {
+    $data   = pdl(double, [[1,1,1],[2,2,2],[3,3,3],[4,5,6],[7,8,9],[10,11,12]]);
+    ($d,$n) = $data->dims;
+    $adata  = pdl(double,[[10,20,30],[16,8,4]]);
+    $k      = 2;
+  } else {
+    ($d,$n) = (32,256);
+    $data   = (random(double,$d,$n)*100)->rint;
+    $adata  = (random(double,$d,2)*100)->rint;
+    $k = 16;
+  }
+
+  #my ($dc1,$dc2) = (['L1',link=>'max'],['b',linkFlag=>'x']);
+  #my ($dc1,$dc2) = (['L1',link=>'avg'],['b',linkFlag=>'v']);
+  #my ($dc1,$dc2) = (['Pearson',link=>'avg'],['c',linkFlag=>'v']);
+  my ($dc1,$dc2) = (['Pearson',link=>'max'],['c',linkFlag=>'x']);
+  #my ($dc1,$dc2) = (['Cosine',link=>'min'],['u',linkFlag=>'s']);
+
+  my %opts = (data=>$data, nclusters=>$k);
+  my $cm1 = MUDL::Cluster::Tree->new(dclass=>$dc1, %opts);
+  my $cm2 = MUDL::Cluster::Tree->new(dclass=>$dc2, %opts);
+
+  ##-- dmat
+  my ($df1,$df2) = ($cm1->distance,$cm2->distance);
+  my $dmat1 = $df1->distanceMatrix(data=>$data);
+  my $dmat2 = $df2->distanceMatrix(data=>$data);
+  print "dmat1~=dmat2 ? ", (all($dmat1->approx($dmat2)) ? "ok" : "NOT ok"), "\n";
+
+  $cm1->cluster;
+  $cm2->cluster;
+  $cm1->cut;
+  $cm2->cut;
+
+  my ($cids1,$cids2) = ($cm1->{clusterids},$cm2->{clusterids});
+  print "cids1==cids2 ? ", (all($cids1==$cids2) ? "ok" : "NOT ok"), "\n";
+  print "linkd1==linkd2 ? ", (all($cm1->{linkdist}->approx($cm2->{linkdist})) ? "ok" : "NOT ok"), "\n";
+  print "ctree1==ctree2 ? ", (all($cm1->{ctree}==$cm2->{ctree}) ? "ok" : "NOT ok"), "\n";
+
+  my ($cdmat1,$cdmat2) = ($cm1->clusterDistanceMatrix,$cm2->clusterDistanceMatrix);
+  print "cdmat1==cdmat2 ? ", (all($cdmat1->approx($cdmat2)) ? "ok" : "NOT ok"), "\n";
+
+  ##-- attach: BROKEN ?! (we're calling it wrong it seems, but this is how it *OUGHT* to work...)
+  ##  + pukes in Cluster::Method::d2c_mean (line 833, call to PDL::Cluster::getclustermean())
+  ##     833: getclustermean(@$cm{qw(data mask clusterids)}, $cdata,$cmask)
+  ##  + reason is a dim mismatch on "n": data(d,n); mask(d,n); clusterids(n)
+  ##  + here, 'data' and 'mask' are getting clobbered by the "grand unified" values we're passing
+  ##    in, but 'clusterids' is NOT
+  ##    - clobbering takes place in attach() call to profileDistanceMatrix(...,data=>$data,...)
+  ##  + just passing in "raw" row data ($adata) is what we really would like to do, but is
+  ##    also problematic: clobbering invalidates clusterids, preventing getclustermean() from
+  ##    Doing The Right Thing (or in fact anything at all)
+  ##  + where do we differentiate between $args{data} and $cm->{data} ?
+  $gdata  = $data->glue(1,$adata);
+  $arows  = sequence(long,$adata->dim(1))+$n;
+  ($acids1,$acdist1) = $cm1->attach(data=>$adata, rowids=>$arows->xvals);
+  ($acids2,$acdist2) = $cm2->attach(data=>$adata, rowids=>$arows->xvals);
+  print "acids1==acids2 ? ", (all($acids1==$acids2) ? "ok" : "NOT ok"), "\n";
+  print "acdist1==acdist2 ? ", (all($acdist1->approx($acdist2)) ? "ok" : "NOT ok"), "\n";
+
+  print STDERR "$0: test_native_cluster() done: what now?\n";
+}
+test_native_cluster;
+
 
 ##----------------------------------------------------------------------
 ## test data

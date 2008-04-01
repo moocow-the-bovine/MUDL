@@ -27,6 +27,16 @@ our (%DIST_ALIAS);
 BEGIN {
   %DIST_ALIAS =
     (
+     ##-- Native perl distance functions
+     'l1'=>'L1',
+     'l2'=>'L2',
+     'euclid'=>'L2',
+     'Euclid'=>'L2',
+     'pearson'=>'Pearson',
+     'spearman'=>'Spearman',
+     'cosine'=>'Cosine',
+     'cos'=>'Cosine',
+     ##
      ##-- PDL::Cluster built-in distance functions
      'e'=>['Builtin', distFlag=>'e', distName=>'Euclid'],
      'b'=>['Builtin', distFlag=>'b', distName=>'L1'],

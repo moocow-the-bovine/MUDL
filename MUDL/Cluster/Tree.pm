@@ -129,7 +129,7 @@ sub cluster {
   else {
     ##-- perl distance function: get our own distance matrix
     $pcfunc     = 'treeclusterd';
-    my $dmatrix = $df->distanceMatrix(data=>$data, mask=>$mask, weight=>$weight);
+    my $dmatrix = $distf->distanceMatrix(data=>$data, mask=>$mask, weight=>$weight);
     PDL::Cluster::treeclusterd($data,$mask,$weight, $dmatrix, $ctree,$linkd, '?',$distf->tcLinkFlag);
   }
 

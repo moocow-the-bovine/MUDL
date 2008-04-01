@@ -296,7 +296,7 @@ sub flushCache {
 ## ($cids, $cdists, @other) = $cm->attach(%args)
 ##  + %args:
 ##      data=>$data,     # double ($d,$n2)    (default: $cm->data() [implied svd application])
-##      mask=>$mask,     # long   ($d,$n2)    (default: !$data->isbad)
+##      mask=>$mask,     # long   ($d,$n2)    (default: $data->isgood)
 ##      rowids=>$rowids  # long   ($nrows)    (default: sequence($n2))
 ##      tpdata=>$tpdata, # double ($d,$ntp)   (default: from $cm->getprofile)
 ##      tpmask=>$tpmask, # long   ($d,$ntp)   (default: from $cm->getprofile)
@@ -1033,6 +1033,7 @@ sub d2c_mbest_weighted {
 ##  + get row ids (0 <= $witnessId < $n) of cluster witnesses
 ##  + just returns the relevant keys if defined
 ##  + %args:
+##     data        => $data,   # overrides $cm->{data} (ugly ugly ugly...)
 ##     tpmethod    => $method, # string: witness acquisition method (see below); defualt='mean'
 ##     tpm         => $m,      # constant: maximum number of rows per cluster
 ##     dataweights => $dw,     # pdl($n): for weight-sensitive selection methods
