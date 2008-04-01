@@ -48,8 +48,8 @@ our @EXPORT_OK = qw();
 ##       ##
 ##       ##-- subdata:
 ##       {tree}{data}  => $pdata,     # pdl($d,$np): prototype data
-##       {tree}{dist}  => $metric,    # distance metric character flag (default='b') : default=$cm->{dist}
-##       {tree}{method} => $method,   # treecluster link-method flag   (default='m') : default=$cm->{method}
+##       #{tree}{dist}  => $metric,    # OLD distance metric character flag (default='b') : default=$cm->{dist}
+##       #{tree}{method} => $method,   # OLD treecluster link-method flag   (default='m') : default=$cm->{method}
 ##
 ##   + %args: for getcenters():
 ##       ctrmethod => $cmethod, # see MUDL::Cluster::Method::getcenters()
@@ -91,12 +91,16 @@ sub new {
 			  protos=>undef,
 			  nprotos=>undef,
 			  #tree=>MUDL::Cluster::Tree->new(),    ##-- default
-			  dist  =>'u',   ##-- uncentered correlation (vector cosine)
-			  method=>'a',   ##-- group-average link
-			  ##
-			  ##-- clusterdistance() flags
-			  cddist  =>'u',  ##-- uncentered correlation (vector cosine)
-			  cdmethod=>'v',  ##-- group-average
+
+			  ###-- DISTANCE:OLD
+			  #dist  =>'u',   ##-- uncentered correlation (vector cosine)
+			  #method=>'a',   ##-- group-average link
+			  ###
+			  ###-- clusterdistance() flags
+			  #cddist  =>'u',  ##-- uncentered correlation (vector cosine)
+			  #cdmethod=>'v',  ##-- group-average
+			  ###--/DISTANCE:OLD
+
 			  ##
 			  ##-- Buckshot: centroid acquisition: DO WE REALLY NEED THIS?!
 			  ctrmethod => 'mean',
@@ -297,52 +301,3 @@ sub attachN {
 
 
 1;
-
-##======================================================================
-## Docs
-=pod
-
-=head1 NAME
-
-MUDL - MUDL Unsupervised Dependency Learner
-
-=head1 SYNOPSIS
-
- use MUDL;
-
-=cut
-
-##======================================================================
-## Description
-=pod
-
-=head1 DESCRIPTION
-
-...
-
-=cut
-
-##======================================================================
-## Footer
-=pod
-
-=head1 ACKNOWLEDGEMENTS
-
-perl by Larry Wall.
-
-=head1 AUTHOR
-
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
-
-=head1 COPYRIGHT
-
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
-
-This package is free software.  You may redistribute it
-and/or modify it under the same terms as Perl itself.
-
-=head1 SEE ALSO
-
-perl(1)
-
-=cut

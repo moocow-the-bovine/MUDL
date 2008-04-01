@@ -170,7 +170,20 @@ sub clusterDistanceMatrix {
 }
 
 ##======================================================================
-## API: linker access
+## API: linker & flag access
+
+##--------------------------------------------------------------
+## $flag = $cd->distFlag()
+##  + returns $cd->{distFlag} if defined
+##  + returns equivalent builtin "distance" flag for PDL::Cluster::treecluster(), PDL::Cluster::clusterdistance()
+##  + croak()s if no known method exists [default]
+sub distFlag {
+  my $cd   = shift;
+  return $cd->{distFlag} if (defined($cd->{distFlag}));
+  croak(ref($cd)."::distFlag(): no equivalent built-in distance flag known!");
+}
+BEGIN { *tcDistFlag = *cdDistFlag = \&distFlag; }
+
 
 ##--------------------------------------------------------------
 ## $clm = $cd->linker()

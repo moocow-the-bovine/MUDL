@@ -67,6 +67,7 @@ sub tcLinkFlag {
   return $clm->{tcLinkFlag} if (defined($clm->{tcLinkFlag})); ##-- cached or overridden {tcLinkFlag}
 
   # LABEL           : clusterdistance()  ~ treecluster()
+  # ----------------:--------------------~-------------------
   # arithmetic_mean : cd=a               ~ tc=f           (?)
   # cluster_median  : cd=m               ~ tc=c           (?)
   # min             : cd=s               ~ tc=s

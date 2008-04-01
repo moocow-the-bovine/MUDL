@@ -11,6 +11,8 @@ use PDL::Cluster;
 #use PDL::GA;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
+use MUDL::Cluster::Distance;
+use MUDL::Cluster::LinkMethod;
 use Carp;
 
 use strict;
@@ -33,15 +35,16 @@ our @EXPORT_OK = qw();
 ##       svd      => $svd,     # a MUDL::SVD object (optional), called on data($data)
 ##       svdr     => $r,       # number of reduced dimensions (==$svd->{r})
 ##       svd_save => $bool,    # whether to try and re-use same SVD for different data()
-##   + for clusterdistance():
+##   + (DISTANCE:OLD) for clusterdistance():
 ##       cddist   => $cddist,   # clusterdistance() dist   flag (default={dist})     : for clusterdistance()
 ##       cdmethod => $cdmethod, # clusterdistance() method flag (default=from method): for clusterdistance()
 ##                              # - may contain suffix '+b' to indicate bonus clustering
+##   + (DISTANCE:NEW) for distance computations:
+##       distf    => $distf,    # MUDL::Cluster::Distance object (cached)
+##       dclass   => $dclass,   # as accepeted by the 'class' argument to MUDL::Cluster::Disance()
 ##       cdbonus  => $bool,     # whether to apply hard-clustering bonus (bash distance to zero)
-##                              # - bonus distance is only applied if:
-##                              #     $cdmethod =~ /\+b/
-##                              #   AND
-##                              #     $cdbonus is a true value (default=true)
+##                              # - (NEW) bonus distance is applied if $cdbonus is a true value (default=1)
+##                              # - (OLD) used to require that also ($cdmethod =~ /\+b/)
 ##   + for clusterDistanceMatrix()
 ##       cdprofile => $bool,    # whether to use profile distance matrix instead of full cluster distance matrix
 ##   + for getcenters():
@@ -59,7 +62,6 @@ our @EXPORT_OK = qw();
 ##         #tree     => $ctree,   # pdl(2,$n) gives structure of clustering tree (see below) [(2,n-1) used]
 ##         #linkdist => $vector,  # pdl($n) array giving distances between sister nodes [(n-1) used]
 ##     - post cut($k):
-##         nclusters  => $k,                # number of clusters
 ##         clusterids => $rowid2clusterid,  # pdl($n) maps data rows to cluster-id (range 0..($k-1))
 ##     - post clusterDistanceMatrix()
 ##         cdmatrix   => $cdmatrix, # pdl($k,$n) maps (clusterid,leaf) to distance(leaf,clusterid)
@@ -93,28 +95,71 @@ sub new {
     $args{svd} = $svd;
   }
 
+  ##-- detect old-style distance function specification
+  if (!defined($args{dclass}) && !defined($args{distf})) {
+    if (defined($args{cddist}) && defined($args{cdmethod})) {
+      ##-- ... given cddist, cdmethod
+      $args{dclass}  = ['Builtin', distFlag=>$args{cddist}, linkFlag=>$args{cdmethod}, tcLinkFlag=>$args{method} ];
+    }
+    elsif (defined($args{dist}) && defined($args{method})) {
+      ##-- ... given dist, method (as for treecluster())
+      my $tclf = substr($args{method},0,1);
+      my $cdlf = $tclf;
+      ##
+      ## LABEL           : clusterdistance()  ~ treecluster()
+      ## ----------------:--------------------~-------------------
+      ## arithmetic_mean : cd=a               ~ tc=f           (?)
+      ## cluster_median  : cd=m               ~ tc=c           (?)
+      ## min             : cd=s               ~ tc=s
+      ## max             : cd=x               ~ tc=m
+      ## pairwise-avg    : cd=v               ~ tc=a
+      if    ($tclf eq 'f') { $cdlf='a'; }
+      elsif ($tclf eq 'c') { $cdlf='m'; }
+      elsif ($tclf eq 's') { $cdlf='s'; }
+      elsif ($tclf eq 'm') { $cdlf='x'; }
+      elsif ($tclf eq 'a') { $cdlf='v'; }
+      else {
+	croak( __PACKAGE__ . "::new(): can't translate old-style 'method' flag '$tclf'!");
+      }
+      $args{dclass} = ['Builtin', distFlag=>$args{dist}, linkFlag=>$cdlf, tcLinkFlag=>$tclf ];
+    }
+    else {
+      croak( __PACKAGE__ . "::new(): can't parse distance/link specification!");
+    }
+    ##
+    ##-- respect old 'cdbonus' conventions
+    $args{cdbonus} = ($args{cdmethod} =~ m/\+b/ ? 1 : 0);
+  }
+  ##-- delete old-style distance/link specification (if any)
+  delete(@args{qw(dist method cddist cdmethod)});
+
+
+  ##-- actually create object
   my $cm = $that->SUPER::new(
+			     ##
+			     ##-- base data
 			     data=>undef,
+			     ##
 			     ##-- svd data
 			     svd=>undef,
 			     svd_save=>0,
-			     ##-- flags
-			     dist=>'b',
-			     method=>'m',
-			     ##-- clusterdistance() flags
-			     cddist => 'u',
-			     cdmethod => 'v',
-			     cdbonus => 1, ##-- hard-clustering bonus
+			     ##
+			     ##-- distance
+			     dclass  => ['Builtin', distFlag=>'c', linkFlag=>'v'],
+			     cdbonus => 1, ##-- apply hard-clustering bonus?
+			     ##
 			     ##-- getprofile() flags
 			     tpmethod => 'centers',
+			     ##
 			     ##-- output data
 			     clusterids=>undef,
 			     nclusters=>2,
+			     ##
+			     ##-- user args
 			     %args,
 			    );
   $cm->data($args{data}) if (defined($args{data}));
 
-#  print STDERR "<<DEBUG>> ", __PACKAGE__, "::new() returning nclusters=$cm->{nclusters}\n";
 
   return $cm;
 }
@@ -250,14 +295,14 @@ sub flushCache {
 
 ## ($cids, $cdists, @other) = $cm->attach(%args)
 ##  + %args:
-##      data=>$data,     # double($d,$n2)  (default: $cm->data() [implied svd application])
-##      mask=>$mask,     # long($d,$n2)    (default: !$data->isbad)
-##      rowids=>$rowids  # long($nrows)    (default: sequence($n2))
-##      tpdata=>$tpdata, # double($d,$ntp) (default: from $cm->getprofile)
-##      tpmask=>$tpmask, # long($d,$ntp)   (default: from $cm->getprofile)
-##      tpcids=>$tpcids, # long($ntp)      (default: from $cm->getprofile)
-##      cddist=>$cdd,    # for PDL::Cluster::clusterdistance() (default: $cm->cddist)
-##      cdmethod=>$cdm,  # for PDL::Cluster::clusterdistance() (default: $cm->cdmethod)
+##      data=>$data,     # double ($d,$n2)    (default: $cm->data() [implied svd application])
+##      mask=>$mask,     # long   ($d,$n2)    (default: !$data->isbad)
+##      rowids=>$rowids  # long   ($nrows)    (default: sequence($n2))
+##      tpdata=>$tpdata, # double ($d,$ntp)   (default: from $cm->getprofile)
+##      tpmask=>$tpmask, # long   ($d,$ntp)   (default: from $cm->getprofile)
+##      tpcids=>$tpcids, # long   ($ntp)      (default: from $cm->getprofile)
+##      #cddist=>$cdd,    # for PDL::Cluster::clusterdistance() (default: $cm->cddist)
+##      #cdmethod=>$cdm,  # for PDL::Cluster::clusterdistance() (default: $cm->cdmethod)
 ##  + attaches $rowids rows of $data to nearest profiled cluster,
 ##    as determined by ($tpdata,$tpmask,$tpcids)
 ##  + old behavior (attachment to centers) can be achieved by setting 'tpmethod'=>'centers',
@@ -280,14 +325,14 @@ sub attach {
 
   ##-- defaults
   if (!defined($data)) {
-    $data   = $cm->{data};
+    $data = $cm->{data};
   } elsif (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $data->dim(0)) {
     ##-- apply svd
     require MUDL::SVD;
     $data = $cm->{svd}->apply($data);
-    $mask = !$data->isbad;
+    $mask = $data->isgood;
   }
-  $mask   = !$data->isbad if (!defined($mask));
+  $mask   = $data->isgood if (!defined($mask));
   $rowids = sequence(long, $data->dim(1)) if (!defined($rowids));
 
   ##-- get profile data
@@ -296,8 +341,8 @@ sub attach {
 
   ##-- output data
   my $nrows = $rowids->nelem;
-  my $cids  = zeroes(long,$nrows);
-  my $cdist = zeroes(double,$nrows);
+  my $cids  = zeroes(long,   $nrows);
+  my $cdist = zeroes(double, $nrows);
 
   ##-- attachment
   attachtonearestd($tpcdm, sequence(long,$rowids->nelem), $cids, $cdist);
@@ -409,9 +454,21 @@ sub profileElements {
 ## Utilities: cluster <-> datum distances
 ##======================================================================
 
+## $cdf = $cm->distance()
+##  + returns underlying distance function, which should be a MUDL::Cluster::Distance
+##  + just returns $cm->{distf} if defined
+##  + otherwise creates new distance function from $cm->{dclass}
+sub distance {
+  if (!defined($_[0]{distf})) {
+    $_[0]{distf}=MUDL::Cluster::Distance->new(class=>$_[0]{dclass});
+    croak(ref($_[0])."::distance(): could not create MUDL::Cluster::Distance object!") if (!defined($_[0]{distf}));
+  }
+  return $_[0]{distf};
+}
+
 ## $cdmethod = $cm->cdmethod()
 ##   + gets {cdmethod} member if defined, otherwise tranlsates {method} flag
-sub cdmethod {
+sub cdmethod_OLD {
   my $cm=shift;
   return $cm->{cdmethod} if ($cm->{cdmethod});
   my $method = $cm->{method} ? $cm->{method} : 'a';
@@ -427,7 +484,7 @@ sub cdmethod {
 
 ## $cddist = $cm->cddist()
 ##   + gets {cddidst} member if defined, otherwise returns {dist}, else 'a'
-sub cddist {
+sub cddist_OLD {
   my $cm = shift;
   return (defined($cm->{cddist})
 	  ? $cm->{cddist}
@@ -444,9 +501,9 @@ sub cddist {
 ##     tpmask   => $tpmask, ## pdl($d,$nTrimmed): trimmed profile mask (default: from getprofile())
 ##     tpcids   => $tpcids, ## pdl($nTrimmed)   : trimmed profile clusterids (default: from getprofile())
 ##     rowids   => $pdl,    ## pdl($nr)         : rows to populate (default: sequence($n))
-##     cddist   => $dist,   ## default/clobber: $cm->{cddist}
-##     cdmethod => $method, ## default/clobber: $cm->{cdmethod}
 ##     cdbonus  => $bool,   ## default/clobber: $cm->{cdbonus} : apply hard bonus
+##     #cddist   => $dist,   ## default/clobber: $cm->{cddist}
+##     #cdmethod => $method, ## default/clobber: $cm->{cdmethod}
 ##  + ... any args for getprofile(), profileSizes(), profileElements(), ...
 ##  + output matrix $tpcdmatrix has dimensions ($k,$nr=$rowids->nelem)
 ##    and has values distance($trimmed_cluster_k, $rowids_nr)
@@ -457,15 +514,13 @@ sub profileDistanceMatrix {
   return $cm->{tpcdmatrix} if (defined($cm->{tpcdmatrix}));
 
   ##-- check & set recursion-detection flag
-  confess(ref($cm), "::profileDistanceMatrix(): recursion detected: probably a bad cdmethod/tpmethod")
+  confess(ref($cm)."::profileDistanceMatrix(): recursion detected: probably a bad {ctrmethod}/{tpmethod} combination")
     if ($cm->{_in_tpcdmatrix});
   $cm->{_in_tpcdmatrix}=1;
 
   ##-- arg parsing
-  $args{cddist}   = $cm->cddist()   if (!defined($args{cddist}));
-  $args{cdmethod} = $cm->cdmethod() if (!defined($args{cdmethod}));
-  $args{cdbonus}  = $cm->{cdbonus}  if (!defined($args{cdbonus}));
-  @$cm{qw(cddist cdmethod cdbonus)} = @args{qw(cddist cdmethod cdbonus)};
+  $args{cdbonus} = $cm->{cdbonus}  if (!defined($args{cdbonus}));
+  $cm->{cdbonus} = $args{cdbonus};
 
   ##-- get profile
   my ($tpdata,$tpmask,$tpcids) = @args{qw(tpdata tpmask tpcids)};
@@ -476,52 +531,24 @@ sub profileDistanceMatrix {
   confess(ref($cm), "::profileDistanceMatrix(): cowardly refusing bad data!")
     if ($tpdata->inplace->setnantobad->nbad > 0);
 
-  ##-- get row ids
-  my $rowids = (defined($args{rowids})
-		? $args{rowids}
-		: sequence(long,$cm->{data}->dim(1)));
-
   ##-- get base data
+  my $rowids   = defined($args{rowids}) ? $args{rowids} : sequence(long,$cm->{data}->dim(1));
   my $d        = $cm->{nfeatures};
   my $k        = $cm->{nclusters};
-  my $nTrimmed = $tpdata->dim(1);
   my $nRows    = $rowids->nelem;
-  $cm->{tpcdmatrix} = zeroes(double, $k, $nRows);
 
-  ##-- construct Grand Unified Data Matrix ~ concat( $tpdata, $data($rowids) )
-  my $tmpdata    = zeroes(double, $d, $nTrimmed+$nRows);
-  my $tmpmask    = zeroes(long,   $tmpdata->dims);
-
-  ##-- Grand Unified Data Matrix: tpdata slices for trimmed profile
-  $tmpdata->slice(",0:".($nTrimmed-1)) .= $tpdata;
-  $tmpmask->slice(",0:".($nTrimmed-1)) .= $tpmask;
-
-  ##-- Grand Unified Data Matrix: data slices for rowids
-  $tmpdata->slice(",-$nRows:-1") .= $cm->{data}->dice_axis(1,$rowids);
-  if (defined($cm->{mask})) {
-    $tmpmask->slice(",-$nRows:-1") .= $cm->{mask}->dice_axis(1,$rowids);
-  } else {
-    $tmpmask->slice(",-$nRows:-1") .= $tmpdata->slice(",-$nRows:-1")->isgood();
-  }
-
-  ##-- Grand Unified DataMatrix: sizes & elements
-  my ($tpcsizes,$tpcelts);
-  clustersizes   ($tpcids, $tpcsizes=zeroes(long,$k));
-  clusterelements($tpcids, $tpcsizes, $tpcelts =zeroes(long,$tpcsizes->max,$k)-1);
-
-  ##-- ye olde guttes
-  clusterdistancematrix($tmpdata, $tmpmask, $cm->{weight},
-			#$rowids=
-			($nTrimmed+sequence(long,$nRows)),
-			$tpcsizes, $tpcelts,
-			$cm->{tpcdmatrix},
-			@args{qw(cddist cdmethod)});
-
+  ##-- dispatch distance measurement to distance func: get $cm->{tcpdmatrix} : pdl ($k,$nRows)
+  my $distf = $cm->distance();
+  $cm->{tpcdmatrix} = $distf->clusterDistanceMatrix(
+						    data=>$cm->{data}, mask=>$cm->{mask}, rids=>$rowids,
+						    cdata=>$tpdata,    cmask=>$tpmask,    cids=>$tpcids,
+						    weight=>$cm->{weight}, 'k'=>$k, 'nr'=>$nRows,
+						   );
   confess(ref($cm), "::profileDistanceMatrix(): bad data in output pdl!")
     if ($cm->{tpcdmatrix}->inplace->setnantobad->nbad > 0);
 
   ##-- apply hard-clustering bonus ?
-  if ($args{cdmethod} =~ /\+b/ && $args{cdbonus} && defined($cm->{clusterids})) {
+  if ($args{cdbonus} && defined($cm->{clusterids})) {
     print STDERR
       ("<<<DEBUG>>>: ", ref($cm),
        "::profileDistanceMatrix() adding bonus for nRows=$nRows rowids [buggy???].\n",
@@ -550,9 +577,9 @@ sub profileDistanceMatrix {
 ##  + %args:
 ##     cdprofile => $bool,  ## if true, this method wraps profileDistanceMatrix()
 ##     rowids   => $pdl,    ## rows to populate (default: sequence($n))
-##     cddist   => $dist,   ## default/clobber: $cm->{cddist}
-##     cdmethod => $method, ## default/clobber: $cm->{cdmethod}
 ##     cdbonus  => $bool,   ## default/clobber: $cm->{cdbonus} : apply hard bonus
+##     #cddist   => $dist,   ## default/clobber: $cm->{cddist}
+##     #cdmethod => $method, ## default/clobber: $cm->{cdmethod}
 ##  + ... any args for clusterSizes(), clusterElements()
 ##  + output matrix $cdmatrix has dimensions ($k,$nr=$rowids->nelem)
 ##    and has values distance($cluster_k, $rowids_nr)
@@ -563,7 +590,7 @@ sub clusterDistanceMatrix {
   return $cm->{cdmatrix} if (defined($cm->{cdmatrix}));
 
   ##-- check & set recursion-detection flag
-  confess(ref($cm), "::clusterDistanceMatrix(): recursion detected: probably a bad ctrmethod")
+  confess(ref($cm), "::clusterDistanceMatrix(): recursion detected: probably a bad {ctrmethod} key")
     if ($cm->{_in_cdmatrix});
   $cm->{_in_cdmatrix}=1;
 
@@ -576,10 +603,8 @@ sub clusterDistanceMatrix {
   }
 
   ##-- full deal: arg parsing
-  $args{cddist}   = $cm->cddist()   if (!defined($args{cddist}));
-  $args{cdmethod} = $cm->cdmethod() if (!defined($args{cdmethod}));
-  $args{cdbonus}  = $cm->{cdbonus}  if (!defined($args{cdbonus}));
-  @$cm{qw(cddist cdmethod cdbonus)} = @args{qw(cddist cdmethod cdbonus)};
+  $args{cdbonus} = $cm->{cdbonus}  if (!defined($args{cdbonus}));
+  $cm->{cdbonus} = $args{cdbonus};
 
   ##-- sanity checks
   confess(ref($cm), "::clusterDistanceMatrix(): no data!") if (!defined($cm->{data}));
@@ -587,25 +612,23 @@ sub clusterDistanceMatrix {
       if ($cm->{data}->inplace->setnantobad->nbad > 0);
 
 
-  my $rowids = (defined($args{rowids})
-		? $args{rowids}
-		: sequence(long,$cm->{data}->dim(1)));
-
   ##-- get base data
-  my $csizes = $cm->clusterSizes();
-  my $celts  = $cm->clusterElements();
-  $cm->{cdmatrix} = zeroes(double,$cm->{nclusters},$rowids->nelem);
+  my $rowids      = defined($args{rowids}) ? $args{rowids} : sequence(long,$cm->{data}->dim(1));
+  my $k           = $cm->{nclusters};
+  my $nRows       = $rowids->nelem;
 
-  clusterdistancematrix(@$cm{qw(data mask weight)},
-			$rowids, $csizes, $celts,
-			$cm->{cdmatrix},
-			@args{qw(cddist cdmethod)});
-
-  confess(ref($cm), "::clusterDistanceMatrix(): bad data in output pdl!")
+  ##-- dispatch distance measurement to distance func: get $cm->{cdmatrix} : pdl ($k,$nRows)
+  my $distf       = $cm->distance();
+  $cm->{cdmatrix} = $distf->clusterDistanceMatrix(
+						  data=>$cm->{data}, mask=>$cm->{mask}, rids=>$rowids,
+						  cids=>$cm->{clusterids}, #cdata=>$data, cmask=>$mask,  ##-- re-use $data
+						  weight=>$cm->{weight}, 'k'=>$k, 'nr'=>$nRows,
+						 );
+  confess(ref($cm)."::clusterDistanceMatrix(): bad data in output pdl!")
       if ($cm->{cdmatrix}->inplace->setnantobad->nbad > 0);
 
   ##-- apply hard-clustering bonus ?
-  if ($args{cdmethod} =~ /\+b/ && $args{cdbonus}) {
+  if ($args{cdbonus}) {
     print STDERR
       ("<<<DEBUG>>>: ", ref($cm),
        "::clusterDistanceMatrix() adding bonus for ", $rowids->nelem, " rowids.\n",
@@ -662,7 +685,7 @@ sub mmaxi {
 ##   + $rowiND is an n-dimensional index pdl (2, $m*$nr)
 sub rowi2nd {
   my ($cm,$rowi) = @_;
-  return cat($rowi->flat, yvals($rowi)->flat)->xchg(0,1);
+  return cat($rowi->flat, $rowi->yvals->flat)->xchg(0,1);
 }
 
 ## $coli2nd = $cm->coli2nd($coli);
@@ -673,7 +696,7 @@ sub rowi2nd {
 ##     $mat->indexND(coli2nd($coli)) == $mat->xchg(0,1)->indexND(rowi2nd($coli))
 sub coli2nd {
   my ($cm,$coli) = @_;
-  return cat(yvals($coli)->flat, $coli->flat)->xchg(0,1);
+  return cat($coli->yvals->flat, $coli->flat)->xchg(0,1);
 }
 
 ## $mask = $cm->mminmask($matrix,$m)
@@ -703,13 +726,13 @@ sub mmaxmask {
 ##----------------------------------------------------------------------
 ## ($cdata,$cmask) = $cm->getcenters(%args)
 ##  + %args : clobbers defaults from/to %$cm
-##      ctrmethod => $method,  # method-name or -suffix for prefix 'd2c_'
-##      ctrm => $mbest,        # for m-best methods (default=3)
-##      ctrmode => $which,     # 'hard' or 'soft', for m-best methods: default='hard'
-##      cddist => $cddist,     # distance method (default='u')
-##      cdmethod => $cdmethod, # link type (default='v')
-##      cweights => $cweights, # pdl($k,$n) ~ p(t_n|c_k) for 'wsum' methods
+##      ctrmethod => $method,       # method-name or -suffix for prefix 'd2c_'
+##      ctrm => $mbest,             # for m-best methods (default=3)
+##      ctrmode => $which,          # 'hard' or 'soft', for m-best methods: default='hard'
+##      cweights => $cweights,      # pdl($k,$n) ~ p(t_n|c_k) for 'wsum' methods
 ##      dataweights  => $dweights,  # pdl($n) ~ f(t_n) : for 'weighted' methods (formerly 'rprobs')
+##      #cddist => $cddist,          # distance method (default='u')
+##      #cdmethod => $cdmethod,      # link type (default='v')
 ##
 ##  + known methods, "safe":
 ##      mean           # arithmetic mean of 'hard' cluster elements
@@ -726,7 +749,7 @@ sub getcenters {
   my ($cm,%args) = @_;
 
   ##-- check & set recursion-detection flag
-  confess(ref($cm), "::getcenters(): recursion detected: probably a bad ctrmethod/cdmethod combination")
+  confess(ref($cm), "::getcenters(): recursion detected: probably a bad {ctrmethod}/{cdmethod} combination")
     if ($cm->{_in_getcenters});
   $cm->{_in_getcenters}=1;
 
@@ -741,9 +764,6 @@ sub getcenters {
   $ctrmethod = $cm->{ctrmethod} = 'mean' if (!defined($ctrmethod));
 
   ##-- get method subroutine
-  #my $msub = $cm->can($ctrmethod); ##-- bad for e.g. 'median' (returns PDL::median)
-  #$msub = $cm->can("d2c_$ctrmethod") if (!defined($msub));
-  ##--
   my $msub = $cm->can("d2c_$ctrmethod");
   croak(ref($cm), "::getcenters(): unknown centroid discovery method '$ctrmethod'")
     if (!defined($msub));
@@ -932,10 +952,10 @@ sub d2c_mbest_inverse {
 ## ($cdata,$cmask) = $cm->d2c_weighted(%args);
 ## + gets centers as: c(i) = \sum_{w} p(w|c) w(i)
 ##   - where:
-##     p(w|c) = p(c|w)p(w) / \sum_w p(c|w)p(w)
+##     p(w|c) = p(w,c)/p(c) = p(w,c)/[\sum_w p(w,c)] = [p(c|w)p(w)] / [\sum_w p(c|w)p(w)]
 ##     p(c|w) = / 1 if w \in c
 ##              \ 0 otherwise
-##     p(w)   = $dataprobs(w)                   ##-- see dataprobs()
+##     p(w)   = $dataprobs(w)                   ##-- see dataprobs() method
 ##   - so:
 ##     c(i)   = \sum_{w \in c} p(w) w(i)
 ## + %$cm keys:
@@ -1036,7 +1056,7 @@ sub getprofile {
   }
 
   ##-- check & set recursion-detection flag
-  confess(ref($cm), "::getprofile(): recursion detected: probably a bad tpmethod/ctrmethod combination")
+  confess(ref($cm), "::getprofile(): recursion detected: probably a bad {tpmethod}/{ctrmethod} combination")
     if ($cm->{_in_getprofile});
   $cm->{_in_getprofile}=1;
 
@@ -1092,6 +1112,7 @@ sub tp_full {
 
 ## ($tpdata,$tpmask,$tpcids) = $cm->tp_centers()
 ##   + get trimmed cluster profile by calling getcenters()
+##   + WARNING: this method will break if getcenters() itself calls getprofile()
 sub tp_centers {
   my $cm = shift;
   my ($cdata,$cmask) = $cm->getcenters(@_);
@@ -1146,8 +1167,8 @@ sub tp_ranks {
   my $cemask = $cm->clusterElementMask();
   my $dw     = $cm->{dataweights};
   if (!defined($dw)) {
-    warn(ref($cm),"::tp_ranks(): using reverse presentation order for data-weights");
-    $dw  = $cm->{ndata} - sequence($cm->{ndata});
+    warn(ref($cm),"::tp_ranks(): using reverse row-order for {dataweights} key");
+    $dw = $cm->{ndata} - sequence(double,$cm->{ndata});
   }
 
   ##-- get m-"heaviest" cluster elements
@@ -1163,10 +1184,8 @@ sub tp_ranks {
   ##-- build output data pdls
   my $tprowids  = $mdwmaxi->index2d($mdw_xvals,$mdw_yvals); ##-- data row ids for clusters $mdw_yvals
   $tpdata .= $cm->{data}->dice_axis(1,$tprowids);
-  $tpmask .= (defined($cm->{mask})
-	      ? $cm->{mask}->dice_axis(1,$tprowids)
-	      : $tpdata->isgood());
-  $tpcids   .= $mdw_yvals;
+  $tpmask .= defined($cm->{mask}) ? $cm->{mask}->dice_axis(1,$tprowids) : $tpdata->isgood();
+  $tpcids .= $mdw_yvals;
 
   ##-- and return
   return ($tpdata,$tpmask,$tpcids);
@@ -1194,7 +1213,7 @@ sub tp_weighted {
   my $cemask = $cm->clusterElementMask();
   my $dw     = $cm->{dataweights};
   if (!defined($dw)) {
-    warn(ref($cm),"::tp_ranks(): using reverse presentation order for data-weights");
+    warn(ref($cm),"::tp_ranks(): using reverse row-order for {dataweights}");
     $dw  = $cm->{ndata} - sequence($cm->{ndata});
   }
 
@@ -1272,11 +1291,11 @@ sub membershipSimMask {
 ##      d2pbeta   => $beta,     # pdl($n) for sample-size dependent methods
 ##      d2pq      => $coeff,    # for coefficient-controlled methods (i.e. Gath & Geva)
 ##      d2ppow    => $pwr,      # distance exponent (for Gath & Geva method)
-##      cddist    => $cddist,   # distance method (uses $cm->{cddist})
-##      cdmethod  => $cdmethod, # link type (uses $cm->{cdmethod})
 ##      r2cprobs  => $probPdl,  # specify output pdl ~ p(c|row)
 ##      cdmatrix  => $cdmatrix, # cluster distance matrix (formerly 'leafdist')
 ##      donbest   => $bool,     # whether to do n-best masking here
+##      #cddist    => $cddist,   # distance method (uses $cm->{cddist})
+##      #cdmethod  => $cdmethod, # link type (uses $cm->{cdmethod})
 ##  + also sets $cm->{d2p_isnbest}
 ##  + known {d2pmethod}s:
 ##      'mean', 'median', ...
@@ -1439,6 +1458,7 @@ sub d2p_pinskerL1 {
 ## $r2cprobs = $cm->d2p_jaynes()
 ## $r2cprobs = $cm->d2p_pinskerD()
 ##  + sim(c,w) = b^( -beta * dist(c,w) )
+##  + essentially a Maxwell-Boltzmann distribution
 ##  + %$cm keys:
 ##      cdmatrix : cluster distance matrix ($k by $n)
 ##      r2cprobs : output pdl ($k by $n)
@@ -1480,9 +1500,9 @@ sub d2p_jaynes {
 ##  + Notes:
 ##    * q > 1
 ##    * high $q   ~ high-entropy output dist (very uniform)
-##    * low  $q   ~ low-entropy output dist  (very certain)
-##    * high $pow ~ low-entropy output dist (distances contribute more)
-##    * low  $pow ~ high-entropy output dist (distances contribute more)
+##    * low  $q   ~ low-entropy  output dist (very certain)
+##    * high $pow ~ low-entropy  output dist (distances contribute more)
+##    * low  $pow ~ high-entropy output dist (distances contribute less)
 sub d2p_gath {
   my $cm  = shift;
   my $cdm = $cm->clusterDistanceMatrix(@_);
@@ -1949,52 +1969,3 @@ sub view {
 
 
 1;
-
-##======================================================================
-## Docs
-=pod
-
-=head1 NAME
-
-MUDL - MUDL Unsupervised Dependency Learner
-
-=head1 SYNOPSIS
-
- use MUDL;
-
-=cut
-
-##======================================================================
-## Description
-=pod
-
-=head1 DESCRIPTION
-
-...
-
-=cut
-
-##======================================================================
-## Footer
-=pod
-
-=head1 ACKNOWLEDGEMENTS
-
-perl by Larry Wall.
-
-=head1 AUTHOR
-
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
-
-=head1 COPYRIGHT
-
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
-
-This package is free software.  You may redistribute it
-and/or modify it under the same terms as Perl itself.
-
-=head1 SEE ALSO
-
-perl(1)
-
-=cut

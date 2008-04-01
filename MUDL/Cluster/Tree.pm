@@ -22,13 +22,19 @@ our @EXPORT_OK = qw();
 
 ## $args = MUDL::Cluster::Tree->new(%args);
 ##   + %args:
-##       data     => $data,     # pdl($d,$n)
-##       mask     => $mask,     # pdl($d,$n) boolean matrix: true iff $data->at($i,$j) is valid [default=!$data->isbad]
-##       weight   => $wts,      # pdl($d) $d-ary weight vector
-##       dist     => $metric,   # distance metric character flag (default='b')
-##       method   => $method,   # treecluster link-method flag (default='m')
-##       cddist   => $cddist,   # clusterdistance() dist   flag (default='u')
-##       cdmethod => $cdmethod, # clusterdistance() method flag (default='v')
+##       data     => $data,     # double ($d,$n) : data
+##       mask     => $mask,     # long   ($d,$n) : boolean matrix: true iff $data->at($i,$j) is valid [default=$data->isgood]
+##       weight   => $wts,      # double ($d)    : weight vector (weights distances)
+##   + (DISTANCE:OLD) for clusterdistance():
+##       cddist   => $cddist,   # clusterdistance() dist   flag (default={dist})     : for clusterdistance()
+##       cdmethod => $cdmethod, # clusterdistance() method flag (default=from method): for clusterdistance()
+##                              # - may contain suffix '+b' to indicate bonus clustering
+##   + (DISTANCE:NEW) for distance computations:
+##       distf    => $distf,    # MUDL::Cluster::Distance object (cached)
+##       dclass   => $dclass,   # as accepeted by the 'class' argument to MUDL::Cluster::Disance()
+##       cdbonus  => $bool,     # whether to apply hard-clustering bonus (bash distance to zero)
+##                              # - (NEW) bonus distance is applied if $cdbonus is a true value (default=1)
+##                              # - (OLD) used to require that also ($cdmethod =~ /\+b/)
 ##   + optional data:
 ##       enum     => $enum,    # leaf-id enumerator
 ##       cenum    => $enum,    # cluster-id enumerator
@@ -52,10 +58,10 @@ sub new {
 			     data=>undef,
 			     mask=>undef,
 			     weight=>undef,
-			     dist=>'b',	##-- Manhattan distance
-			     method=>'m', ##-- maximum link
-			     cddist=>'u', ##-- uncentered correlation (vector cosine)
-			     cdmethod=>'v', ##-- pairwise average
+			     #dist=>'b',	##-- Manhattan distance
+			     #method=>'m', ##-- maximum link
+			     #cddist=>'u', ##-- uncentered correlation (vector cosine)
+			     #cdmethod=>'v', ##-- pairwise average
 			     ##-- output data
 			     ctree=>undef,
 			     linkdist=>undef,
@@ -63,13 +69,6 @@ sub new {
 			     nclusters=>2,
 			     %args
 			    );
-#  print STDERR
-#    ("<<DEBUG>> ", __PACKAGE__, "::new() got args:\n",
-#     (map {
-#       "\t '$_' => '$args{$_}'\n"
-#     } sort(keys(%args))),
-#    );
-
   return $tc;
 }
 
@@ -112,22 +111,31 @@ sub cluster {
   my ($tc,%args) = @_;
   @$tc{keys(%args)} = values(%args);
 
-  PDL::Cluster::treecluster
-    (
-     $tc->{data},
-     (defined($tc->{mask})     ? $tc->{mask}     : ($tc->{mask}=!$tc->{data}->isbad)),
-     (defined($tc->{weight})   ? $tc->{weight}   : ($tc->{weight}=ones(double,$tc->{data}->dim(0)))),
+  ##-- common args
+  my $data   = $tc->{data};
+  my $mask   = defined($tc->{mask})     ? $tc->{mask}     : ($tc->{mask}=$data->isgood);
+  my $weight = defined($tc->{weight})   ? $tc->{weight}   : ($tc->{weight}=ones(double,$data->dim(0)));
+  my $ctree  = defined($tc->{ctree})    ? $tc->{ctree}    : ($tc->{ctree}=zeroes(long,2,$data->dim(1)));
+  my $linkd  = defined($tc->{linkdist}) ? $tc->{linkdist} : ($tc->{linkdist}=zeroes(double,$data->dim(1)));
+  my $distf  = $tc->distance();
 
-     (defined($tc->{ctree})    ? $tc->{ctree}    : ($tc->{ctree}=zeroes(long,2,$tc->{data}->dim(1)))),
-     (defined($tc->{linkdist}) ? $tc->{linkdist} : ($tc->{linkdist}=zeroes(double,$tc->{data}->dim(1)))),
+  my ($pcfunc); ##-- underlying PDL::Cluster function name, for error reporting
 
-     (defined($tc->{dist})     ? $tc->{dist}     : ($tc->{dist}='e')),
-     (defined($tc->{method})   ? $tc->{method}   : ($tc->{method}='a')),
-    );
+  if (UNIVERSAL::isa($distf,'MUDL::Cluster::Distance::Builtin')) {
+    ##-- builtin distance function: direct call to PDL::Cluster::treecluster()
+    $pcfunc = 'treecluster';
+    PDL::Cluster::treecluster($data,$mask,$weight, $ctree,$linkd, $distf->distFlag,$distf->tcLinkFlag);
+  }
+  else {
+    ##-- perl distance function: get our own distance matrix
+    $pcfunc     = 'treeclusterd';
+    my $dmatrix = $df->distanceMatrix(data=>$data, mask=>$mask, weight=>$weight);
+    PDL::Cluster::treeclusterd($data,$mask,$weight, $dmatrix, $ctree,$linkd, '?',$distf->tcLinkFlag);
+  }
 
   ##-- sanity check
-  confess(ref($tc), "::cluster() -- treecluster() returned zero matrix: something went wahooni-shaped")
-    if (all($tc->{ctree}==zeroes(long,$tc->{ctree}->dims)));
+  confess(ref($tc), "::cluster() -- PDL::Cluster::${pcfunc}() returned zero matrix: something went wahooni-shaped")
+    if (!$ctree->any);
 
   ##-- update size flags
   @$tc{qw(nfeatures ndata)} = $tc->{data}->dims;
@@ -152,7 +160,7 @@ sub cut {
   if (!defined($tc->{clusterids}) || $tc->{clusterids}->dim(0) != $tc->{ctree}->dim(1)) {
     $tc->{clusterids} = zeroes(long, $tc->{ctree}->dim(1));
   }
-  
+
   print STDERR
       ("<<<DEBUG>>>: ", ref($tc),
        "::cut(): cutting tree into $tc->{nclusters} clusters\n"
@@ -197,52 +205,3 @@ sub toTree {
 
 
 1;
-
-##======================================================================
-## Docs
-=pod
-
-=head1 NAME
-
-MUDL - MUDL Unsupervised Dependency Learner
-
-=head1 SYNOPSIS
-
- use MUDL;
-
-=cut
-
-##======================================================================
-## Description
-=pod
-
-=head1 DESCRIPTION
-
-...
-
-=cut
-
-##======================================================================
-## Footer
-=pod
-
-=head1 ACKNOWLEDGEMENTS
-
-perl by Larry Wall.
-
-=head1 AUTHOR
-
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
-
-=head1 COPYRIGHT
-
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
-
-This package is free software.  You may redistribute it
-and/or modify it under the same terms as Perl itself.
-
-=head1 SEE ALSO
-
-perl(1)
-
-=cut
