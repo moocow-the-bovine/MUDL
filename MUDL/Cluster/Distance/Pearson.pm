@@ -42,7 +42,7 @@ sub compare {
   ##-- common data
   my $mu    =  $args{data}->average;
   my $sigma = ($args{data} - $mu->slice("*1"))->inplace->pow(2)->average->inplace->sqrt;
-  my $eps   = pdl(double,1e-32); ##-- HACK: avoid zeroes in $sigma!
+  my $eps   = pdl(double,1e-32); ##-- HACK: avoid zeroes in $sigma! [alt(?): set dist=0 where ???]
 
   my $mu1    = $mu->index($args{rows1});
   my $mu2    = $mu->index($args{rows2});

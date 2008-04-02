@@ -200,10 +200,9 @@ sub test_native_cluster {
   ##    also problematic: clobbering invalidates clusterids, preventing getclustermean() from
   ##    Doing The Right Thing (or in fact anything at all)
   ##  + where do we differentiate between $args{data} and $cm->{data} ?
-  $gdata  = $data->glue(1,$adata);
-  $arows  = sequence(long,$adata->dim(1))+$n;
-  ($acids1,$acdist1) = $cm1->attach(data=>$adata, rowids=>$arows->xvals);
-  ($acids2,$acdist2) = $cm2->attach(data=>$adata, rowids=>$arows->xvals);
+  $arows = sequence(long,$adata->dim(1));
+  ($acids1,$acdist1) = $cm1->attach(adata=>$adata, arows=>$arows);
+  ($acids2,$acdist2) = $cm2->attach(adata=>$adata, arows=>$arows);
   print "acids1==acids2 ? ", (all($acids1==$acids2) ? "ok" : "NOT ok"), "\n";
   print "acdist1==acdist2 ? ", (all($acdist1->approx($acdist2)) ? "ok" : "NOT ok"), "\n";
 

@@ -295,14 +295,30 @@ sub flushCache {
 
 ## ($cids, $cdists, @other) = $cm->attach(%args)
 ##  + %args:
-##      data=>$data,     # double ($d,$n2)    (default: $cm->data() [implied svd application])
-##      mask=>$mask,     # long   ($d,$n2)    (default: $data->isgood)
-##      rowids=>$rowids  # long   ($nrows)    (default: sequence($n2))
+##      ##
+##      ##-- attaching existing data (probably Not What You Want)
+##      data=>$data,     # double ($d,$n)     (default/clobbers: $cm->data()   [implied svd application])
+##      mask=>$mask,     # long   ($d,$n)     (default/clobbers: $data->isgood [via $cm->{data}])
+##      rowids=>$rowids  # long   ($nrows)    (default: sequence($n))
+##      ##
+##      ##-- attaching new data (probably What You Want)
+##      adata => $adata,  # double ($d,$n2)   (new data to be attached)
+##      amask => $amask,  # long   ($d,$n2)   (new mask, default: $adata->isgood)
+##      arows => $rowids, # long   ($nrows)   (rows of $adata to attach)
+##      #adopt => $bool,   # boolean: if true, $adata & friends get adopted into $cm->{data} & friends
+##      ##
+##      ##-- cluster centers ~ cluster membership "trimmed profile"
 ##      tpdata=>$tpdata, # double ($d,$ntp)   (default: from $cm->getprofile)
 ##      tpmask=>$tpmask, # long   ($d,$ntp)   (default: from $cm->getprofile)
 ##      tpcids=>$tpcids, # long   ($ntp)      (default: from $cm->getprofile)
+##      ##
+##      ##-- OBSOLETE
 ##      #cddist=>$cdd,    # for PDL::Cluster::clusterdistance() (default: $cm->cddist)
 ##      #cdmethod=>$cdm,  # for PDL::Cluster::clusterdistance() (default: $cm->cdmethod)
+##  + returns: ($cids, $cdists, @other), where:
+##      $cids,    # long ($nrows) : $cids(i) == cluster_id_of_row( $rowids(i) )
+##      $cdists   # ?
+##      @other    # ?
 ##  + attaches $rowids rows of $data to nearest profiled cluster,
 ##    as determined by ($tpdata,$tpmask,$tpcids)
 ##  + old behavior (attachment to centers) can be achieved by setting 'tpmethod'=>'centers',
@@ -311,47 +327,61 @@ sub attach {
   my ($cm,%args) = @_;
 
   ##-- arg parsing
-  my ($data,$mask,$rowids,$tpdata,$tpmask,$tpcids) = @args{qw(data mask rowids tpdata tpmask tpcids)};
-  my @noadopt_keys = qw(data mask rowids tpdata tpmask tpcids cdata cmask);
+  my ($adata,$amask,$arows,$adopt) = @args{qw(adata amask arows adopt)};
+  my ($data,$mask,$rowids)         = @args{qw(data mask rowids)};
+  my ($tpdata,$tpmask,$tpcids)     = @args{qw(tpdata tpmask tpcids)};
+
+  my @noadopt_keys = qw(adata amask arows adopt data mask rowids tpdata tpmask tpcids cdata cmask);
   my %noadopt_args = (map { exists($args{$_}) ? ($_=>$args{$_}) : qw() } @noadopt_keys);
-  ##-- backwards-compatible arg parsing: 'cdata', 'cmask'
+  ##
+  ##-- backwards-compatible arg parsing: "centers": 'cdata', 'cmask'
   if (!defined($tpdata) && defined($args{cdata})) {
     $tpdata = $noadopt_args{tpdata} = $args{cdata};
     $tpmask = $noadopt_args{tpmask} = $args{cmask} if (!defined($tpmask) && defined($args{cmask}));
     $tpcids = $noadopt_args{tpcids} = sequence(long,$cm->{nclusters}) if (!defined($tpcids));
   }
+  ##
+  ##-- sanitize args & clobber
   delete @args{@noadopt_keys};
   @$cm{keys %args} = values %args;
 
-  ##-- defaults
-  if (!defined($data)) {
-    $data = $cm->{data};
-  } elsif (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $data->dim(0)) {
-    ##-- apply svd
-    require MUDL::SVD;
-    $data = $cm->{svd}->apply($data);
-    $mask = $data->isgood;
+  ##-- new arg parsing: (adata,amask,arows)
+  my $adata_is_cmdata = 1;
+  if (defined($adata)) {
+    $arows = sequence(long,$adata->dim(1)) if (!defined($arows));
+    if (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $adata->dim(0)) {
+      ##-- apply svd
+      require MUDL::SVD;
+      $adata = $cm->{svd}->apply($adata);
+      $amask = $adata->isgood; ##-- bash $amask
+    }
   }
-  $mask   = $data->isgood if (!defined($mask));
-  $rowids = sequence(long, $data->dim(1)) if (!defined($rowids));
+  else {
+    $adata_is_cmdata = 1;
+    $adata = $cm->{data};
+    $amask = (defined($mask) ? $mask : $cm->{mask}) if (!defined($amask));
+    $arows = $rowids if (!defined($arows));
+  }
+
+  ##-- defaults
+  #$amask = $adata->isgood if (!defined($amask));
+  $arows = sequence(long,$adata->dim(1)) if (!defined($arows));
+
 
   ##-- get profile data
   #($tpdata,$tpmask,$tpcids) = $cm->getprofile() if (!defined($tpdata));
-  my $tpcdm = $cm->profileDistanceMatrix(%noadopt_args, %args, data=>$data,mask=>$mask,rowids=>$rowids);
+  my $tpcdm = $cm->profileDistanceMatrix(%noadopt_args,%args, rdata=>$adata, rmask=>$amask,rowids=>$arows);
 
   ##-- output data
-  my $nrows = $rowids->nelem;
-  my $cids  = zeroes(long,   $nrows);
-  my $cdist = zeroes(double, $nrows);
+  my $nrows  = $arows->nelem;
+  my $acids  = zeroes(long,   $nrows);
+  my $acdist = zeroes(double, $nrows);
 
   ##-- attachment
-  attachtonearestd($tpcdm, sequence(long,$rowids->nelem), $cids, $cdist);
-
-  ##-- clear cached data
-  #delete($cm->{tpcdmatrix});
+  attachtonearestd($tpcdm, sequence(long,$arows->nelem), $acids, $acdist);
 
   ##-- return
-  return ($cids,$cdist);
+  return ($acids,$acdist);
 }
 
 
@@ -497,10 +527,12 @@ sub cddist_OLD {
 ##  + gets (trimmed-)cluster-to-datum distance matrix $tcdmatrix = $cm->{tpcdmatrix} # pdl($k,$nr)
 ##  + Complexity: O($n * $nTrimmed)
 ##  + %args:
-##     tpdata   => $tpdata, ## pdl($d,$nTrimmed): trimmed profile data (default: from getprofile())
-##     tpmask   => $tpmask, ## pdl($d,$nTrimmed): trimmed profile mask (default: from getprofile())
-##     tpcids   => $tpcids, ## pdl($nTrimmed)   : trimmed profile clusterids (default: from getprofile())
-##     rowids   => $pdl,    ## pdl($nr)         : rows to populate (default: sequence($n))
+##     rdata    => $rdata,  ## dbl($d,$n2)      : row-data for comparison (default: $cm->{data})
+##     rmask    => $rmask,  ## int($d,$n2)      : row-mask for comparison (default: $cm->{mask}, rsp $rdata->isgood)
+##     rowids   => $pdl,    ## int($nr)         : rows in $rdata to populate (default: sequence($n2))
+##     tpdata   => $tpdata, ## dbl($d,$nTrimmed): trimmed profile data (default: from getprofile())
+##     tpmask   => $tpmask, ## dbl($d,$nTrimmed): trimmed profile mask (default: from getprofile())
+##     tpcids   => $tpcids, ## int($nTrimmed)   : trimmed profile clusterids (default: from getprofile())
 ##     cdbonus  => $bool,   ## default/clobber: $cm->{cdbonus} : apply hard bonus
 ##     #cddist   => $dist,   ## default/clobber: $cm->{cddist}
 ##     #cdmethod => $method, ## default/clobber: $cm->{cdmethod}
@@ -511,7 +543,7 @@ sub profileDistanceMatrix {
   my ($cm,%args) = @_;
 
   ##-- just return pre-computed matrix if defined
-  return $cm->{tpcdmatrix} if (defined($cm->{tpcdmatrix}));
+  return $cm->{tpcdmatrix} if (defined($cm->{tpcdmatrix}) && !defined($args{rdata}));
 
   ##-- check & set recursion-detection flag
   confess(ref($cm)."::profileDistanceMatrix(): recursion detected: probably a bad {ctrmethod}/{tpmethod} combination")
@@ -527,46 +559,66 @@ sub profileDistanceMatrix {
   ($tpdata,$tpmask,$tpcids)    = $cm->getprofile(%args) if (grep {!defined($_)} ($tpdata,$tpmask,$tpcids));
 
   ##-- sanity checks
-  confess(ref($cm), "::profileDistanceMatrix(): no data!") if (!defined($tpdata));
-  confess(ref($cm), "::profileDistanceMatrix(): cowardly refusing bad data!")
+  confess(ref($cm), "::profileDistanceMatrix(): no \$tpdata!") if (!defined($tpdata));
+  confess(ref($cm), "::profileDistanceMatrix(): cowardly refusing bad \$tpdata!")
     if ($tpdata->inplace->setnantobad->nbad > 0);
 
-  ##-- get base data
-  my $rowids   = defined($args{rowids}) ? $args{rowids} : sequence(long,$cm->{data}->dim(1));
+  ##-- get target-row data
   my $d        = $cm->{nfeatures};
   my $k        = $cm->{nclusters};
-  my $nRows    = $rowids->nelem;
+  my $rdata    = $args{rdata};
+  my $rmask    = $args{rmask};
+  my $rowids   = $args{rowids};
+  my $rdata_is_cmdata = 0;
+  if (!defined($rdata)) {
+    $rdata = $cm->{data};
+    $rmask = $cm->{mask};
+    $rdata_is_cmdata = 1;
+  }
+  #$rmask    = $rdata->isgood if (!defined($rmask));
+  $rowids   = sequence(long,$rdata->dim(1)) if (!defined($rowids));
+  my $nRows = $rowids->nelem;
 
   ##-- dispatch distance measurement to distance func: get $cm->{tcpdmatrix} : pdl ($k,$nRows)
   my $distf = $cm->distance();
-  $cm->{tpcdmatrix} = $distf->clusterDistanceMatrix(
-						    data=>$cm->{data}, mask=>$cm->{mask}, rids=>$rowids,
-						    cdata=>$tpdata,    cmask=>$tpmask,    cids=>$tpcids,
-						    weight=>$cm->{weight}, 'k'=>$k, 'nr'=>$nRows,
-						   );
+  my $tpcdmatrix = $distf->clusterDistanceMatrix(
+						 data=>$rdata,   mask=>$rmask,   rids=>$rowids,
+						 cdata=>$tpdata, cmask=>$tpmask, cids=>$tpcids,
+						 weight=>$cm->{weight}, 'k'=>$k, 'nr'=>$nRows,
+						);
   confess(ref($cm), "::profileDistanceMatrix(): bad data in output pdl!")
-    if ($cm->{tpcdmatrix}->inplace->setnantobad->nbad > 0);
+    if ($tpcdmatrix->inplace->setnantobad->nbad > 0);
 
   ##-- apply hard-clustering bonus ?
   if ($args{cdbonus} && defined($cm->{clusterids})) {
-    print STDERR
-      ("<<<DEBUG>>>: ", ref($cm),
-       "::profileDistanceMatrix() adding bonus for nRows=$nRows rowids [buggy???].\n",
-      );
-    ##-- BUG (???): this should probably operate on 'tpcdmatrix', not on underlying 'clusterids','celtmask'!
-    my $cemask        = $cm->clusterElementMask();
-    my $row_cemask    = $cemask->dice_axis(1, $rowids);
-    $cm->{tpcdmatrix}->where($row_cemask) .= 0;
-    #
-    ##-- this might be a better way to do it (implied attach())
-    #my $tpcdmat = $cm->{tpcdmatrix};
-    #$tpcdmat->where($tpcdmat->xvals == $tpcdmat->minimum_ind->slice("*1,")) .= 0;
+    if ($rdata_is_cmdata) {
+      print STDERR
+	("<<<DEBUG>>>: ", ref($cm),
+	 "::profileDistanceMatrix() adding bonus for nRows=$nRows rowids [shared data matrix].\n",
+	);
+      ##-- BUG (???): this should probably operate on 'tpcdmatrix', not on underlying 'clusterids','celtmask'!
+      my $cemask        = $cm->clusterElementMask();
+      my $row_cemask    = $cemask->dice_axis(1, $rowids);
+      $tpcdmatrix->where($row_cemask) .= 0;
+    }
+    else {
+      print STDERR
+	("<<<DEBUG>>>: ", ref($cm),
+	 "::profileDistanceMatrix(): want to add bonus, but don't know how for non-shared row-data matrix\n",
+	);
+      #
+      ##-- this might be a better way to do it (implied attach())
+      #$tpcdmat->where($tpcdmat->xvals == $tpcdmat->minimum_ind->slice("*1,")) .= 0;
+    }
   }
+
+  ##-- maybe cache result
+  $cm->{tpcdmatrix} = $tpcdmatrix if ($rdata_is_cmdata);
 
   ##-- unset recursion detection flag
   delete($cm->{_in_tpcdmatrix});
 
-  return $cm->{tpcdmatrix};
+  return $tpcdmatrix;
 }
 
 

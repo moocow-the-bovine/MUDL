@@ -143,10 +143,11 @@ sub clusterDistanceMatrix {
   $cd->cdm_defaults(\%args);
 
   ##-- get row-row distances
-  my $cmp_which = $cd->crossproduct($args{gucids}->nelem, $args{gurids}->nelem);
+  my $cmp_which = $cd->crossproduct($args{cids}->nelem, $args{rids}->nelem);
+  $cmp_which->slice("(1),") .= $args{gurids}->index($cmp_which->slice("(1),"));
   my $cmp_vals  = $cd->compare(%args,
 			       data=>$args{gudata},
-			       mask=>$args{mask},
+			       mask=>$args{gumask},
 			       weight=>$args{weight},
 			       rows1=>$cmp_which->slice("(0),"),
 			       rows2=>$cmp_which->slice("(1),"),
@@ -157,7 +158,7 @@ sub clusterDistanceMatrix {
   my $link_which_in = (
 		       $args{cids}->index($cmp_which->slice("(0),"))
 		       ->cat(
-			     $args{rids}->index($cmp_which->slice("(1),"))
+			     $args{gurids_c}->index($cmp_which->slice("(1),"))
 			    )
 		       ->xchg(0,1)
 		      );
@@ -173,6 +174,7 @@ sub clusterDistanceMatrix {
     $k  = $link_which->slice("(0),")->max+1 if (!defined($k));
     $nr = $link_which->slice("(1),")->max+1 if (!defined($nr));
     $cdmat = zeroes($link_cmps->type, $k,$nr);
+    $cdmat .= 'inf'; ##-- default distance: infinite
   }
   $cdmat->indexND($link_which) .= $link_cmps;
 
@@ -294,15 +296,16 @@ sub cdm_defaults {
 
     ##-- concatenated GU-matrix: ids
     $args->{gucids} = $args->{cids};
-    #$args->{gurids} = $args->{rids} + $cdata->dim(1);
-    $args->{gurids} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
-    $args->{gurids}->index($args->{rids}->xvals + $args->{cids}->dim(0)) .= $args->{rids};
+    $args->{gurids} = $args->{rids} + $cdata->dim(1);
+    $args->{gurids_c} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
+    $args->{gurids_c}->index($args->{gurids}) .= $args->{rids};
   } else {
     ##-- shared GU-matrix
     $args->{gudata} = $data;
     $args->{gumask} = $args->{mask};
     $args->{gucids} = $args->{cids};
     $args->{gurids} = $args->{rids};
+    $args->{gurids_c} = $args->{rids};
   }
 
   return $args;
