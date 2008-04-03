@@ -47,7 +47,7 @@ sub compare {
   my ($cd,%args) = @_;
   $cd->compare_check(\%args) or croak(ref($cd)."::compare(): cowardly refusing to process inconsistent request");
   my $rdata = $args{data}->avgranks()+$cd->{rank_min};
-  return $cd->SUPER::compare(%args, data=>$rdata);
+  return $cd->SUPER::compare( %args, data=>$rdata, pearson_mu=>0.5*($rdata->dim(0)-1) );
 }
 
 

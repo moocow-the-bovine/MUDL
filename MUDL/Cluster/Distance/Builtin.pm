@@ -137,26 +137,26 @@ sub clusterDistanceMatrix {
 
   ##-- get defaults (gudata,...)
   $cd->cdm_defaults(\%args);
-  my ($gucids,$gurids) = @args{'gucids','gurids'};
+  my ($gucids,$gurids_rows) = @args{'gucids','gurids_rows'};
 
   ##-- encode cluster-membership
   my ($clens,$cvals,$crows) = clusterenc($gucids);
-  my ($rlens,$rvals,$rrows) = clusterenc($gurids);
+  #my ($rlens,$rvals,$rrows) = clusterenc($gurids_rows);
   my ($cdmat_raw);
   clusterdistancematrixenc(@args{qw(gudata gumask weight)},
-			   $clens,$crows,   $rlens,$rrows,
-			   $cdmat_raw=zeroes(double,$clens->dim(0),$rlens->dim(0)),
+			   $clens,$crows,   $gurids_rows->ones,$gurids_rows,
+			   $cdmat_raw=zeroes(double,$clens->dim(0),$gurids_rows->dim(0)),
 			   $cd->{distFlag}, $cd->cdLinkFlag,
 			  );
 
   ##-- we might need to do some index-twiddling
-  if ( ($cvals!=$cvals->sequence)->any || ($rvals!=$rvals->sequence)->any ) {
+  if ( ($cvals!=$cvals->sequence)->any ) {
    my $cdmat0  = $cdmat_raw;
    my ($k,$nr) = @args{qw(k nr)};
-   $k          = $cvals->max+1 if (!defined($k));
-   $nr         = $rvals->max+1 if (!defined($nr));
+   $k          = $cvals->max+1       if (!defined($k));
+   $nr         = $gurids_rows->nelem if (!defined($nr));
    $cdmat_raw  = pdl(double,"inf")->slice("*$k,*$nr")->make_physical(); ##-- "missing" distances are infinite
-   $cdmat_raw->dice_axis(0,$cvals)->dice_axis(1,$rvals) .= $cdmat0;
+   $cdmat_raw->dice_axis(0,$cvals) .= $cdmat0;
   }
 
   ##-- return

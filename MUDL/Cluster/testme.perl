@@ -23,7 +23,8 @@ BEGIN { $, = ' '; }
 
 #use MUDL::Cluster::Distance::L1;
 #use MUDL::Cluster::Distance::L2;
-#use MUDL::Cluster::Distance::Pearson;
+use MUDL::Cluster::Distance::Pearson;
+use MUDL::Cluster::Distance::Spearman;
 sub test_perl_distance {
   my ($d,$n,$data,$mask,$wt);
   my $RANDOM_DATA = 0;
@@ -44,11 +45,13 @@ sub test_perl_distance {
 
   ##-- what to compare?
   my @compare = (
-		 ['L1','b'], ##-- ok
-		 ['L2','e'], ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
-		 ['Pearson','c'], ##-- ok
-		 ['Cosine','u'], ##-- ok
-		 ['Spearman','s'], ##-- ok (via 'S')
+		 #['L1','b'], ##-- ok
+		 #['L2','e'], ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
+		 #['Pearson','c'], ##-- ok
+		 #['Cosine','u'], ##-- ok
+		 #['Spearman','s'], ##-- ok (via 'S')
+		 [['Spearman',rank_min=>1],'s'], ##-- ok via 'S', NOT straight up: why?
+		 ##--> BUG BUG BUG!
 		);
   foreach my $cfg (@compare) {
     my ($class,$dflag) = @$cfg;
@@ -58,7 +61,7 @@ sub test_perl_distance {
     ##-- test: comparison vector
     #my ($rows1,$rows2) = $cd->cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
     my ($rows1,$rows2) = $cd->cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
-    my $cmpvec  = $cd->compare (data=>$data, rows1=>$rows1,rows2=>$rows2);
+    my $cmpvec  = $cd->compare(data=>$data, rows1=>$rows1,rows2=>$rows2);
 
     my ($cdb,$cmpvecb);
     if ($dflag eq 's') {
@@ -83,7 +86,7 @@ sub test_perl_distance {
 
   print STDERR "$0: test_perl_distance() done: what now?\n";
 }
-#test_perl_distance();
+test_perl_distance();
 
 ##-- test: cross product
 sub crossp1 {
@@ -103,7 +106,8 @@ sub crossp1 {
 ##----------------------------------------------------------------------
 ## test: perl link func
 ##----------------------------------------------------------------------
-use MUDL::Cluster::LinkMethod::GroupAverage;
+use MUDL::Cluster::Distance;
+use MUDL::Cluster::Distance::Builtin;
 sub test_perl_link {
   my ($d,$n,$k, $data, $cids);
   my $RANDOM_DATA = 0;
@@ -151,7 +155,7 @@ sub test_native_cluster {
   if (!$RANDOM_DATA) {
     $data   = pdl(double, [[1,1,1],[2,2,2],[3,3,3],[4,5,6],[7,8,9],[10,11,12]]);
     ($d,$n) = $data->dims;
-    $adata  = pdl(double,[[10,20,30],[16,8,4]]);
+    $adata  = pdl(double,[[10,20,30],[16,8,4],[0,1,0]]);
     $k      = 2;
   } else {
     ($d,$n) = (32,256);
@@ -160,13 +164,15 @@ sub test_native_cluster {
     $k = 16;
   }
 
-  #my ($dc1,$dc2) = (['L1',link=>'max'],['b',linkFlag=>'x']);
-  #my ($dc1,$dc2) = (['L1',link=>'avg'],['b',linkFlag=>'v']);
-  #my ($dc1,$dc2) = (['Pearson',link=>'avg'],['c',linkFlag=>'v']);
-  my ($dc1,$dc2) = (['Pearson',link=>'max'],['c',linkFlag=>'x']);
-  #my ($dc1,$dc2) = (['Cosine',link=>'min'],['u',linkFlag=>'s']);
+  my ($dc1,$dc2);
+  ($dc1,$dc2) = (['L1',link=>'max'],['b',linkFlag=>'x']);
+  #($dc1,$dc2) = (['L1',link=>'avg'],['b',linkFlag=>'v']);
+  #($dc1,$dc2) = (['Pearson',link=>'avg'],['c',linkFlag=>'v']);
+  #($dc1,$dc2) = (['Pearson',link=>'max'],['c',linkFlag=>'x']);
+  #($dc1,$dc2) = (['Cosine',link=>'min'],['u',linkFlag=>'s']);
+  ($dc1,$dc2) = (['Spearman',rank_min=>1,link=>'max'],['s',linkFlag=>'x']);
 
-  my %opts = (data=>$data, nclusters=>$k);
+  my %opts = (data=>$data, nclusters=>$k, cdbonus=>0);
   my $cm1 = MUDL::Cluster::Tree->new(dclass=>$dc1, %opts);
   my $cm2 = MUDL::Cluster::Tree->new(dclass=>$dc2, %opts);
 
@@ -186,25 +192,27 @@ sub test_native_cluster {
   print "linkd1==linkd2 ? ", (all($cm1->{linkdist}->approx($cm2->{linkdist})) ? "ok" : "NOT ok"), "\n";
   print "ctree1==ctree2 ? ", (all($cm1->{ctree}==$cm2->{ctree}) ? "ok" : "NOT ok"), "\n";
 
-  my ($cdmat1,$cdmat2) = ($cm1->clusterDistanceMatrix,$cm2->clusterDistanceMatrix);
+  my $cdmat1 = $cm1->clusterDistanceMatrix;
+  my $cdmat2 = $cm2->clusterDistanceMatrix;
   print "cdmat1==cdmat2 ? ", (all($cdmat1->approx($cdmat2)) ? "ok" : "NOT ok"), "\n";
 
   ##-- attach: BROKEN ?! (we're calling it wrong it seems, but this is how it *OUGHT* to work...)
-  ##  + pukes in Cluster::Method::d2c_mean (line 833, call to PDL::Cluster::getclustermean())
-  ##     833: getclustermean(@$cm{qw(data mask clusterids)}, $cdata,$cmask)
-  ##  + reason is a dim mismatch on "n": data(d,n); mask(d,n); clusterids(n)
-  ##  + here, 'data' and 'mask' are getting clobbered by the "grand unified" values we're passing
-  ##    in, but 'clusterids' is NOT
-  ##    - clobbering takes place in attach() call to profileDistanceMatrix(...,data=>$data,...)
-  ##  + just passing in "raw" row data ($adata) is what we really would like to do, but is
-  ##    also problematic: clobbering invalidates clusterids, preventing getclustermean() from
-  ##    Doing The Right Thing (or in fact anything at all)
-  ##  + where do we differentiate between $args{data} and $cm->{data} ?
   $arows = sequence(long,$adata->dim(1));
   ($acids1,$acdist1) = $cm1->attach(adata=>$adata, arows=>$arows);
   ($acids2,$acdist2) = $cm2->attach(adata=>$adata, arows=>$arows);
-  print "acids1==acids2 ? ", (all($acids1==$acids2) ? "ok" : "NOT ok"), "\n";
-  print "acdist1==acdist2 ? ", (all($acdist1->approx($acdist2)) ? "ok" : "NOT ok"), "\n";
+  print "attach: acids1==acids2 ? ", (all($acids1==$acids2) ? "ok" : "NOT ok"), "\n";
+  print "attach: acdist1==acdist2 ? ", (all($acdist1->approx($acdist2)) ? "ok" : "NOT ok"), "\n";
+
+  ##-- attach+adopt
+  ($acids1,$acdist1) = $cm1->attach(adata=>$adata, arows=>$arows, adopt=>1);
+  ($acids2,$acdist2) = $cm2->attach(adata=>$adata, arows=>$arows, adopt=>1);
+  print "attach+adopt: acids1==acids2 ? ", (all($acids1==$acids2) ? "ok" : "NOT ok"), "\n";
+  print "attach+adopt: acdist1==acdist2 ? ", (all($acdist1->approx($acdist2)) ? "ok" : "NOT ok"), "\n";
+  print "attach+adopt: data1==data2 ? ", (all($cm1->{data}==$cm2->{data}) ? "ok" : "NOT ok"), "\n";
+  print "attach+adopt: mask1==mask2 ? ", (all($cm1->{mask}==$cm2->{mask}) ? "ok" : "NOT ok"), "\n";
+  $cdmat1 = $cm1->clusterDistanceMatrix;
+  $cdmat2 = $cm2->clusterDistanceMatrix;
+  print "attach+adopt: cdmat1==cdmat2 ? ", (all($cdmat1->approx($cdmat2)) ? "ok" : "NOT ok"), "\n";
 
   print STDERR "$0: test_native_cluster() done: what now?\n";
 }

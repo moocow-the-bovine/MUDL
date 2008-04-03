@@ -293,6 +293,8 @@ sub flushCache {
 ## Attachment
 ########################################################################
 
+
+##--------------------------------------------------------------
 ## ($cids, $cdists, @other) = $cm->attach(%args)
 ##  + %args:
 ##      ##
@@ -305,7 +307,7 @@ sub flushCache {
 ##      adata => $adata,  # double ($d,$n2)   (new data to be attached)
 ##      amask => $amask,  # long   ($d,$n2)   (new mask, default: $adata->isgood)
 ##      arows => $rowids, # long   ($nrows)   (rows of $adata to attach)
-##      #adopt => $bool,   # boolean: if true, $adata & friends get adopted into $cm->{data} & friends
+##      adopt => $bool,   # boolean: if true, $adata & friends get adopted into $cm->{data} & friends
 ##      ##
 ##      ##-- cluster centers ~ cluster membership "trimmed profile"
 ##      tpdata=>$tpdata, # double ($d,$ntp)   (default: from $cm->getprofile)
@@ -346,31 +348,28 @@ sub attach {
   @$cm{keys %args} = values %args;
 
   ##-- new arg parsing: (adata,amask,arows)
-  my $adata_is_cmdata = 1;
+  my $adata_is_cmdata = 0;
+  $arows = sequence(long,$adata->dim(1)) if (defined($adata) && !defined($arows));
   if (defined($adata)) {
-    $arows = sequence(long,$adata->dim(1)) if (!defined($arows));
     if (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $adata->dim(0)) {
       ##-- apply svd
       require MUDL::SVD;
       $adata = $cm->{svd}->apply($adata);
-      $amask = $adata->isgood; ##-- bash $amask
+      undef($amask); ##-- force bash $amask
     }
   }
   else {
-    $adata_is_cmdata = 1;
-    $adata = $cm->{data};
-    $amask = (defined($mask) ? $mask : $cm->{mask}) if (!defined($amask));
     $arows = $rowids if (!defined($arows));
+    $amask = (defined($mask) ? $mask : $cm->{mask}) if (!defined($amask));
+    $adata = $cm->{data};
+    $adata_is_cmdata = 1;
   }
 
   ##-- defaults
-  #$amask = $adata->isgood if (!defined($amask));
   $arows = sequence(long,$adata->dim(1)) if (!defined($arows));
 
-
   ##-- get profile data
-  #($tpdata,$tpmask,$tpcids) = $cm->getprofile() if (!defined($tpdata));
-  my $tpcdm = $cm->profileDistanceMatrix(%noadopt_args,%args, rdata=>$adata, rmask=>$amask,rowids=>$arows);
+  my $tpcdm = $cm->profileDistanceMatrix(%noadopt_args,%args, rdata=>$adata,rmask=>$amask,rowids=>$arows);
 
   ##-- output data
   my $nrows  = $arows->nelem;
@@ -380,8 +379,57 @@ sub attach {
   ##-- attachment
   attachtonearestd($tpcdm, sequence(long,$arows->nelem), $acids, $acdist);
 
+  ##-- check for adoption
+  $cm->adopt(data=>$adata,mask=>$amask,cids=>$acids) if ($adopt && !$adata_is_cmdata);
+
   ##-- return
   return ($acids,$acdist);
+}
+
+##--------------------------------------------------------------
+## $rowids_adopted = $cm->adopt(%args)
+##  + adopt some data into $cm->{data},$cm->{mask}, maybe $cm->{clusterids}
+##  + WARNING: adopting data without clusterids can break future profile-acquisition!
+##  + WARNING: most PDL::Cluster methods don't deal well with negative or BAD cluster-ids!
+##  + %args:
+##     data => $data,   # double ($d,$n2) : new data to be adopted
+##     mask => $mask,   # long   ($d,$n2) : new mask, default: $data->isgood
+##     cids => $cids,   # long   ($n2)    : cluster-ids for new rows (default: no clusterid assignment)
+BEGIN { *addData = *adoptData = \&adopt; }
+sub adopt {
+  my ($cm,%args) = @_;
+
+  my ($adata,$amask,$acids) = @args{qw(data mask cids)};
+  if (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $adata->dim(0)) {
+    ##-- apply svd before adopting data
+    require MUDL::SVD;
+    $adata = $cm->{svd}->apply($adata);
+    undef $amask; ##-- force mask-bashing on svd
+  }
+
+  ##-- get raw data & flush cache
+  my ($data,$mask,$cids) = @$cm{qw(data mask clusterids)};
+  my ($d,$n_old) = $data->dims;
+  $cm->flushCache();
+
+  ##-- adopt: data
+  my $n_new  = $adata->dim(1);
+  my $n_both = $n_old+$n_new;
+  $data = $cm->{data} = $data->glue(1,$adata);
+
+  ##-- adopt: mask
+  if (defined($mask)) {
+    $amask = $adata->isgood if (!defined($amask));
+    $cm->{mask} = $mask = $mask->glue(1,$amask);
+  }
+
+  ##-- adopt: clusterids
+  if (defined($cids) && defined($acids)) {
+    $cids = $cm->{clusterids} = $cids->reshape($n_both);
+    $cids->slice("-${n_new}:-1") .= $acids;
+  }
+
+  return sequence(long,$n_new)+$n_old;
 }
 
 

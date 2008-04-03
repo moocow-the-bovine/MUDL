@@ -144,7 +144,7 @@ sub clusterDistanceMatrix {
 
   ##-- get row-row distances
   my $cmp_which = $cd->crossproduct($args{cids}->nelem, $args{rids}->nelem);
-  $cmp_which->slice("(1),") .= $args{gurids}->index($cmp_which->slice("(1),"));
+  $cmp_which->slice("(1),") .= $args{gurids_rows}->index($cmp_which->slice("(1),"));
   my $cmp_vals  = $cd->compare(%args,
 			       data=>$args{gudata},
 			       mask=>$args{gumask},
@@ -158,7 +158,7 @@ sub clusterDistanceMatrix {
   my $link_which_in = (
 		       $args{cids}->index($cmp_which->slice("(0),"))
 		       ->cat(
-			     $args{gurids_c}->index($cmp_which->slice("(1),"))
+			     $args{gurids_cids}->index($cmp_which->slice("(1),"))
 			    )
 		       ->xchg(0,1)
 		      );
@@ -265,7 +265,8 @@ sub cdm_check {
 ##     gudata => $gudata, ##-- dbl ($d,$N) : grand unified data matrix, $N=($nce+$nde)
 ##     gumask => $gumask, ##-- int ($d,$N) : grand unified data mask
 ##     gucids => $gucids, ##-- ==$cids
-##     gurids => $gurids, ##-- ==($rids + $nce)
+##     gurids_rows => $gurids_rows, ##-- int($nr)      : $i => ($rids[$i] + $nce)
+##     gurids_cids => $gurids_cids, ##-- int($nr+$nce) : $rids[$i]+$nce => $i : pseudo-clusterids for $rids
 ##     cids   => $cids,
 ##     rids   => $rids,
 ##     weight => $weight,
@@ -296,16 +297,17 @@ sub cdm_defaults {
 
     ##-- concatenated GU-matrix: ids
     $args->{gucids} = $args->{cids};
-    $args->{gurids} = $args->{rids} + $cdata->dim(1);
-    $args->{gurids_c} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
-    $args->{gurids_c}->index($args->{gurids}) .= $args->{rids};
+    $args->{gurids_rows} = $args->{rids} + $cdata->dim(1);
+    $args->{gurids_cids} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
+    $args->{gurids_cids}->index($args->{gurids_rows}) .= $args->{rids}->sequence;
   } else {
     ##-- shared GU-matrix
     $args->{gudata} = $data;
     $args->{gumask} = $args->{mask};
     $args->{gucids} = $args->{cids};
-    $args->{gurids} = $args->{rids};
-    $args->{gurids_c} = $args->{rids};
+    $args->{gurids_rows} = $args->{rids};
+    $args->{gurids_cids} = zeroes(long,$data->dim(1))-1;
+    $args->{gurids_cids}->index($args->{gurids_rows}) .= $args->{rids}->sequence;
   }
 
   return $args;

@@ -20,7 +20,9 @@ our @ISA = qw(MUDL::Cluster::Distance);
 
 ##--------------------------------------------------------------
 ## $cmpvec = $cd->compare(%args)
-##  + %args:
+##  + new %args;
+##     pearson_mu => $mu,  ##-- scalar or pdl(dbl,$n): row-wise average for $data
+##  + inherited %args:
 ##     data   => $data,    ##-- pdl($d,$n)  : $d=N_features, $n=N_data                  [REQUIRED]
 ##     rows1  => $rows1,   ##-- pdl($ncmps) : [$i] -> $data1_rowid_for_cmp_i            [REQUIRED]
 ##     rows2  => $rows2,   ##-- pdl($ncmps) : [$i] -> $data2_rowid_for_cmp_i            [REQUIRED]
@@ -40,14 +42,20 @@ sub compare {
   ##             = 1 - (\sum_{i=1}^d (x[i]-mean(x)) * (y[i]-mean(y))) / (d * stddev(x) * stddev(y))
 
   ##-- common data
-  my $mu    =  $args{data}->average;
+  my ($mu);
+  if (defined($args{pearson_mu})) {
+    $mu = PDL->topdl($args{pearson_mu});
+    $mu = $mu->slice("*".$args{data}->dim(1))->flat if ($mu->nelem==1);
+  } else {
+    $mu = $args{data}->average;
+  }
   my $sigma = ($args{data} - $mu->slice("*1"))->inplace->pow(2)->average->inplace->sqrt;
-  my $eps   = pdl(double,1e-32); ##-- HACK: avoid zeroes in $sigma! [alt(?): set dist=0 where ???]
+  $sigma->where($sigma==0) .= 1e-32; ##-- HACK: avoid zeroes in $sigma! [alt(?): set dist=0 where ???]
 
   my $mu1    = $mu->index($args{rows1});
   my $mu2    = $mu->index($args{rows2});
-  my $sigma1 = $sigma->index($args{rows1})+$eps;
-  my $sigma2 = $sigma->index($args{rows2})+$eps;
+  my $sigma1 = $sigma->index($args{rows1});
+  my $sigma2 = $sigma->index($args{rows2});
 
   my ($cmpvec);
   my $d      = $dr1->dim(0);
