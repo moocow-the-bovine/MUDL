@@ -47,7 +47,12 @@ sub compare {
   my ($cd,%args) = @_;
   $cd->compare_check(\%args) or croak(ref($cd)."::compare(): cowardly refusing to process inconsistent request");
   my $rdata = $args{data}->avgranks()+$cd->{rank_min};
-  return $cd->SUPER::compare( %args, data=>$rdata, pearson_mu=>0.5*($rdata->dim(0)-1) );
+  return $cd->SUPER::compare( %args,
+			      data=>$rdata,
+			      #pearson_mu =>(0.5*($rdata->dim(0)-1)), ##-- a priori for ranks in [0..($d-1)]
+			      #pearson_mu =>(0.5*($rdata->dim(0)+1)), ##-- a priori for ranks in [1..$d] ~ PDL::Cluster 's','S'
+			      pearson_mu=>(sequence($rdata->dim(0))+$cd->{rank_min})->average, ##-- a posteriori
+			    );
 }
 
 

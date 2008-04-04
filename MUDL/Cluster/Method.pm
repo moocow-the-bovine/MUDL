@@ -399,7 +399,7 @@ BEGIN { *addData = *adoptData = \&adopt; }
 sub adopt {
   my ($cm,%args) = @_;
 
-  my ($adata,$amask,$acids) = @args{qw(data mask cids)};
+  my ($adata,$amask,$acids) = @args{qw(data mask cids)}; #}
   if (defined($cm->{svd}) && $cm->{svd}{r} && $cm->{svd}{r} < $adata->dim(0)) {
     ##-- apply svd before adopting data
     require MUDL::SVD;
@@ -408,13 +408,13 @@ sub adopt {
   }
 
   ##-- get raw data & flush cache
-  my ($data,$mask,$cids) = @$cm{qw(data mask clusterids)};
+  my ($data,$mask,$cids) = @$cm{qw(data mask clusterids)}; #}
   my ($d,$n_old) = $data->dims;
   $cm->flushCache();
 
-  ##-- adopt: data
+  ##-- adopt: data, ndata
   my $n_new  = $adata->dim(1);
-  my $n_both = $n_old+$n_new;
+  my $n_both = $cm->{ndata} = $n_old+$n_new;
   $data = $cm->{data} = $data->glue(1,$adata);
 
   ##-- adopt: mask
@@ -428,6 +428,9 @@ sub adopt {
     $cids = $cm->{clusterids} = $cids->reshape($n_both);
     $cids->slice("-${n_new}:-1") .= $acids;
   }
+
+  ##-- flush ctree, linkdist
+  delete(@$cm{'ctree','linkdist'});
 
   return sequence(long,$n_new)+$n_old;
 }

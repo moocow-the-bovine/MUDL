@@ -21,6 +21,17 @@ BEGIN { $, = ' '; }
 ## test: perl distance func
 ##----------------------------------------------------------------------
 
+## $ucmp = ucmp($cwhich,$cmpvec1,$cmpvec2,...)
+sub ucmp {
+  my $cw   = shift;
+  my $cwi  = $cw->qsortveci;
+  my $ucmp = $cw->dice_axis(1,$cwi)->glue(0,pdl(-1))->convert(double);
+  foreach my $cv (@_) {
+    $ucmp = $ucmp->glue(0,$cv->index($cwi)->slice("*1"));
+  }
+  return $ucmp;
+}
+
 #use MUDL::Cluster::Distance::L1;
 #use MUDL::Cluster::Distance::L2;
 use MUDL::Cluster::Distance::Pearson;
@@ -32,7 +43,9 @@ sub test_perl_distance {
 
   if (!$RANDOM_DATA) {
     ##-- literals
-    $data = pdl(double,[ [1,2,3,4],[1,3,3,0],[4,3,2,1] ]);
+    #$data = pdl(double,[ [1,2,3,4],[1,3,3,0],[4,3,2,1] ]);
+    $data = pdl(double, [[1,1,1,1],[2,2,2,2],[3,4,5,6],[2,3,3,2],[9,0,0,0]]);
+    ##--
     ($d,$n) = $data->dims;
   } else {
     ##-- random data
@@ -47,11 +60,10 @@ sub test_perl_distance {
   my @compare = (
 		 #['L1','b'], ##-- ok
 		 #['L2','e'], ##-- ok (but PDL::Cluster 'e' is missing sqrt() step)
-		 #['Pearson','c'], ##-- ok
+		 ['Pearson','c'], ##-- ok
 		 #['Cosine','u'], ##-- ok
-		 #['Spearman','s'], ##-- ok (via 'S')
-		 [['Spearman',rank_min=>1],'s'], ##-- ok via 'S', NOT straight up: why?
-		 ##--> BUG BUG BUG!
+		 #[['Spearman',rank_min=>0],'s'], ##-- ok
+		 #[['Spearman',rank_min=>1],'s'], ##-- ok
 		);
   foreach my $cfg (@compare) {
     my ($class,$dflag) = @$cfg;
@@ -60,33 +72,23 @@ sub test_perl_distance {
 
     ##-- test: comparison vector
     #my ($rows1,$rows2) = $cd->cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
-    my ($rows1,$rows2) = $cd->cmp_pairs($n)->qsortvec->xchg(0,1)->dog;
-    my $cmpvec  = $cd->compare(data=>$data, rows1=>$rows1,rows2=>$rows2);
+    my $cwhich         = $cd->cmp_pairs($n)->qsortvec;
+    my ($rows1,$rows2) = $cwhich->xchg(0,1)->dog;
+    my $cmpvec         = $cd->compare(data=>$data, rows1=>$rows1,rows2=>$rows2);
 
-    my ($cdb,$cmpvecb);
-    if ($dflag eq 's') {
-      $cdb = MUDL::Cluster::Distance->new(class=>'S');
-      $cmpvecb = $cdb->compare(data=>$data->avgranks, rows1=>$rows1,rows2=>$rows2);
-    } else {
-      $cdb = MUDL::Cluster::Distance->new(class=>$dflag);
-      $cmpvecb = $cdb->compare(data=>$data, rows1=>$rows1,rows2=>$rows2);
-    }
+    my $cdb = MUDL::Cluster::Distance->new(class=>$dflag);
+    my $cmpvecb = $cdb->compare(data=>$data, rows1=>$rows1,rows2=>$rows2);
     print STDERR "cmpvec(class=$class)==cmpvec(flag=$dflag) ? ", (all($cmpvec->approx($cmpvecb)) ? "ok" : "NOT ok"), "\n";
 
     ##-- get data matrix using builtin funcs
-    my $dmat     = $cd->distanceMatrix(data=>$data);
-    my ($dmatb);
-    if ($dflag eq 's') {
-      $dmatb = distancematrix($data->avgranks,$mask,$wt, 'S');
-    } else {
-      $dmatb = distancematrix($data,$mask,$wt, $dflag);
-    }
+    my $dmat  = $cd->distanceMatrix(data=>$data);
+    my $dmatb = distancematrix($data,$mask,$wt, $dflag);
     print STDERR "dmat(class=$class)==dmat(flag=$dflag) ? ", (all($dmat->approx($dmatb)) ? "ok" : "NOT ok"), "\n";
   }
 
   print STDERR "$0: test_perl_distance() done: what now?\n";
 }
-test_perl_distance();
+#test_perl_distance();
 
 ##-- test: cross product
 sub crossp1 {
@@ -168,9 +170,11 @@ sub test_native_cluster {
   ($dc1,$dc2) = (['L1',link=>'max'],['b',linkFlag=>'x']);
   #($dc1,$dc2) = (['L1',link=>'avg'],['b',linkFlag=>'v']);
   #($dc1,$dc2) = (['Pearson',link=>'avg'],['c',linkFlag=>'v']);
-  #($dc1,$dc2) = (['Pearson',link=>'max'],['c',linkFlag=>'x']);
+  ($dc1,$dc2) = (['Pearson',link=>'max'],['c',linkFlag=>'x']);
   #($dc1,$dc2) = (['Cosine',link=>'min'],['u',linkFlag=>'s']);
-  ($dc1,$dc2) = (['Spearman',rank_min=>1,link=>'max'],['s',linkFlag=>'x']);
+  #($dc1,$dc2) = (['Spearman',rank_min=>1,link=>'max'],['s',linkFlag=>'x']);
+  #($dc1,$dc2) = (['Spearman',rank_min=>0,link=>'max'],['s',linkFlag=>'x']);
+  #($dc1,$dc2) = (['Spearman',rank_min=>0,link=>'avg'],['s',linkFlag=>'v']);
 
   my %opts = (data=>$data, nclusters=>$k, cdbonus=>0);
   my $cm1 = MUDL::Cluster::Tree->new(dclass=>$dc1, %opts);
