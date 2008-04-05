@@ -414,9 +414,9 @@ sub update {
   $cmdata_k->dice_axis(1, $trowids) .= $data_k;
   $cmdata_k->dice_axis(1, $crowids) .= $cdata;
 
-  ##-- SVD stuff
-  $cmdata_k = $cm_k->data($cmdata_k); ##-- grab return value b/c $cm_k->data() might apply an SVD
-  $cm_k->{mask}   = ones(long, $cmdata_k->dims);
+  ##-- data/SVD stuff
+  $cmdata_k = $cm_k->data($cmdata_k); ##-- grab return value b/c $cm_k->data() might apply SVD
+  $cm_k->{mask}   = $cmdata_k->isgood;
   $cm_k->{weight} = ones(double, $cmdata_k->dim(0));
 
   ##-- update: cluster: cm_k: row-probabilities
@@ -427,32 +427,56 @@ sub update {
     $cm_k->{dataweights}->index($trowids) .= $curprof->targetUgPdl();
   }
 
-  ##-- update: cluster: clusterdistancematrix()
-  $mp->vmsg($vl_info, "update(): clusterdistancematrix()\n");
-  $mp->vmsg($vl_info, "        : dims = ", join(' ', $cmdata_k->dims), "\n");
-  my ($csizes,$celtids,$cdm);
-  clusterdistancematrix(@$cm_k{qw(data mask weight)},
-			$trowids,
-			($csizes=ones(long, $cdata->dim(1))),
-			($celtids=$crowids->slice("*1,")),
-			($cdm=$cm_k->{cdmatrix}=zeroes(double, $cdata->dim(1), $trowids->dim(0))),
-			$cm_k->cddist, $cm_k->cdmethod);
+  my $UPDATE_ATTACH_OLD=0;
+  if ($UPDATE_ATTACH_OLD) {
+    ##-- update:attach:old: cluster: clusterDistanceMatrix()
+    $mp->vmsg($vl_info, "update(): clusterDistanceMatrix()\n");
+    $mp->vmsg($vl_info, "        : dims = ", join(' ', $cmdata_k->dims), "\n");
+    my ($csizes,$celtids,$cdm);
+    PDL::Cluster::clusterdistancematrix(@$cm_k{qw(data mask weight)},
+					$trowids,
+					($csizes=ones(long, $cdata->dim(1))),
+					($celtids=$crowids->slice("*1,")),
+					($cdm=$cm_k->{cdmatrix}=zeroes(double, $cdata->dim(1), $trowids->dim(0))),
+					$cm_k->cddist, $cm_k->cdmethod);
 
-  ##-- update: cluster: attachtonearest()
-  $mp->vmsg($vl_info, "update(): attachtonearestd()\n");
-  my $cids_k  = $cm_k->{clusterids} = zeroes(long, $trowids->nelem);
-  my $cdist_k = zeroes(double, $trowids->nelem);
-  attachtonearestd($cdm, $trowids, $cids_k, $cdist_k);
+    ##-- update:attach:old: cluster: attachtonearest()
+    $mp->vmsg($vl_info, "update(): attachtonearestd()\n");
+    my $cids_k  = $cm_k->{clusterids} = zeroes(long, $trowids->nelem);
+    my $cdist_k = zeroes(double, $trowids->nelem);
+    PDL::Cluster::attachtonearestd($cdm, $trowids, $cids_k, $cdist_k);
+  }
+  else {
+    ##-- update:attach:new: cluster: clusterDistanceMatrix()
+    $mp->vmsg($vl_info, "update(): attach()\n");
+    $mp->vmsg($vl_info, "        : GU data dims = ", join(' ', $cmdata_k->dims), "\n");
 
-  ##-- update: apply hard-clustering bonus (?)
-  if ($cm_k->{cdmethod} =~ /\+bb/) {
+    my ($cids_k,$cdist_k,$cdmat_k) = $cm_k->attach
+      (
+       tpdata => $cdata,
+       tpmask => $cdata->isgood,
+       tpcids => sequence(long,$cdata->dim(1)), ##-- $crowids-$trowids->nelem
+       adata  => $data_k,
+       amask  => $data_k->isgood,
+       arows  => $trowids,
+       adopt  => 0,
+      );
+
+    ##-- update:attach:new: cluster: cluster ids() [HACK]
+    $cm_k->{clusterids} = $cids_k;
+    $cm_k->{cdmatrix}   = $cdmat_k;
+  }
+
+  ##-- update:attach:common: apply hard-clustering bonus (?)
+  if ($cm_k->{cdbonus}) {
     my $cemask = $cm_k->clusterElementMask;
     $cdm->where($cemask) .= 0;
   }
 
-  ##-- update: cm
+  ##-- update:attach:common: cm
   $mp->vmsg($vl_info, "update(): cm\n");
   $mp->updateCm();
+
 
   ##-- update: phat (pdl-ized)
   $mp->vmsg($vl_info, "update(): phat ~ ^p( c_{k} | w_{<=k} )\n");
@@ -1073,7 +1097,7 @@ sub updateCm {
   $cm->{ndata}     = $cids->nelem;
 
   ##-- populate cm: cluster distance matrix
-  if (defined($cm_ltk->{cdmatrix})) {
+  if (defined($cm_ltk->{cdmatrix}) && defined($cm_k->{cdmatrix})) {
     my $cdm = $cm->{cdmatrix} = zeroes(double, $cm->{nclusters}, $cm->{ndata});
 
     ##-- copy old values: d_{<=k}(c,w)
@@ -1085,6 +1109,8 @@ sub updateCm {
     #my $cdm_k = $cm_k->clusterDistanceMatrix();
     my $cdm_k = $cm_k->{cdmatrix};
     $cdm->dice_axis(1,$tk2t) .= $cdm_k;
+  } else {
+    delete($cm->{cdmatrix});
   }
 
   ##-- populate cm: data (row) weights
