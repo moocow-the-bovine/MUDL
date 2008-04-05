@@ -295,7 +295,7 @@ sub flushCache {
 
 
 ##--------------------------------------------------------------
-## ($cids, $cdists, @other) = $cm->attach(%args)
+## ($cids, $cdists, $tpcdmat, @other) = $cm->attach(%args)
 ##  + %args:
 ##      ##
 ##      ##-- attaching existing data (probably Not What You Want)
@@ -320,6 +320,7 @@ sub flushCache {
 ##  + returns: ($cids, $cdists, @other), where:
 ##      $cids,    # long ($nrows) : $cids(i) == cluster_id_of_row( $rowids(i) )
 ##      $cdists   # ?
+##      $tpcdmat  # dbl ($k,$nrows) : cluster-row distance for attached rows
 ##      @other    # ?
 ##  + attaches $rowids rows of $data to nearest profiled cluster,
 ##    as determined by ($tpdata,$tpmask,$tpcids)
@@ -383,7 +384,7 @@ sub attach {
   $cm->adopt(data=>$adata,mask=>$amask,cids=>$acids) if ($adopt && !$adata_is_cmdata);
 
   ##-- return
-  return ($acids,$acdist);
+  return ($acids,$acdist,$tpcdm);
 }
 
 ##--------------------------------------------------------------
