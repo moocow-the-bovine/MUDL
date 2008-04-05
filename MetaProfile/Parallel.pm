@@ -231,8 +231,8 @@ sub update {
 
   ##-- update: cluster: data setup
   $mp->vmsg($vl_info, "update(): cluster: data()\n");
-  $data_k = $cm_k->data($data_k); ##-- grab return value b/c $cm_k->data() might apply an SVD
-  $cm_k->{mask}   = ones(long,   $data_k->dims  );
+  $data_k = $cm_k->data($data_k); ##-- grab return value b/c $cm_k->data() might apply SVD
+  $cm_k->{mask}   = $data_k->isgood;
   $cm_k->{weight} = ones(double, $data_k->dim(0));
 
   ##-- update: cluster: row probabilities
@@ -248,10 +248,10 @@ sub update {
   $mp->vmsg($vl_info, "update(): cluster: cut(k=$mp->{nclusters})\n");
   $cm_k->cut($mp->{nclusters});
 
-  ##-- update: potentially apply hard-clustering bonus (?) --> this ought to happen in clusterDistanceMatrx() !
+  ##-- update: potentially apply hard-clustering bonus (?) --> this ought to happen in clusterDistanceMatrix() !
   $mp->vmsg($vl_info, "update(): cluster: clusterDistanceMatrix()\n");
   my $cdm_k = $cm_k->clusterDistanceMatrix();
-  if ($cm_k->{cdmethod} =~ /\+bb/) {
+  if ($cm_k->{cdbonus}) {
     my $cemask = $cm_k->clusterElementMask();
     $cdm_k->where($cemask) .= 0;
   }
@@ -549,8 +549,7 @@ sub getSummaryInfo {
 
   $info->{d2p_n} = $mp->{cm}{d2pn};
   $info->{d2p_method} = $mp->{cm}{d2pmethod};
-  $info->{cddist} = $mp->{cm}->cddist;
-  $info->{cdmethod} = $mp->{cm}->cdmethod;
+  $info->{distance} = $mp->{cm}->distance;
 
   $info->{prfType} = ref($mp->{prof});
   $info->{nTargets} = $mp->{tenum}->size;

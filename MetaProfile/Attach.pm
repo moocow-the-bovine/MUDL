@@ -284,9 +284,6 @@ sub populatePhat {
 
   delete(@{$mp->{cm}}{qw(d2pbeta)}); ##-- cleanup
 
-  ##-- no bonus after initial stage (?)
-  $mp->{cm}{cdbonus} = 0 if ($mp->{cm}{cdmethod} !~ /\+bb/);
-
   ##-- save n-best membership mask
   $mp->{phatm} = $mp->{cm}->membershipSimMask($phat, d2pbeta=>$d2pbeta);
 
@@ -1151,8 +1148,7 @@ sub getSummaryInfo {
 
   $info->{d2p_n} = $mp->{cm}{d2pn};
   $info->{d2p_method} = $mp->{cm}{d2pmethod};
-  $info->{cddist} = $mp->{cm}->cddist;
-  $info->{cdmethod} = $mp->{cm}->cdmethod;
+  $info->{distance} = $mp->{cm}->distance;
 
   $info->{prfType} = ref($mp->{prof});
   $info->{nTargets} = $mp->{tenum}->size;
