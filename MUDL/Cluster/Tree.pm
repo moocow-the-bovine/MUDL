@@ -138,7 +138,7 @@ sub cluster {
     if (!$ctree->any);
 
   ##-- update size flags
-  @$tc{qw(nfeatures ndata)} = $tc->{data}->dims;
+  @$tc{'nfeatures','ndata'} = $tc->{data}->dims;
 
   return $tc;
 }

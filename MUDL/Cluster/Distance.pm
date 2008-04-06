@@ -62,7 +62,7 @@ BEGIN {
 ## $cd = MUDL::Cluster::Distance->new(%args);
 ##  + basic %args:
 ##     class    => $className,  # string: class-name or -alias or MUDL::Cluster::Distance:: suffix
-##     #link    => $linkSpec,   # MUDL::Cluster::LinkMethod object or 'class' specification : TODO
+##     link     => $linkSpec,   # MUDL::Cluster::LinkMethod object or 'class' specification : TODO
 ##  + for PDL::Cluster built-in methods, see MUDL::Cluster::Distance::Builtin
 sub new {
   my ($that,%args) = @_;

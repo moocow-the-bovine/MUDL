@@ -34,12 +34,27 @@ our @ISA = qw(MUDL::Cluster::Distance MUDL::Cluster::LinkMethod);
 ##     linkName => $linkName,    # optional
 sub new {
   my ($that,%args) = @_;
+  if (defined($args{link})) {
+    $args{linkFlag} = $args{link};
+    delete($args{link});
+  }
   my $cd = $that->SUPER::new(
 			     distFlag=>'c',             ##-- default: Pearson's correlation coefficient
 			     linkFlag=>'v',             ##-- default: pairwise-average link
 			     %args,
 			    );
   $cd->{cdLinkFlag} = $cd->{linkFlag}; ##-- override
+
+  ##-- sanity check(s)
+  if (ref($cd->{linkFlag})) {
+    confess(__PACKAGE__ . "::new(): can't handle reference as 'linkFlag' argument!");
+    return undef;
+  }
+  if (ref($cd->{distFlag})) {
+    confess(__PACKAGE__ . "::new(): can't handle reference as 'distFlag' argument!");
+    return undef;
+  }
+
   $cd->{distName}   = "(builtin:".(defined($cd->{distFlag}) ? $cd->{distFlag} : '?').")" if (!defined($cd->{distName}));
   $cd->{linkName}   = "(builtin:".(defined($cd->{linkFlag}) ? $cd->{linkFlag} : '?').")" if (!defined($cd->{linkName}));
   return $cd;

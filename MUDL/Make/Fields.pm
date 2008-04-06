@@ -709,6 +709,7 @@ our %FIELDS =
    lrlabel => { path=>[qw(xvars lrlabel)], n=>0, fmt=>'auto', title=>'lrlabel',
 		alt=>[qw(xvars->lrwhich xvars->tcd xvars->tcm xvars->tccd xvars->tccm),
 		      qw(lrwhich tcd tcm tccd tccm),
+		      qw(cdist clink),##-- new
 		     ],
 		hr=>undef,
 		condense=>0,
@@ -717,10 +718,16 @@ our %FIELDS =
 
    ##-- MetaProfile: lrwhich
    lrwhich => { path=>[qw(xvars lrwhich)], title=>'lrw', alt => [qw(lrwhich xvars->lrwhich)], },
+
+   ##-- MetaProfile: distances (old)
    tcd    => { path=>[qw(xvars tcd)], title=>'tcd', },
    tcm    => { path=>[qw(xvars tcm)], title=>'tcm', },
    tccd   => { path=>[qw(xvars tccd)], title=>'tccd', },
    tccm   => { path=>[qw(xvars tccm)], title=>'tccm', },
+   ##
+   ##-- MetaProfile: distances (new)
+   cdist  => { path=>[qw(xvars cdist)], title=>'cdist', },
+   clink  => { path=>[qw(xvars clink)], title=>'clink', },
 
    ##-- MetaProfile: numeric keys
    tck          => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
@@ -736,11 +743,13 @@ our %FIELDS =
 		   },
 
    'dist'=>'dlabel',
-   'dlabel'     => { path=>[qw(xvars dlabel)], title=>'dist',
-		     alt=>[qw(xvars->tcd xvars->tccd),
-			   qw(tcd tccd),
-			   qw(lrlabel xvars->lrlabel), ##-- hack
-			  ],
+   'dlabel'     => {
+		    path=>[qw(xvars dlabel)], title=>'dist',
+		    alt=>[qw(xvars->tcd xvars->tccd),
+			  qw(tcd tccd),
+			  qw(lrlabel xvars->lrlabel), ##-- hack
+			  qw(cdist clink),
+			 ],
 		   },
 
    'feat'=>'flabel',

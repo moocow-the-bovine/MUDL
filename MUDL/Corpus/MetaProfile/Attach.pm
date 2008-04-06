@@ -467,7 +467,7 @@ sub update {
   ##-- update:attach:common: apply hard-clustering bonus (?)
   if ($cm_k->{cdbonus}) {
     my $cemask = $cm_k->clusterElementMask;
-    $cdm->where($cemask) .= 0;
+    $cm_k->{cdmatrix}->where($cemask) .= 0;
   }
 
   ##-- update:attach:common: cm
