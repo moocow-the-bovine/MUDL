@@ -507,6 +507,9 @@ sub toPDL3d {
   ##-- normalization
   $lr->normalizePdl($pdl) if ($lr->{donorm});
 
+  ##-- post-normalization log
+  $lr->logPdl($pdl) if ($lr->{dolog});
+
   return $pdl;
 }
 
