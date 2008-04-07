@@ -85,6 +85,16 @@ sub new {
   return $that->SUPER::new(%args);
 }
 
+##======================================================================
+## API: Labelling
+
+## $str = $cd->distanceName()
+##  + returns {distName} key if defined, otherwise ref($cd)
+sub distanceName {
+  my $cd = shift;
+  return defined($cd->{distName}) ? $cd->{distName} : ref($cd);
+}
+
 
 ##======================================================================
 ## API: High-level
@@ -208,6 +218,8 @@ sub linker {
   my $cd = shift;
   return $cd->{linker} if (UNIVERSAL::isa($cd->{linker},'MUDL::Cluster::LinkMethod'));
   if (defined($cd->{link})) {
+    MUDL::CmdUtils::loadModule($cd->{link});
+
     return $cd->{linker}=$cd->{link}
       if (UNIVERSAL::isa($cd->{link},'MUDL::Cluster::LinkMethod')); ##-- allow {link} to contain {linker} itself
 

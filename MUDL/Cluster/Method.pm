@@ -545,6 +545,7 @@ sub distance {
     $_[0]{distf}=MUDL::Cluster::Distance->new(class=>$_[0]{dclass});
     croak(ref($_[0])."::distance(): could not create MUDL::Cluster::Distance object!") if (!defined($_[0]{distf}));
   }
+  MUDL::CmdUtils::loadModule($_[0]{distf});
   return $_[0]{distf};
 }
 

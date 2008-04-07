@@ -1144,11 +1144,16 @@ sub getSummaryInfo {
   my $mp = shift;
   my $info = {};
 
+  MUDL::CmdUtils::loadModule($mp->{cm})        if (defined($mp->{cm}));
+  MUDL::CmdUtils::loadModule($mp->{cm}{distf}) if (defined($mp->{cm}{distf}));
+  MUDL::CmdUtils::loadModule($mp->{cm}{distf}{linker}) if (defined($mp->{cm}{distf}{linker}));
+
   $info->{stage} = $mp->{stage};
 
   $info->{d2p_n} = $mp->{cm}{d2pn};
   $info->{d2p_method} = $mp->{cm}{d2pmethod};
-  $info->{distance} = $mp->{cm}->distance;
+  $info->{distName} = $mp->{cm}->distance->distanceName;
+  $info->{linkName} = $mp->{cm}->distance->linker->linkName;
 
   $info->{prfType} = ref($mp->{prof});
   $info->{nTargets} = $mp->{tenum}->size;

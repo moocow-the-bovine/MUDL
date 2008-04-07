@@ -54,8 +54,15 @@ sub new {
      left=>MUDL::EDist::Nary->new(nfields=>($nfields+1), enum=>$enum),
      right=>MUDL::EDist::Nary->new(nfields=>($nfields+1), enum=>$enum),
 
+     ##-- normalization
      donorm=>1, ##-- normalize on pdl-ization ?
-     %args);
+
+     ##-- log-transform
+     dolog=>0,
+     #log_eps=>1,
+
+     %args,
+    );
 
   return $self;
 }
@@ -240,6 +247,9 @@ sub toPDL3d {
   ##-- normalization
   $lr->normalizePdl($pdl) if ($lr->{donorm});
 
+  ##-- post-normalization log
+  $lr->logPdl($pdl) if ($lr->{dolog});
+
   return $pdl;
 }
 
@@ -398,6 +408,23 @@ sub normalizePdl {
 }
 
 ##--------------------------------------------------------------
+## PDL-ization: log transform
+
+sub logPdl {
+  my ($lr,$pdl) = @_;
+
+  my $eps = $lr->{log_eps};
+  $eps  = 1 if (!defined($eps));
+  $pdl += $eps if ($eps > 0);
+
+  $pdl->inplace->log;
+  $pdl->inplace->setnantobad(); ##-- mark infinite values as BAD
+
+  return $pdl;
+}
+
+
+##--------------------------------------------------------------
 ## PDL-ization: normalization: subs
 
 ## undef = $lr->normpdl_pmass($pdl_2d);
@@ -534,6 +561,8 @@ sub helpString {
      .qq(  bos=BOS_STRING   [default='__\$']\n)
      .qq(  donorm=BOOL      [default=1]\n)
      .qq(  norm_min=VALUE   [default=minimum]\n)
+     .qq(  dolog=BOOL       [default=0]\n)
+     .qq(  log_eps=VALUE    [default=1]\n)
     );
 }
 

@@ -76,6 +76,16 @@ sub new {
 }
 
 ##======================================================================
+## API: Labelling
+
+## $str = $clm->linkName()
+##  + returns {linkName} key if defined, otherwise ref($clm)
+sub linkName {
+  my $clm = shift;
+  return defined($clm->{linkName}) ? $clm->{linkName} : ref($clm);
+}
+
+##======================================================================
 ## API: PDL::Cluster equivalence (for treecluster() hacks)
 
 ## $flag = $clm->cdLinkFlag()

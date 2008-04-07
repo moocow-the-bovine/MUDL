@@ -1,5 +1,10 @@
 #-*- Mode: CPerl -*-
 
+##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+## OBSOLETE
+##  - use 'dolog' flag of LR.pm, LRBigrams.pm (e.g. via LRFBigrams.pm) instead!
+##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 ## File: MUDL::Corpus::Profile::LRlogf.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:

@@ -9,8 +9,8 @@ package MUDL::Cluster::Distance::Builtin;
 use PDL;
 use PDL::Cluster;
 use MUDL::Object;
-#use MUDL::Cluster::Distance; ##-- this package gets read by MUDL::Cluster::Distance
-use MUDL::Cluster::LinkMethod; ##-- this package gets read by MUDL::Cluster::Distance (?)
+use MUDL::Cluster::Distance;
+use MUDL::Cluster::LinkMethod;
 use Carp;
 
 use strict;
@@ -58,6 +58,22 @@ sub new {
   $cd->{distName}   = "(builtin:".(defined($cd->{distFlag}) ? $cd->{distFlag} : '?').")" if (!defined($cd->{distName}));
   $cd->{linkName}   = "(builtin:".(defined($cd->{linkFlag}) ? $cd->{linkFlag} : '?').")" if (!defined($cd->{linkName}));
   return $cd;
+}
+
+##======================================================================
+## API: Labelling
+
+## $str = $cd->distanceName()
+sub distanceName {
+  my $cd = shift;
+  return "Builtin:".$cd->{distFlag}.(defined($cd->{distName}) ? (':'.$cd->{distName}) : '');
+}
+
+## $str = $cd->linkName()
+##  + returns {distName} key if defined, otherwise ref($cd)
+sub linkName {
+  my $cd = shift;
+  return "Builtin:".$cd->cdLinkFlag.'('.$cd->tcLinkFlag.')';
 }
 
 
