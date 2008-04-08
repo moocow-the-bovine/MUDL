@@ -32,8 +32,32 @@ sub test_zratio {
 
   my $azr = guessCompressionRatio($a);
   my $bzr = guessCompressionRatio($b);
-
   print STDERR "a_z/a_raw=$azr ; b_z/b_raw=$bzr\n";
+
+  my $azp = MUDL::PDL::Compress->new(pdl=>$a);
+  my $bzp = MUDL::PDL::Compress->new(pdl=>$b);
+
+  $azp->compress();
+  $bzp->compress();
+  #my $bz2 = $bzp->decode;
+
+  ##-- test I/O: string
+  my $azstr = $azp->saveBinString;
+  my $bzstr = $bzp->saveBinString;
+  my $azp2 = ref($azp)->loadBinString($azstr);
+  my $bzp2 = ref($bzp)->loadBinString($bzstr);
+
+  ##-- test I/O: file
+  $azp->saveBinFile('azp.bin');
+  $bzp->saveBinFile('bzp.bin');
+  $azp2 = ref($azp)->loadBinFile('azp.bin');
+  $bzp2 = ref($bzp)->loadBinFile('bzp.bin');
+
+  ##-- test I/O: zfile
+  $azp->saveFile('azp.zbin');
+  $bzp->saveFile('bzp.zbin');
+  $azp2 = ref($azp)->loadFile('azp.zbin');
+  $bzp2 = ref($bzp)->loadFile('bzp.zbin');
 
   print STDERR "$0: test_zratio done: what now?\n";
 }
