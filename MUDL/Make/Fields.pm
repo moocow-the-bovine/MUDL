@@ -246,7 +246,7 @@ our %FIELDS =
 		     #qw(nT),
 		     qw(stage emi ci xvars->fcorpus corpus xvars->tcclass mplabel lrlab),
 		     qw(svdlabel svdr),
-		     qw(bdlabel nlbds nbds tglabel ntgs),
+		     qw(bdlabel nlbds nbds tglabel tblabel ntgs),
 		     qw(auto),
 		      #qw(pr:g rc:g pr:t rc:t)
 		    ],
@@ -765,6 +765,8 @@ our %FIELDS =
 
    'tgs' => 'tglabel',
    'tglabel'     => { path=>[qw(xvars tglabel)], title=>'tgs', condense=>0, },
+
+   'tblabel'     => { path=>[qw(xvars tblabel)], title=>'tblabel', condense=>0, },
 
    'svd'      => 'svdlabel',
    'svdlabel' => { path=>[qw(xvars svdlabel)], title=>'svd', condense=>0, },

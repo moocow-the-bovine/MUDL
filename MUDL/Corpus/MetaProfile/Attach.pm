@@ -368,7 +368,8 @@ sub update {
   $mp->vmsg($vl_info, "update(): C_{k-1} : toPDL\n");
   my $cm    = $mp->{cm};
   my $cdata = $ctrprof->toPDL;
-  my $cmask = ones(long, $cdata->dims);
+  #my $cmask = ones(long, $cdata->dims);
+  my $cmask = $cdata->isgood->long;
   @$mp{qw(cdata cmask)} = ($cdata,$cmask);  ##-- DEBUG
 
   ##-- update: cluster: T_k: toPDL
@@ -451,7 +452,7 @@ sub update {
     my ($cids_k,$cdist_k,$cdmat_k) = $cm_k->attach
       (
        tpdata => $cdata,
-       tpmask => $cdata->isgood,
+       tpmask => $cmask,
        tpcids => sequence(long,$cdata->dim(1)), ##-- $crowids-$trowids->nelem
        adata  => $data_k,
        amask  => $data_k->isgood,

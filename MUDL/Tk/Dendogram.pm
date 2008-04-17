@@ -77,6 +77,7 @@ sub new {
 ##  + %args:
 ##      loop=>$bool,  # do/don't enter main loop
 ##      file=>$file,  # initial tree file
+##      title=>$title, # initial title
 sub view {
   my ($dg,%args) = @_;
 
@@ -359,6 +360,7 @@ sub view {
   # Guts
   $dg->loadTreeFile($args{file},tocanvas=>0) if (defined($args{file}));
   $dg->toCanvas($c,%args);
+  $dg->{main}->title(ref($dg).' - '.$args{title}) if (defined($args{title}));
   Tk::MainLoop if (!defined($args{loop}) || $args{loop});
 }
 
