@@ -144,6 +144,40 @@ sub smoothGTLogLin {
   return wantarray ? ($p_fit,$coeffs,$zmass) : $p_fit;
 }
 
+##======================================================================
+## Gaussian fitting
+
+## $yfit                                      = smoothGaussian($ydata, $xvals)
+## ($yfit,$yfit_peak,$yfit_mean,$yfit_stddev) = smoothGaussian($ydata, $xvals)
+##  + best-fit Gaussian
+##  + $xvals are independent indices for $ydata; default=$ydata->avgranks()
+##  + $yfit should be re-computable by Gaussian function with params:
+##       a=$yfit_peak
+##       b=$yfit_mean
+##       c=$yfit_stddev
+##    e.g.:
+##       $yfit2 = $yfit_peak * exp( ($xvals-$yfit_mean)**2 / (2*$yfit_stddev**2) );
+BEGIN { *PDL::smoothGaussian = *PDL::smoothNormal = *smoothNormal = \&smoothGaussian; }
+sub smoothGaussian {
+  my ($ydata,$xvals) = @_;
+  require PDL::Fit::Gaussian;
+
+  $xvals = $ydata->avgranks if (!defined($xvals));
+  my ($xmean,$ypeak,$fwhm, $back,$err,$yfit) = $xvals->fitgauss1d($ydata);
+
+  return $yfit if (!wantarray);
+
+  ##-- get mean & stddev
+  # $fwhm  = 2*sqrt(2*log(2))*$sigma
+  # $sigma = $fwhm / (2*sqrt(2*log(2)))
+  my $yfit_stddev = $fwhm / (2*sqrt(2*log(2)));
+  my $yfit_mean   = $xmean;
+  #my $yfit_stddev = $yfit->stddev;
+  #my $yfit_mean   = $yfit->average;
+
+  return ($yfit,$ypeak,$yfit_mean,$yfit_stddev);
+}
+
 1;
 
 ##======================================================================
