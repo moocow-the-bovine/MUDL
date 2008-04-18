@@ -72,10 +72,10 @@ sub qqplot {
   my $qvals = gaussqvals($uosm);         ##-- (standard) normal theoretical values
   points( $qvals, $data, $popts );
   if (!$noline) {
-    my ($qvals_fit) = $data->mooLinfit($qvals);
+    my ($qfit,$qcoeffs) = $data->mooLinfit($qvals);
     $lopts = $popts if (!defined($lopts));
     hold;
-    line( $qvals, $qvals_fit, $lopts );
+    line( $qvals, $qcoeffs->slice("(0)")*$qvals+$qcoeffs->slice("(1)"), $lopts );
     release;
   }
 }

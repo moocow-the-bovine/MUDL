@@ -2,8 +2,9 @@
 
 use lib qw(../..);
 use MUDL;
-use MUDL::CmdUtils;
+use MUDL::CmdUtils qw(:all);
 use PDL;
+use MUDL::PdlDist;
 use MUDL::PDL::Smooth;
 use MUDL::PDL::Stats;
 use MUDL::PDL::Ranks;
@@ -82,6 +83,32 @@ sub test_gfit {
   my ($xvals,$ydata) = hist($raw);
   my $xrange = [$raw->min-1, $raw->max+1];
   my $yrange = [0,1.1];
+
+  ##-- test: NL data
+  $PDL::CCS::Nd::FLAGS_DEFAULT |= $PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING;
+  my $ugd = load("utrain-nl.t.ug.pdist.bin");
+  my $ugf = $ugd->{pdl}->double;
+  my $N   = $ugf->sumover;
+  my $ugp = $ugf / $N;
+  my $ugh = -log($ugp) / log(2);
+
+  my $bgd = load("utrain-nl.t.bg.pdist.bin");
+  my $bgf = $bgd->{pdl}->double;
+  my $bgp = $bgf / $bgf->sum;
+  my $p1g2 = $bgp / $bgp->sumover->dummy(0,1);
+  #my $p2g1 = ($bgp->xchg(0,1) / $bgp->xchg(0,1)->sumover->dummy(0,1))->xchg(0,1);
+
+  ##-- get value-counts
+  ($v,$vc) = $ugf->valcounts;
+  qqplot($v->log);                ##-- looks pretty darned linear to me: unique frequency values
+  qqplot($ugf->qsort->uniq->log); ##-- ... same thing
+  qqplot($ugh->qsort->uniq);      ##-- ... same thing, (reversed because h=-log(...))
+  qqplot(($ugp*$ugh)->qsort->uniq); ##-- long tails, looks exponential
+  qqplot(($ugp*$ugh)->qsort->uniq->log); ##-- looks ok
+  qqplot($vc);     ##-- long pre-tail
+  qqplot($v);      ##-- long pre-tail, bad fit
+  qqplot($vc->log); ##-- many 1s get in the way, bad fit
+  qqplot($vc->qsort->uniq->log); ##-- good fit, but have we gotten anywhere?
 
   ##-- test: Q-Q plot
   qqplot($raw);
