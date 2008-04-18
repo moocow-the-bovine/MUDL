@@ -9,9 +9,26 @@
 package MUDL::PDL::Smooth;
 use MUDL::PDL::Ranks;
 use PDL;
+use PDL::Math;
 use PDL::CCS;
 
 use strict;
+
+our @ISA = qw(Exporter);
+our %EXPORT_TAGS =
+  (
+   'vals'  => ['valcounts','smearvals','intervals'],
+   'fit'   => ['zipf_fit','linfit','loglinfit'],
+   #'gt'    => ['smoothGTLogLin'],
+   'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
+	       'gausspdf', 'gausscdf',
+	       'gaussquantiles', 'gaussqvals', 'gausscdfi', ##-- all aliases for one another
+	       'uosm',
+	      ],
+  );
+$EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
+our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
+our @EXPORT      = @EXPORT_OK;
 
 ##======================================================================
 ## Value Counts
@@ -81,6 +98,23 @@ sub zipf_fit {
 }
 
 ##======================================================================
+## Linear fit
+
+## ($fit,$coeffs) = $vals->mooLinfit()
+## ($fit,$coeffs) = $vals->mooLinfit($keys)
+##  + $keys defaults to $vals->xvals()+1
+##  + $fit are linear-fitted values $vals as values for $keys
+##  + $coeffs are [$a,$b] such that all($yfit == $a*$keys + $b)
+BEGIN { *PDL::mooLinfit = \&mooLinfit; }
+use PDL::Fit::Linfit;
+sub mooLinfit {
+  my ($Zc,$v) = @_;
+  $v = ($Zc->xvals+1)->double if (!defined($v));
+  my ($cfit,$coeffs) = $Zc->linfit1d($Zc->ones->cat($v->setnantobad->setbadtoval(0)));
+  return ($cfit,$coeffs->slice("-1:0"));
+}
+
+##======================================================================
 ## Log-linear fit
 
 ## ($fit,$coeffs) = $vals->loglinfit()
@@ -147,6 +181,7 @@ sub smoothGTLogLin {
 ##======================================================================
 ## Gaussian fitting
 
+##--------------------------------------------------------------
 ## $yfit                                      = smoothGaussian($ydata, $xvals)
 ## ($yfit,$yfit_peak,$yfit_mean,$yfit_stddev) = smoothGaussian($ydata, $xvals)
 ##  + best-fit Gaussian
@@ -177,6 +212,128 @@ sub smoothGaussian {
 
   return ($yfit,$ypeak,$yfit_mean,$yfit_stddev);
 }
+
+##--------------------------------------------------------------
+## $yvals = gaussyvals($xvals, $peak,$mu,$sigma);
+##  + generalized yvals for gaussian functions, incl. pdf
+BEGIN { *PDL::gaussyvals = \&gaussyvals; }
+sub gaussyvals {
+  my ($x, $peak,$mu,$sigma) = @_;
+  our ($pi);
+  $sigma = 1 if (!defined($sigma));
+  $mu    = 0 if (!defined($mu));
+  $peak  = 1/($sigma*sqrt(2*$pi)) if (!defined($peak)); ##-- for pdf
+  my $y = $peak * exp( -($x-$mu)**2 / (2*$sigma**2) );
+  return $y;
+}
+
+## $pvals = gausspdf($xvals, $mu,$sigma);
+BEGIN { *PDL::gausspdf = \&gausspdf; }
+sub gausspdf { return gaussyvals($_[0], undef,@_[1,2]); }
+
+##--------------------------------------------------------------
+## $pvals = gausscdf($xvals, $mu,$sigma);
+BEGIN { *PDL::gausscdf = \&gausscdf; }
+sub gausscdf {
+  my ($x,$mu,$sigma) = @_;
+  $sigma = 1 if (!defined($sigma));
+  $mu    = 0 if (!defined($mu));
+  return 0.5*(1 + erf( ($x-$mu) / ($sigma*sqrt(2)) ));
+}
+
+##--------------------------------------------------------------
+## $qvals = gaussquantiles($pvals, $mu,$sigma);
+##  + quantile function for Gaussian distribution, aka cdf^{-1}
+BEGIN { *PDL::gaussquantiles = *PDL::gaussqvals = *gaussqvals = *gausscdfi = \&gaussquantiles; }
+sub gaussquantiles {
+  my ($p,$mu,$sigma) = @_;
+  $sigma = 1 if (!defined($sigma));
+  $mu    = 0 if (!defined($mu));
+  return $mu + $sigma * sqrt(2) * erfi(2*$p-1);
+}
+
+##--------------------------------------------------------------
+## $centers       = intervals($min,$max,$n) ##-- scalar context
+## ($ctr,$lo,$hi) = intervals($min,$max,$n) ##-- list context
+##  + returns $n equally-spaced values between $min and $max
+sub intervals {
+  my ($min,$max,$n) = @_;
+  $n   = 100 if (!defined($n));
+  $max = $min+1 if (!defined($max));
+  $min = $max-1 if (!defined($min));
+  my $ctrs = $min + (sequence($n)+0.5)/$n * ($max-$min);
+  return $ctrs if (!wantarray);
+
+  my $lo = $ctrs->append($min)->rotate(1)->slice("0:".($n-1));
+  my $hi = $ctrs->append($max)->slice("0:".($n-1));
+  return ($ctrs,$lo,$hi);
+}
+
+##--------------------------------------------------------------
+## ($x,$y) = gausspoints($peak,$mu,$sigma, $xmin,$xmax,$nx);
+##  + generate points of a gaussian curve
+##  + defaults:
+##     $sigma = 1
+##     $mu    = 0
+##     $peak  = 1/($sigma*sqrt(2*$pi)) ##-- e.g. pdf of normal distribution
+##     $xmin  = $mu - 2*$sigma
+##     $xmax  = $mu + 2*$sigma
+##     $nx    = 100
+BEGIN { our $pi = 3.14195; }
+sub gausspoints {
+  my ($peak,$mu,$sigma, $xmin,$xmax,$nx) = @_;
+  our ($pi);
+  $sigma = 1 if (!defined($sigma));
+  $mu    = 0 if (!defined($mu));
+  $peak  = 1/($sigma*sqrt(2*$pi)) if (!defined($peak)); ##-- e.g. pdf of normal distribution
+  $xmin  = $mu - 2*$sigma if (!defined($xmin));
+  $xmax  = $mu + 2*$sigma if (!defined($xmax));
+  $nx    = 100 if (!defined($nx));
+
+  my $x = intervals($xmin,$xmax,$nx);
+  my $y = $peak * exp( -($x-$mu)**2 / (2*$sigma**2) );  ##-- by hand
+
+  ##-- ... using PDL::GSLSF::ERF
+  #require PDL::GSLSF::ERF;
+  #$y = ... gsl_sf_erf_Z($x) ...;
+
+  return ($x,$y);
+}
+
+##--------------------------------------------------------------
+## $probit = $pvals->probit()
+## $probit = $pvals->probit($probit)
+##  + gets probit() function values for probability points $pvals
+##  + Signature: $pvals(n), $probit(n)
+##  + 0 < {$pvals,$probit} < 1
+##  + probit(p) = sqrt(2)*erfi(2*p-1)
+BEGIN { *PDL::probit = \&probit; }
+sub probit {
+  my ($p,$probit) = @_;
+  if (any($p<=0) || any($p>=1)) {
+    my $p1 = $p->pdl;
+    $p1->where($p >= 1) .= $p->where($p<1)->max;
+    $p1->where($p <= 0) .= $p->where($p>0)->min;
+    $p = $p1;
+  }
+  $probit = $p->zeroes if (!defined($probit));
+  erfi(2*$p-1, $probit);
+  $probit *= sqrt(2);
+  return $probit;
+}
+
+## $uosm = uosm($i)
+##   + uniform order statistic medians for index-pdl $i
+BEGIN { *PDL::uosm = \&uosm; }
+sub uosm {
+  my $i = shift;
+  my $n = $i->dim(0);
+  my $m = (($i+1) - 0.3175) / ($n + 0.365);
+  $m->slice("(".($n-1).")") .= 0.5**(1/$n);
+  $m->slice("(0)") .= 1 - $m->slice("(".($n-1).")");
+  return $m;
+}
+
 
 1;
 
