@@ -51,7 +51,8 @@ our @EXPORT_OK = @{$EXPORT_TAGS{all}};
 ## GLOBALS
 our $XMLPARSER = MUDL::XML::Parser->new();
 
-our $DEFAULT_ZBIN_ZLEVEL = 9; ##-- default compression level for compressed binary files (maximum)
+#our $DEFAULT_ZBIN_ZLEVEL = 9; ##-- default compression level for compressed binary files (maximum)
+our $DEFAULT_ZBIN_ZLEVEL = 3; ##-- default compression level for compressed binary files (sane default)
 
 ##======================================================================
 ## Generic Constructor
@@ -1005,7 +1006,7 @@ sub registerIOMode {
 sub fileSuffixModes {
   return [
 	  {regex=>qr/\.bin$/i,     mode=>'bin', iolayers=>[]},
-	  {regex=>qr/\.bin\.gz$/i, mode=>'zbin', iolayers=>[]},
+	  {regex=>qr/(?:\.bin\.gz)|(?:\.g?zbin)$/i, mode=>'zbin', iolayers=>[]},
 
 	  {regex=>qr/\.xml$/i,     mode=>'xml', iolayers=>[]},
 	  {regex=>qr/\.xml\.gz$/i, mode=>'xml', iolayers=>[':gzip']},

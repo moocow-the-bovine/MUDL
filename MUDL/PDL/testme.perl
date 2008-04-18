@@ -78,7 +78,7 @@ sub ggrandom {
 
 use PDL::Fit::Gaussian;
 sub test_gfit {
-  my ($mu,$sigma,$n) = (0.5,2,1000);
+  my ($mu,$sigma,$n) = (0.5,2,100);
   my $raw = ggrandom($mu,$sigma,$n);
   my ($xvals,$ydata) = hist($raw);
   my $xrange = [$raw->min-1, $raw->max+1];
@@ -100,10 +100,12 @@ sub test_gfit {
 
   ##-- get value-counts
   ($v,$vc) = $ugf->valcounts;
-  qqplot($v->log);                ##-- looks pretty darned linear to me: unique frequency values
+  qqplot($v->log);                ##-- looks pretty darned linear to me: unique frequency values (but all q>0)
   qqplot($ugf->qsort->uniq->log); ##-- ... same thing
+  qqplot((-$ugh)->qsort->uniq);   ##-- ... same shape, but all qvals < 0
   qqplot($ugh->qsort->uniq);      ##-- ... same thing, (reversed because h=-log(...))
-  qqplot(($ugp*$ugh)->qsort->uniq); ##-- long tails, looks exponential
+  qqplot(($ugp*$ugh)->qsort);     ##-- long tails, looks (inverse-?) exponential
+  qqplot(($ugp*$ugh)->qsort->uniq); ##-- long tails, looks (inverse-?) exponential
   qqplot(($ugp*$ugh)->qsort->uniq->log); ##-- looks ok
   qqplot($vc);     ##-- long pre-tail
   qqplot($v);      ##-- long pre-tail, bad fit

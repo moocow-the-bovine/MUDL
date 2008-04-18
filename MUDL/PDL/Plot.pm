@@ -16,7 +16,7 @@ use strict;
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
-   all => ['errbin','qqplot','qqline'],
+   all => ['errbin','qqplot','qqplotx'],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -51,7 +51,41 @@ sub errbin {
 }
 
 ##======================================================================
-## distribution comparison test: quantile-quantile plot
+## distribution comparison test: quantile-quantile plot (generic)
+
+
+## undef = qqplotx($xdata,$ydata)
+## undef = qqplotx($xdata,$ydata,\%commonOpts)
+## undef = qqplotx($xdata,$ydata,\%pointOpts,\%lineOpts)
+##  + see: http://www.nist.gov/stat.handbook
+##  + additional %commonOpts, %pointOpts:
+##     noline => $bool,  ##-- if true, no line is drawn
+##  + additional \%lineOpts
+##     hide => $bool,    ##-- draw no line
+BEGIN { *PDL::qqplotx = \&qqplotx; }
+sub qqplotx {
+  my ($xdata,$ydata,$popts,$lopts) = @_;
+
+  ##-- require sorted data
+  $xdata = $xdata->flat->qsort;
+  $ydata = $ydata->flat->qsort;
+
+  ##-- points() plot
+  $popts  = {} if (!defined($popts));
+  my $noline = $popts->{noline} || (defined($lopts) && $lopts->{hide});
+  delete($popts->{noline});
+  delete($lopts->{hide}) if (defined($lopts));
+  points( $xdata, $ydata, $popts );
+
+  ##-- line() plot (fit $xdata->$ydata)
+  if (!$noline) {
+    my ($yfit,$coeffs) = $ydata->mooLinfit($xdata);
+    $lopts = $popts if (!defined($lopts));
+    hold;
+    line( $xdata, $coeffs->slice("(0)")*$xdata+$coeffs->slice("(1)"), $lopts );
+    release;
+  }
+}
 
 ## undef = qqplot($data)
 ## undef = qqplot($data,\%commonOpts)
@@ -62,22 +96,15 @@ sub errbin {
 BEGIN { *PDL::qqplot = \&qqplot; }
 sub qqplot {
   my ($data,$popts,$lopts) = @_;
-  $data  = $data->flat->qsort;  ##-- require sorted data
+
+  ##-- options
   $popts  = {} if (!defined($popts));
   $popts->{xtitle} = 'Normal Theoretical Quantiles' if (!defined($popts->{xtitle}));
   $popts->{ytitle} = 'Sample Quantiles' if (!defined($popts->{ytitle}));
-  my $noline = $popts->{noline};
-  delete($popts->{noline});
-  my $uosm  = $data->sequence->uosm();   ##-- uniform order statistic medians
-  my $qvals = gaussqvals($uosm);         ##-- (standard) normal theoretical values
-  points( $qvals, $data, $popts );
-  if (!$noline) {
-    my ($qfit,$qcoeffs) = $data->mooLinfit($qvals);
-    $lopts = $popts if (!defined($lopts));
-    hold;
-    line( $qvals, $qcoeffs->slice("(0)")*$qvals+$qcoeffs->slice("(1)"), $lopts );
-    release;
-  }
+
+  my $uosm  = $data->sequence->double->uosm();   ##-- uniform order statistic medians
+  my $qvals = gaussqvals($uosm);                 ##-- (standard) normal theoretical values
+  return qqplotx($data,$qvals, $popts,$lopts);
 }
 
 
