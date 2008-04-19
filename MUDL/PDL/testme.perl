@@ -77,6 +77,7 @@ sub ggrandom {
 }
 
 use PDL::Fit::Gaussian;
+use IO::Compress::Gzip qw(:all);
 sub test_gfit {
   my ($mu,$sigma,$n) = (0.5,2,100);
   my $raw = ggrandom($mu,$sigma,$n);
@@ -85,14 +86,26 @@ sub test_gfit {
   my $yrange = [0,1.1];
 
   ##-- test: NL data
+  use vars qw($PDL::CCS::Nd::FLAGS_DEFAULT);
   $PDL::CCS::Nd::FLAGS_DEFAULT |= $PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING;
-  my $ugd = load("utrain-nl.t.ug.pdist.bin");
+  my $ugd = load("utrain-nl.t.ug.pdist.bin"); loadModule($ugd);
+
+  ##-- test I/O
+  $ugd->saveFile('ugd.bin');
+  $ugd->saveFile('ugd.bin.gz');
+  $ugd->saveFile('ugd.zbin');
+  $ugd->saveFile('ugd_rle.bin.gz', gzargs=>{-Strategy=>Z_RLE});
+  $ugd->saveFile('ugd_l9.bin.gz', gzargs=>{-Level=>9});
+  $ugd->saveFile('ugd_l3.bin.gz', gzargs=>{-Level=>3});
+  $ugd->saveFile('ugd_l2.bin.gz', gzargs=>{-Level=>2});
+  $ugd->saveFile('ugd_l1.bin.gz', gzargs=>{-Level=>1});
+
   my $ugf = $ugd->{pdl}->double;
   my $N   = $ugf->sumover;
   my $ugp = $ugf / $N;
   my $ugh = -log($ugp) / log(2);
 
-  my $bgd = load("utrain-nl.t.bg.pdist.bin");
+  my $bgd = load("utrain-nl.t.bg.pdist.bin"); loadModule($bgd);
   my $bgf = $bgd->{pdl}->double;
   my $bgp = $bgf / $bgf->sum;
   my $p1g2 = $bgp / $bgp->sumover->dummy(0,1);
@@ -144,12 +157,7 @@ sub test_gfit {
   hold; line(gausspoints(1,$mu,$sigma, @$xrange,1000), {color=>'black'});
   release;
 
-  ##-- probit (?!)
-  #points($p, sqrt(2)*erfi(2*$p-1))
-
-  #The quantile-quantile (Q-Q) plot is constructed using the theoretical cumulative distribution function, F(x), of the specified model. The values in the sample of data, in order from smallest to largest, are denoted x(1), x(2), ..., x(n). For i = 1, 2, ....., n, x(i) is plotted against F^{-1}((i-0.5)/n).
-
-  
+  ##~~~~~~~~~~
 
   ##-- fit gaussian (default)
   my ($yfit,$ypeak,$ymu,$ysigma) = $ydata->smoothGaussian($xvals);

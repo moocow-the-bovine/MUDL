@@ -54,6 +54,11 @@ our $XMLPARSER = MUDL::XML::Parser->new();
 #our $DEFAULT_ZBIN_ZLEVEL = 9; ##-- default compression level for compressed binary files (maximum)
 our $DEFAULT_ZBIN_ZLEVEL = 3; ##-- default compression level for compressed binary files (sane default)
 
+our %DEFAULT_GZBIN_ARGS =
+  (
+   -Level  => 3,            ##-- default compression level for compressed binary files (sane default)
+  );
+
 ##======================================================================
 ## Generic Constructor
 ## $obj = $class->new(@args)
@@ -727,6 +732,7 @@ sub saveZBinFh {
   return 1;
 }
 
+
 ##======================================================================
 ## I/O: Compressed Binary: Load
 ##======================================================================
@@ -758,6 +764,109 @@ sub loadZBinFh {
   my ($that,$fh,%args) = @_;
   binmode($fh);
   return $that->loadZBinString(join('',<$fh>), %args);
+}
+
+
+##======================================================================
+## I/O: Gzip-Compressed Binary: Save
+##======================================================================
+
+## $gz = gzipper($output,%gzargs)
+##  + %gzargs: any options to IO::Compress::Gzip->new(), incl:
+##    Name    => $string,
+##    Comment => $comment,
+##    Minimal => $bool,
+##    -Strategy => $const,
+##    ...
+sub gzipper {
+  my ($output,%args) = @_;
+  require IO::Compress::Gzip;
+  return IO::Compress::Gzip->new($output,
+				 %DEFAULT_GZBIN_ARGS,
+				 %args);
+}
+
+## $str = $obj->saveGZBinString(%args)
+##  + calls $obj->saveBinString()
+##  + %args:
+##     zlevel=>$level
+sub saveGZBinString {
+  my ($obj,%args) = @_;
+  my $str = '';
+  my $gz  = gzipper(\$str,
+		    Comment=>ref($obj),
+		    (defined($args{gzargs}) ? %{$args{gzargs}} : qw()));
+  $gz->print($obj->saveBinString(%args));
+  $gz->close();
+}
+
+## $bool = $obj->saveGZBinFile($filename,%args)
+##   + calls $obj->saveGZBinFh($fh,%args)
+sub saveGZBinFile {
+  my ($obj,$file,%args) = @_;
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  if (!$fh) {
+    confess( __PACKAGE__ , "::saveZBinFile(): open failed for '$file': $!");
+    return undef;
+  }
+  binmode($fh);
+  my $rc  = $obj->saveGZBinFh($fh,%args);
+  $fh->close() if (!ref($file));
+  return $rc;
+}
+
+## $bool = $obj->saveGZBinFh($fh,%args)
+##  + calls $obj->saveBinString(%args)
+##  + additional %args:
+##     gzargs=>\%args_for_gzipper()
+sub saveGZBinFh {
+  my ($obj,$fh,%args) = @_;
+  my $gz = gzipper($fh,
+		    Name=>ref($obj),
+		   (defined($args{gzargs}) ? %{$args{gzargs}} : qw()));
+  $gz->print($obj->saveBinString(%args));
+  $gz->close();
+  return 1;
+}
+
+
+##======================================================================
+## I/O: Gzip-Compressed Binary: Load
+##======================================================================
+
+## $obj_or_undef = $class_or_obj->loadZBinString($str,%args)
+##  + calls $class_or_obj->loadBinString()
+sub loadGZBinString {
+  my ($that,$gzstr) = @_[0,1];
+  require IO::Uncompress::Gunzip;
+  my $binstr = '';
+  IO::Uncompress::Gunzip::gunzip(\$gzstr=>\$binstr);
+  return $that->loadBinString($binstr, @_[2..$#_]);
+}
+
+## $obj_or_undef = $class_or_obj->loadZBinFile($filename,%args)
+##   + calls $class_or_obj->loadZBinFh($fh)
+sub loadGZBinFile {
+  my ($obj,$file) = splice(@_,0,2);
+  my $fh = ref($file) ? $file : IO::File->new("<$file");
+   if (!$fh) {
+    confess( __PACKAGE__ , "::loadGZBinFile(): open failed for '$file': $!");
+    return undef;
+  }
+  my $rc = $obj->loadGZBinFh($fh,@_);
+  $fh->close() if (!ref($file));
+  return $rc;
+}
+
+## $obj_or_undef = $class_or_obj->loadZBinFh($fh,%args)
+##  + calls $class_or_obj->loadZBinString(%args)
+sub loadGZBinFh {
+  my ($that,$fh) = @_[0,1];
+  binmode($fh);
+  require IO::Uncompress::Gunzip;
+  my $binstr = '';
+  IO::Uncompress::Gunzip::gunzip($fh=>\$binstr);
+  return $that->loadBinString($binstr, @_[2..$#_]);
 }
 
 
@@ -962,6 +1071,7 @@ sub ioModes {
 	  'xml'     => __PACKAGE__->ioModeHash('XML'),
 	  'bin'     => __PACKAGE__->ioModeHash('Bin'),
 	  'zbin'    => __PACKAGE__->ioModeHash('ZBin'),
+	  'gzbin'   => __PACKAGE__->ioModeHash('GZBin'),
 	  'perl'    => __PACKAGE__->ioModeHash('Perl'),
 	  ##--
 	  'DEFAULT' => __PACKAGE__->ioModeHash('Native'),
@@ -1005,8 +1115,11 @@ sub registerIOMode {
 ##     'registerFileSuffix()' is highly reccommended
 sub fileSuffixModes {
   return [
-	  {regex=>qr/\.bin$/i,     mode=>'bin', iolayers=>[]},
-	  {regex=>qr/(?:\.bin\.gz)|(?:\.g?zbin)$/i, mode=>'zbin', iolayers=>[]},
+	  {regex=>qr/\.bin$/i,     mode=>'bin',  iolayers=>[]},
+	  {regex=>qr/\.zbin$/i,    mode=>'zbin', iolayers=>[]},
+
+	  ##-- ??
+	  {regex=>qr/(?:\.bin\.gz)|(?:.gzbin)$/i, mode=>'gzbin', iolayers=>[]},
 
 	  {regex=>qr/\.xml$/i,     mode=>'xml', iolayers=>[]},
 	  {regex=>qr/\.xml\.gz$/i, mode=>'xml', iolayers=>[':gzip']},
