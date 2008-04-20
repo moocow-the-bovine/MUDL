@@ -18,6 +18,13 @@ use PDL::Graphics::PGPLOT;
 BEGIN { $, = ' '; }
 
 ##----------------------------------------------------------------------
+## pgplot
+sub usepgplot {
+  dev('/xw');
+  autolog(1);
+}
+
+##----------------------------------------------------------------------
 ## Test
 ##----------------------------------------------------------------------
 sub test_zratio {
@@ -91,14 +98,16 @@ sub test_gfit {
   my $ugd = load("utrain-nl.t.ug.pdist.bin"); loadModule($ugd);
 
   ##-- test I/O
-  $ugd->saveFile('ugd.bin');
-  $ugd->saveFile('ugd.bin.gz');
-  $ugd->saveFile('ugd.zbin');
-  $ugd->saveFile('ugd_rle.bin.gz', gzargs=>{-Strategy=>Z_RLE});
-  $ugd->saveFile('ugd_l9.bin.gz', gzargs=>{-Level=>9});
-  $ugd->saveFile('ugd_l3.bin.gz', gzargs=>{-Level=>3});
-  $ugd->saveFile('ugd_l2.bin.gz', gzargs=>{-Level=>2});
-  $ugd->saveFile('ugd_l1.bin.gz', gzargs=>{-Level=>1});
+  if (0) {
+    $ugd->saveFile('ugd.bin');
+    $ugd->saveFile('ugd.bin.gz');
+    $ugd->saveFile('ugd.zbin');
+    $ugd->saveFile('ugd_rle.bin.gz', gzargs=>{-Strategy=>Z_RLE});
+    $ugd->saveFile('ugd_l9.bin.gz', gzargs=>{-Level=>9});
+    $ugd->saveFile('ugd_l3.bin.gz', gzargs=>{-Level=>3});
+    $ugd->saveFile('ugd_l2.bin.gz', gzargs=>{-Level=>2});
+    $ugd->saveFile('ugd_l1.bin.gz', gzargs=>{-Level=>1});
+  }
 
   my $ugf = $ugd->{pdl}->double;
   my $N   = $ugf->sumover;
