@@ -129,10 +129,12 @@ sub mooLinfit {
 ##     $Zc     = $c->smearvals($v);
 ##     ($fitc,$coeffs) = $Zc->loglinfit($v);
 ##
-##     %plot = (axis=>'logxy',xtitle=>'freq',ytitle=>'count(freq)');
-##     points($v->log10, $Zc->log10,2,{%plot,color=>'red'}); hold;
-##     points($v->log10, $c->log10, 4); hold;
-##     line($v->log10, ($coeffs->index(0)*($v**$coeffs->index(1)))->log10, {color=>'blue'});
+##     use PDL::Graphics::PGPLOT;
+##     autolog(1);
+##     %plot = (axis=>'logxy',xtitle=>'freq',ytitle=>'count(freq)',xrange=>[1,$f1->sum],yrange=>[$Zc->min,$c->max]);
+##     points($v, $c, 4,{%plot}); hold;
+##     points($v, $Zc,2,{%plot,color=>'red'}); hold;
+##     line($v, $coeffs->index(0)*($v**$coeffs->index(1)), {%plot,color=>'blue'});
 ##     release;
 BEGIN { *PDL::loglinfit = \&loglinfit; }
 use PDL::Fit::Linfit;

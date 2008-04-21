@@ -113,6 +113,29 @@ sub test_gzio {
 #test_gzio();
 
 ##----------------------------------------------------------------------
+## test: iterated logarithm
+
+## $iterlog = iterlog($pdl)
+## $iterlog = iterlog($pdl,$base)
+sub iterlog {
+  my ($p,$base) = @_;
+  my $pp       = $p->pdl;
+  my $which    = ($pp>=1)->which;
+  my $iterlog0 = $pp->zeroes;
+  my $iterlog  = $iterlog0;
+  my $ilogbase = defined($base) ? pdl(double,$base)->log**-1 : pdl(double,1);
+  while (!$which->isempty) {
+    $pp      = $pp->index($which);
+    $iterlog = $iterlog->index($which);
+    $iterlog += 1;
+    $pp->inplace->log->inplace->mult($ilogbase,$pp);
+    $which = ($pp>=1)->which;
+  }
+  return $iterlog0;
+}
+
+
+##----------------------------------------------------------------------
 ## test: gaussian fitting
 
 ##-- random gaussian
@@ -121,7 +144,24 @@ sub ggrandom {
   return (grandom(@dims)*$sigma)+$mu;
 }
 
+## $zetap = zetap($ranks)
+## $zetap = zetap($ranks,$zeta_constant_s)
+sub zetap {
+  my ($ranks,$s) = @_;
+  $s=1.01 if (!defined($s) || $s == 1);
+  my ($zs,$err)=gsl_sf_zeta($s)->abs;
+  return ($ranks**-$s)/$zs;
+}
+
+## $zetaf = zetaf($freqs,$zeta_constant_s)
+sub zetaf {
+  my ($freq,$s) = @_;
+  my $zetap = zetap($freq->ranks(order=>'desc')+1, $s);
+  return $zetap * $freq->sumover / $zetap->sumover;
+}
+
 use PDL::Fit::Gaussian;
+use PDL::GSLSF::ZETA;
 sub test_gfit {
   my ($mu,$sigma,$n) = (0.5,2,100);
   my $raw = ggrandom($mu,$sigma,$n);
@@ -138,12 +178,64 @@ sub test_gfit {
   my $ugp = $ugf / $N;
   my $ugh = -log($ugp) / log(2);
 
+  ##-- zipf / zeta
+  my $ugrank = $ugf->ranks(order=>'desc')+1;
+  my $zetas   = 1.05; ##-- zeta 's' value: stay close to 1 for zipf-safety
+                      ##-- after "zipf again" fitting, we see that log-lin exponent fit value is: -1.0533697
+  usepgplot;
+  points($ugrank, $ugf, {axis=>'logxy',color=>'cyan'}); hold;
+  line($ugrank->qsort, zetaf($ugf,$zetas)->qsort, {color=>'red'} ); hold;
+  legend(["Rank:Freq", "Rank:Zeta*N/Sum(Zeta)"], log10(128),log10(10000), {color=>['cyan','red']}); release;
+
+  ##-- zipf again
+  my $ug_rank  = $ugrank;
+  my $ug_arank = $ugf->avgranks(order=>'desc')+1;
+  my $ug_uarank = $ug_arank->qsort->uniq;
+  my $ug_uvals  = $ugf->qsort->uniq->slice("-1:0");
+  my ($ug_fit,$ug_coeffs) = $ug_uvals->loglinfit($ug_uarank);
+  ##
+  ##-- plot 'em
+  usepgplot();
+  points($ug_rank, $ugf,    {axis=>'logxy',color=>'cyan'}); hold;
+  line($ug_uarank, $ug_fit, {axis=>'logxy',color=>'red',linewidth=>5}); release;
+  ##
+  ##-- re-set $zetas & replot
+  $zetas = -$ug_coeffs->slice("1");
+  points($ugrank, $ugf, {axis=>'logxy',color=>'cyan'}); hold;
+  line($ugrank, zetaf($ugf,$zetas), {color=>'red'} ); hold;
+  legend(["Rank:Freq", "Rank:Zeta*N/Sum(Zeta)"], log10(128),log10(10000), {color=>['cyan','red']}); release;
+
   my $bgd = load("utrain-nl.t.bg.pdist.bin"); loadModule($bgd);
   my $bgf    = $bgd->{pdl}->double;
   my $A      = $bgf->dim(0);
   my $bguf   = $bgf->sumover->decode;
-  my $bgnnz0 = $bgf->nnz->decode;
-  my $bgp = $bgf / $bgf->sum;
+
+  ##-- zipf/zeta: bigrams
+  my $bgnz = $bgf->_nzvals;
+  my $bgnz_rank  = $bgnz->ranks(order=>'desc')+1;
+  my $bgnz_arank = $bgnz->avgranks(order=>'desc')+1;
+  ##
+  ##-- get unique values for log-linear fitting
+  my $bgnz_uarank = $bgnz_arank->qsort->uniq;
+  my $bgnz_uvals  = $bgnz->qsort->uniq->slice("-1:0");
+  my ($bgnz_fit,$bgnz_coeffs) = $bgnz_uvals->loglinfit($bgnz_uarank);
+  ##
+  ##-- plot 'em
+  usepgplot();
+  points($bgnz_rank, $bgnz, {axis=>'logxy',color=>'cyan'}); hold;
+  line($bgnz_uarank, $bgnz_fit, {axis=>'logxy',color=>'red',linewidth=>5}); release;
+
+  my $bgf_nnz0     = $bgf->nnz->decode;
+  my $bgf_nzavg0   = $bgf->average_nz->decode;
+  my $bgf_nzsigma0 = ($bgf**2)->average_nz->decode - ($bgf->average_nz->decode**2);
+
+  my $bgfx = $bgf->xchg(0,1)->to_physically_indexed;
+  my $bgf_nnz1     = $bgfx->nnz->decode;
+  my $bgf_nzavg1   = $bgfx->average_nz->decode;
+  my $bgf_nzsigma1 = ($bgfx**2)->average_nz->decode - ($bgfx->average_nz->decode**2);
+
+
+  my $bgp  = $bgf / $bgf->sum;
   my $p1g2 = $bgp / $bgp->sumover->dummy(0,1);
   #my $p2g1 = ($bgp->xchg(0,1) / $bgp->xchg(0,1)->sumover->dummy(0,1))->xchg(0,1);
 
