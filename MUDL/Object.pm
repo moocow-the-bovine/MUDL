@@ -56,8 +56,13 @@ our $DEFAULT_ZBIN_ZLEVEL = 3; ##-- default compression level for compressed bina
 
 our %DEFAULT_GZBIN_ARGS =
   (
-   -Level  => 3,            ##-- default compression level for compressed binary files (sane default)
+   -Level    => 3,            ##-- default compression level for compressed binary files (sane default)
+   TextFlag  => 0,
+   BinModeIn => 1,
+   Strict    => 1,
   );
+our $DEFAULT_GZIP_CMD   = 'gzip -c';
+our $DEFAULT_GUNZIP_CMD = 'gunzip -c';
 
 ##======================================================================
 ## Generic Constructor
@@ -778,6 +783,7 @@ sub loadZBinFh {
 ##    Minimal => $bool,
 ##    -Strategy => $const,
 ##    ...
+##  + method no longer unused
 sub gzipper {
   my ($output,%args) = @_;
   require IO::Compress::Gzip;
@@ -789,28 +795,37 @@ sub gzipper {
 ## $str = $obj->saveGZBinString(%args)
 ##  + calls $obj->saveBinString()
 ##  + %args:
-##     zlevel=>$level
+##     gzargs=>\%gzargs, ##-- see also DEFAULT_GZBIN_ARGS
 sub saveGZBinString {
   my ($obj,%args) = @_;
-  my $str = '';
-  my $gz  = gzipper(\$str,
-		    Comment=>ref($obj),
-		    (defined($args{gzargs}) ? %{$args{gzargs}} : qw()));
-  $gz->print($obj->saveBinString(%args));
-  $gz->close();
+  require IO::Compress::Gzip;
+  my $gzstr  = '';
+  my $rawstr = 'pst0'.$obj->saveBinString(%args);  ##-- HACK: make it look like a Storable file
+  IO::Compress::Gzip::gzip(\$rawstr,\$gzstr,
+			   %DEFAULT_GZBIN_ARGS,
+			   Comment=>ref($obj),
+			   (defined($args{gzargs}) ? %{$args{gzargs}} : qw()),
+			  );
+  return $gzstr;
 }
 
 ## $bool = $obj->saveGZBinFile($filename,%args)
-##   + calls $obj->saveGZBinFh($fh,%args)
+##   + calls $obj->saveBinFh($fh,%args)
+##   + %args:
+##       gzargs => \%gzargs, ##-- uses '-Level'
+##   + hack: we actually call system gzip here, so that Storable header gets written correctly
 sub saveGZBinFile {
   my ($obj,$file,%args) = @_;
-  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  my %gzargs = (%DEFAULT_GZBIN_ARGS, ($args{gzargs} ? %{$args{gzargs}} : qw()));
+  my $level  = $gzargs{'-Level'};
+  $level     = 1 if (!defined($level));
+  my $fh = ref($file) ? $file : IO::File->new("| $DEFAULT_GZIP_CMD -${level} > \"$file\"");
   if (!$fh) {
-    confess( __PACKAGE__ , "::saveZBinFile(): open failed for '$file': $!");
+    confess( __PACKAGE__ , "::saveGZBinFile(): open failed for pipe: |$DEFAULT_GZIP_CMD -${level} >'$file': $!");
     return undef;
   }
   binmode($fh);
-  my $rc  = $obj->saveGZBinFh($fh,%args);
+  my $rc  = $obj->saveBinFh($fh,%args);
   $fh->close() if (!ref($file));
   return $rc;
 }
@@ -821,14 +836,15 @@ sub saveGZBinFile {
 ##     gzargs=>\%args_for_gzipper()
 sub saveGZBinFh {
   my ($obj,$fh,%args) = @_;
-  my $gz = gzipper($fh,
-		    Name=>ref($obj),
-		   (defined($args{gzargs}) ? %{$args{gzargs}} : qw()));
-  $gz->print($obj->saveBinString(%args));
-  $gz->close();
-  return 1;
+  require IO::Compress::Gzip;
+  my $rawstr = 'pst0'.$obj->saveBinString(%args);  ##-- HACK: make it look like a Storable file
+  IO::Compress::Gzip::gzip(\$rawstr,$fh,
+			   %DEFAULT_GZBIN_ARGS,
+			   Comment=>ref($obj),
+			   (defined($args{gzargs}) ? %{$args{gzargs}} : qw()),
+			  );
+  return $IO::Compress::Gzip::GzipError ? 0 : 1;
 }
-
 
 ##======================================================================
 ## I/O: Gzip-Compressed Binary: Load
@@ -836,39 +852,45 @@ sub saveGZBinFh {
 
 ## $obj_or_undef = $class_or_obj->loadZBinString($str,%args)
 ##  + calls $class_or_obj->loadBinString()
+##  + NOT compatible with $obj->saveGZBinFile($filename)
 sub loadGZBinString {
   my ($that,$gzstr) = @_[0,1];
   require IO::Uncompress::Gunzip;
-  my $binstr = '';
-  IO::Uncompress::Gunzip::gunzip(\$gzstr=>\$binstr);
-  return $that->loadBinString($binstr, @_[2..$#_]);
+  my $rawstr = '';
+  IO::Uncompress::Gunzip::gunzip(\$gzstr=>\$rawstr);
+  $rawstr =~ s/^pst0//; ##-- HACK: detect Storable file pseudo-strings (potentially dangerous!)
+  return $that->loadBinString($rawstr, @_[2..$#_]);
 }
 
-## $obj_or_undef = $class_or_obj->loadZBinFile($filename,%args)
-##   + calls $class_or_obj->loadZBinFh($fh)
+## $obj_or_undef = $class_or_obj->loadGZBinFile($filename,%args)
+##  + calls $class_or_obj->loadBinFh($fh) on a pipe from 'gunzip'
+##  + expects that file was saved with $obj->saveGZBinFile($filename)
+##  + NOT compatible with $obj->saveGZBinFh($fh)
+##  + NOT compatible with $obj->saveGZBinString()
 sub loadGZBinFile {
   my ($obj,$file) = splice(@_,0,2);
-  my $fh = ref($file) ? $file : IO::File->new("<$file");
+  my $fh = ref($file) ? $file : IO::File->new("$DEFAULT_GUNZIP_CMD \"$file\" |");
    if (!$fh) {
-    confess( __PACKAGE__ , "::loadGZBinFile(): open failed for '$file': $!");
+    confess( __PACKAGE__ , "::loadGZBinFile(): open failed for pipe 'gunzip -c \"$file\"|': $!");
     return undef;
   }
-  my $rc = $obj->loadGZBinFh($fh,@_);
+  my $rc = $obj->loadBinFh($fh,@_);
   $fh->close() if (!ref($file));
   return $rc;
 }
 
 ## $obj_or_undef = $class_or_obj->loadZBinFh($fh,%args)
 ##  + calls $class_or_obj->loadZBinString(%args)
+##  + NOT compatible with $obj->saveGZBinFile($filename)
 sub loadGZBinFh {
   my ($that,$fh) = @_[0,1];
-  binmode($fh);
   require IO::Uncompress::Gunzip;
-  my $binstr = '';
-  IO::Uncompress::Gunzip::gunzip($fh=>\$binstr);
-  return $that->loadBinString($binstr, @_[2..$#_]);
+  binmode($fh);
+  my $rawstr = '';
+  IO::Uncompress::Gunzip::gunzip($fh=>\$rawstr);
+  $rawstr =~ s/^pst0//; ##-- HACK: detect Storable file pseudo-strings (potentially dangerous!)
+  return $that->loadBinString($rawstr, @_[2..$#_]);
 }
-
 
 ##======================================================================
 ## I/O: Native: save

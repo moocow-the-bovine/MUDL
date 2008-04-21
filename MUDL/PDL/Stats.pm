@@ -24,6 +24,7 @@ BEGIN {
   *PDL::variance0 = \&variance0;
   *PDL::variance1 = \&variance1;
   *PDL::variance = *variance = \&variance0; ##-- a tiny bit faster
+  *PDL::CCS::Nd::variance    = \*variance0; ##--... variance1() doesn't work with CCS::Nd (no slices)
 }
 sub variance0 {
   my $p = shift;

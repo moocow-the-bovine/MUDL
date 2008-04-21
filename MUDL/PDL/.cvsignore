@@ -1,7 +1,8 @@
 MUDL
 
-*.gz
 *.bin
+*.zbin
+*.gz
 *~
 .*~
 *.indices

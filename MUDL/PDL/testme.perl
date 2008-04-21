@@ -2,8 +2,9 @@
 
 use lib qw(../..);
 use MUDL;
-use MUDL::CmdUtils qw(:all);
+use MUDL::CmdUtils;
 use PDL;
+use PDL::CCS::Nd qw(:all);;
 use MUDL::PdlDist;
 use MUDL::PDL::Smooth;
 use MUDL::PDL::Stats;
@@ -17,6 +18,10 @@ use PDL::Graphics::PGPLOT;
 
 BEGIN { $, = ' '; }
 
+BEGIN {
+  $PDL::CCS::Nd::CCSND_FLAGS_DEFAULT |= $PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING;
+}
+
 ##----------------------------------------------------------------------
 ## pgplot
 sub usepgplot {
@@ -25,7 +30,7 @@ sub usepgplot {
 }
 
 ##----------------------------------------------------------------------
-## Test
+## Test: compression ratio
 ##----------------------------------------------------------------------
 sub test_zratio {
   #my $a = sequence(7,4);
@@ -75,6 +80,39 @@ sub test_zratio {
 #test_zratio();
 
 ##----------------------------------------------------------------------
+## test: compressed I/O (gzip)
+use IO::Compress::Gzip     qw(:all);
+use IO::Uncompress::Gunzip qw(:all);
+sub test_gzio {
+  my $ugd = load("utrain-nl.t.ug.pdist.bin"); loadModule($ugd);
+
+  ##-- test I/O
+  $ugd->saveFile('ugd.bin');
+  $ugd->saveFile('ugd.bin.gz');
+  #$ugd->saveFile('ugd.zbin');
+  #$ugd->saveFile('ugd_rle.bin.gz', gzargs=>{-Strategy=>Z_RLE});
+  #$ugd->saveFile('ugd_l9.bin.gz', gzargs=>{-Level=>9});
+  #$ugd->saveFile('ugd_l3.bin.gz', gzargs=>{-Level=>3});
+  #$ugd->saveFile('ugd_l2.bin.gz', gzargs=>{-Level=>2});
+  #$ugd->saveFile('ugd_l1.bin.gz', gzargs=>{-Level=>1});
+
+  my ($ugd2);
+  $ugd2 = ref($ugd)->loadFile('ugd.bin');
+  $ugd2 = ref($ugd)->loadFile('ugd.bin.gz');
+
+  my $fhfile = "ugd.fh.bin.gz";
+  my $gzfh = IO::File->new(">$fhfile");
+  $ugd->saveGZBinFh($gzfh);
+  $gzfh->close();
+  $gzfh = IO::File->new("<$fhfile");
+  $ugd2 = ref($ugd)->loadGZBinFh($gzfh);
+  $gzfh->close();
+
+  print STDERR "$0: test_gzio() done: what now?\n";
+}
+#test_gzio();
+
+##----------------------------------------------------------------------
 ## test: gaussian fitting
 
 ##-- random gaussian
@@ -84,7 +122,6 @@ sub ggrandom {
 }
 
 use PDL::Fit::Gaussian;
-use IO::Compress::Gzip qw(:all);
 sub test_gfit {
   my ($mu,$sigma,$n) = (0.5,2,100);
   my $raw = ggrandom($mu,$sigma,$n);
@@ -93,21 +130,8 @@ sub test_gfit {
   my $yrange = [0,1.1];
 
   ##-- test: NL data
-  use vars qw($PDL::CCS::Nd::FLAGS_DEFAULT);
-  $PDL::CCS::Nd::FLAGS_DEFAULT |= $PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING;
+  $PDL::CCS::Nd::CCSND_FLAGS_DEFAULT |= $PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING;
   my $ugd = load("utrain-nl.t.ug.pdist.bin"); loadModule($ugd);
-
-  ##-- test I/O
-  if (0) {
-    $ugd->saveFile('ugd.bin');
-    $ugd->saveFile('ugd.bin.gz');
-    $ugd->saveFile('ugd.zbin');
-    $ugd->saveFile('ugd_rle.bin.gz', gzargs=>{-Strategy=>Z_RLE});
-    $ugd->saveFile('ugd_l9.bin.gz', gzargs=>{-Level=>9});
-    $ugd->saveFile('ugd_l3.bin.gz', gzargs=>{-Level=>3});
-    $ugd->saveFile('ugd_l2.bin.gz', gzargs=>{-Level=>2});
-    $ugd->saveFile('ugd_l1.bin.gz', gzargs=>{-Level=>1});
-  }
 
   my $ugf = $ugd->{pdl}->double;
   my $N   = $ugf->sumover;
@@ -115,7 +139,10 @@ sub test_gfit {
   my $ugh = -log($ugp) / log(2);
 
   my $bgd = load("utrain-nl.t.bg.pdist.bin"); loadModule($bgd);
-  my $bgf = $bgd->{pdl}->double;
+  my $bgf    = $bgd->{pdl}->double;
+  my $A      = $bgf->dim(0);
+  my $bguf   = $bgf->sumover->decode;
+  my $bgnnz0 = $bgf->nnz->decode;
   my $bgp = $bgf / $bgf->sum;
   my $p1g2 = $bgp / $bgp->sumover->dummy(0,1);
   #my $p2g1 = ($bgp->xchg(0,1) / $bgp->xchg(0,1)->sumover->dummy(0,1))->xchg(0,1);
@@ -188,6 +215,7 @@ sub test_gfit {
   print STDERR "$0: test_gfit done: what now?\n";
 }
 test_gfit();
+
 
 ##----------------------------------------------------------------------
 ## Dummy
