@@ -25,7 +25,10 @@ BEGIN {
 ##----------------------------------------------------------------------
 ## pgplot
 sub usepgplot {
-  dev('/xw');
+  my ($wnumbers,$wnames) = window_list();
+  if (!@$wnumbers) {
+    dev('/xw');
+  }
   autolog(1);
 }
 
@@ -182,10 +185,13 @@ sub test_gfit {
   my $ugrank = $ugf->ranks(order=>'desc')+1;
   my $zetas   = 1.05; ##-- zeta 's' value: stay close to 1 for zipf-safety
                       ##-- after "zipf again" fitting, we see that log-lin exponent fit value is: -1.0533697
-  usepgplot;
-  points($ugrank, $ugf, {axis=>'logxy',color=>'cyan'}); hold;
-  line($ugrank->qsort, zetaf($ugf,$zetas)->qsort, {color=>'red'} ); hold;
-  legend(["Rank:Freq", "Rank:Zeta*N/Sum(Zeta)"], log10(128),log10(10000), {color=>['cyan','red']}); release;
+  our $DOPLOT = 0;
+  if ($DOPLOT) {
+    usepgplot;
+    points($ugrank, $ugf, {axis=>'logxy',color=>'cyan'}); hold;
+    line($ugrank, zetaf($ugf,$zetas), {color=>'red',linewidth=>5} ); hold;
+    legend(["Rank:Freq", "Rank:Zeta*N/Sum(Zeta)"], log10(128),log10(10000), {color=>['cyan','red']}); release;
+  }
 
   ##-- zipf again
   my $ug_rank  = $ugrank;
@@ -193,17 +199,25 @@ sub test_gfit {
   my $ug_uarank = $ug_arank->qsort->uniq;
   my $ug_uvals  = $ugf->qsort->uniq->slice("-1:0");
   my ($ug_fit,$ug_coeffs) = $ug_uvals->loglinfit($ug_uarank);
-  ##
-  ##-- plot 'em
-  usepgplot();
-  points($ug_rank, $ugf,    {axis=>'logxy',color=>'cyan'}); hold;
-  line($ug_uarank, $ug_fit, {axis=>'logxy',color=>'red',linewidth=>5}); release;
+
+  if ($DOPLOT) {
+    ##-- plot 'em
+    usepgplot();
+    points($ug_rank, $ugf,    {axis=>'logxy',color=>'cyan'}); hold;
+    line($ug_uarank, $ug_fit, {axis=>'logxy',color=>'red',linewidth=>5}); release;
+  }
   ##
   ##-- re-set $zetas & replot
   $zetas = -$ug_coeffs->slice("1");
-  points($ugrank, $ugf, {axis=>'logxy',color=>'cyan'}); hold;
-  line($ugrank, zetaf($ugf,$zetas), {color=>'red'} ); hold;
-  legend(["Rank:Freq", "Rank:Zeta*N/Sum(Zeta)"], log10(128),log10(10000), {color=>['cyan','red']}); release;
+  if ($DOPLOT) {
+    points($ugrank, $ugf, {axis=>'logxy',color=>'cyan'}); hold;
+    line($ugrank, zetaf($ugf,$zetas), {color=>'red'} ); hold;
+    legend(["Rank:Freq", "Rank:Zeta*N/Sum(Zeta)"], log10(128),log10(10000), {color=>['cyan','red']}); release;
+    ##
+    ##-- using our qqplotx()
+    autolog(0);
+    qqplotx(zetap($ug_rank,$zetas)->log10, $ugf->qsort->uniq->slice("-1:0")->log10, {noline=>0,axis=>'logxy'}, {linewidth=>5,color=>'red'});
+  }
 
   my $bgd = load("utrain-nl.t.bg.pdist.bin"); loadModule($bgd);
   my $bgf    = $bgd->{pdl}->double;
@@ -219,13 +233,24 @@ sub test_gfit {
   my $bgnz_uarank = $bgnz_arank->qsort->uniq;
   my $bgnz_uvals  = $bgnz->qsort->uniq->slice("-1:0");
   my ($bgnz_fit,$bgnz_coeffs) = $bgnz_uvals->loglinfit($bgnz_uarank);
-  ##
-  ##-- plot 'em
-  usepgplot();
-  points($bgnz_rank, $bgnz, {axis=>'logxy',color=>'cyan'}); hold;
-  line($bgnz_uarank, $bgnz_fit, {axis=>'logxy',color=>'red',linewidth=>5}); release;
+
+  if ($DOPLOT) {
+    ##-- plot 'em
+    usepgplot();
+    points($bgnz_rank, $bgnz, {axis=>'logxy',color=>'cyan'}); hold;
+    line($bgnz_uarank, $bgnz_fit, {axis=>'logxy',color=>'red',linewidth=>5}); release;
+  }
 
   my $bgf_nnz0     = $bgf->nnz->decode;
+  my $bgf_nnz0n    = $bgf_nnz0->sumover;
+  my $bgf_nnz0r    = $bgf_nnz0->ranks(order=>'desc')+1;
+  #points( $bgf_nnz0r, $bgf_nnz0, {axis=>'logxy'} );
+
+  my $bgf_pnew  = $bgf_nnz0 / $bguf;
+  my $bgf_pnewr = $bgf_pnew->ranks(order=>'asc')+1;
+  #points( $bgf_pnewr, $bgf_pnew, {axis=>'logxy',xtitle=>'rank_asc(nnz0/f0)',ytitle=>'nnz0/f0'} );
+  points( $bgf_pnewr, -($bgf_pnew->log2), {axis=>'logx',xtitle=>'rank_asc(nnz0/f0)',ytitle=>'h(nnz0/f0)'} );
+
   my $bgf_nzavg0   = $bgf->average_nz->decode;
   my $bgf_nzsigma0 = ($bgf**2)->average_nz->decode - ($bgf->average_nz->decode**2);
 

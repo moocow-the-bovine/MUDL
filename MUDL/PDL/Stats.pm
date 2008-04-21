@@ -40,6 +40,21 @@ BEGIN { *PDL::stddev = \&stddev; }
 sub stddev { return $_[0]->variance->sqrt(); }
 
 
+## $log2 = $pdl->log2()
+BEGIN {
+  *PDL::log2 = \&log2;
+  our $LOG2  = log(2.0);
+}
+sub log2 {
+  our ($LOG2);
+  if ($_[0]->is_inplace) {
+    $_[0]->log();
+    $_[0] /= $LOG2;
+    return $_[0];
+  }
+  return $_[0]->log / $LOG2;
+}
+
 1;
 
 ##======================================================================

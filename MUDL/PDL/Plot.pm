@@ -16,7 +16,7 @@ use strict;
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
-   all => ['errbin','qqplot','qqplotx'],
+   all => ['hist1','loghist','errbin','qqplot','qqplotx'],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -25,6 +25,36 @@ our @EXPORT      = @EXPORT_OK;
 
 ##======================================================================
 ## histograms
+
+## ($x,$y) = hist1($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- list context
+## ($x,$y) = hist1($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- array context
+##   + really just a wrapper for PDL::Basic::hist() which adds $eps to all vals (x+y)
+BEGIN { *PDL::hist1 = \&hist1; }
+sub hist1 {
+  my ($data, $eps, $min,$max,$step) = @_;
+  $eps = 1 if (!defined($eps));
+  my ($x,$hist) = hist($data,$min,$max,$step);
+  $x    += $eps;
+  $hist += $eps;
+  return wantarray ? ($x,$hist) : $hist;
+}
+
+## ($x,$y) = loghist($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- list context
+## ($x,$y) = loghist($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- array context
+##   + really just a wrapper for PDL::Basic::hist() which uses exponentially sized bins
+##   + buggy with PDL::Graphics::PGPLOT::autolog(1) set
+BEGIN { *PDL::loghist = \&loghist; }
+sub loghist {
+  my ($data, $eps, $min,$max,$step) = @_;
+  $eps = 1 if (!defined($eps));
+  my ($x,$hist) = hist(($data+$eps)->log,
+		       (defined($min)  ? log($min+$eps)  : undef),
+		       (defined($max)  ? log($max+$eps)  : undef),
+		       (defined($step) ? log($step+$eps) : undef),
+		      );
+  $hist += $eps;
+  return wantarray ? ($x->exp-$eps,$hist) : $hist;
+}
 
 ## errbin($y,   \%opts)
 ## errbin($x,$y,\%opts)
@@ -44,10 +74,13 @@ sub errbin {
   else {
     ($x,$y,$opts) = @_;
   }
-  $x = $y->sequence if (!defined($x));
+  $x = ($y->sequence+1) if (!defined($x));
   $opts = {} if (!defined($opts));
+  my $eps = $opts->{eps};
+  $eps    = 0 if (!defined($eps));
+  delete($opts->{eps});
 
-  return errb($x,$y->zeroes, undef,$x->zeroes, undef,$y, $opts);
+  return errb($x+$eps,$y->zeroes+$eps, undef,$x->zeroes+$eps, undef,$y+$eps, $opts);
 }
 
 ##======================================================================
@@ -59,7 +92,8 @@ sub errbin {
 ## undef = qqplotx($xdata,$ydata,\%pointOpts,\%lineOpts)
 ##  + see: http://www.nist.gov/stat.handbook
 ##  + additional %commonOpts, %pointOpts:
-##     noline => $bool,  ##-- if true, no line is drawn
+##     noline   => $bool,  ##-- if true, no line is drawn
+##     uniqline => $bool,  ##-- if true, line is fit to unique values only
 ##  + additional \%lineOpts
 ##     hide => $bool,    ##-- draw no line
 BEGIN { *PDL::qqplotx = \&qqplotx; }
@@ -72,9 +106,10 @@ sub qqplotx {
 
   ##-- points() plot
   $popts  = {} if (!defined($popts));
-  my $noline = $popts->{noline} || (defined($lopts) && $lopts->{hide});
-  delete($popts->{noline});
-  delete($lopts->{hide}) if (defined($lopts));
+  my $noline   = $popts->{noline} || (defined($lopts) && $lopts->{hide});
+  #my $uniqline = $popts->{noline} || (defined($lopts) && $lopts->{uniq});
+  delete(@$popts{'noline','uniqline'});
+  delete(@$lopts{'hide','uniq'}) if (defined($lopts));
   points( $xdata, $ydata, $popts );
 
   ##-- line() plot (fit $xdata->$ydata)
