@@ -8,8 +8,21 @@
 
 package MUDL::PDL::Stats;
 use PDL;
-
+use Exporter;
 use strict;
+
+our @ISA = qw(Exporter);
+our @EXPORT = qw();
+our %EXPORT_TAGS =
+  (
+   all => [
+	   'mean','variance','stddev',
+	   'log2',
+	  ],
+  );
+our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
+$EXPORT_TAGS{all} = \@EXPORT_OK;
+
 
 ##======================================================================
 ## Variance, standard deviation

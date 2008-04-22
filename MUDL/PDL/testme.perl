@@ -216,13 +216,16 @@ sub test_gfit {
     ##
     ##-- using our qqplotx()
     autolog(0);
-    qqplotx(zetap($ug_rank,$zetas)->log10, $ugf->qsort->uniq->slice("-1:0")->log10, {noline=>0,axis=>'logxy'}, {linewidth=>5,color=>'red'});
+    qqplotx(zetap($ug_uarank,$zetas)->log10, $ugf->qsort->uniq->slice("-1:0")->log10, {noline=>0,axis=>'logxy'}, {linewidth=>5,color=>'red'});
   }
 
   my $bgd = load("utrain-nl.t.bg.pdist.bin"); loadModule($bgd);
   my $bgf    = $bgd->{pdl}->double;
   my $A      = $bgf->dim(0);
   my $bguf   = $bgf->sumover->decode;
+  my $bgup   = $bguf / $bguf->sumover;
+  my $bguh   = -($bgup->log2);
+  my $bgufr  = $bguf->ranks(order=>'desc')+1;
 
   ##-- zipf/zeta: bigrams
   my $bgnz = $bgf->_nzvals;
@@ -248,9 +251,38 @@ sub test_gfit {
 
   my $bgf_pnew  = $bgf_nnz0 / $bguf;
   my $bgf_pnewr = $bgf_pnew->ranks(order=>'asc')+1;
+  my $bgf_hnew  = -log2($bgf_pnew);
   #points( $bgf_pnewr, $bgf_pnew, {axis=>'logxy',xtitle=>'rank_asc(nnz0/f0)',ytitle=>'nnz0/f0'} );
-  points( $bgf_pnewr, -($bgf_pnew->log2), {axis=>'logx',xtitle=>'rank_asc(nnz0/f0)',ytitle=>'h(nnz0/f0)'} );
+  points( $bgf_pnewr, $bgf_hnew, {axis=>'logx',xtitle=>'rank_asc(nnz0/f0)',ytitle=>'h(nnz0/f0)'} );
 
+  ##--
+  my $bgf_pcons  = $bgf_nnz0 / $bgf_nnz0n;
+  my $bgf_pconsr = $bgf_parc->ranks(order=>'desc')+1;
+  my $bgf_hcons  = -log2($bgf_parc);
+  points( $bgf_pconsr, $bgf_hcons, {axis=>'logx',xtitle=>'rank_desc(nnz0/NNZ)',ytitle=>'h(nnz0/NNZ)'} ); 
+
+  ##--
+  #points( $bguf, $bgf_hcons+$bguh, {axis=>'logx',xtitle=>'f0',ytitle=>'h(nnz0/NNZ)+h(f0/N)'} );
+  #points( $bgufr, $bgf_hcons+$bguh, {axis=>'logx',xtitle=>'rank_desc(f0)',ytitle=>'h(nnz0/NNZ)+h(f0/N)'} ); 
+  my $yr = [0, ($bgf_hcons+$bguh)->max];
+  points( $bgufr, $bgf_hcons, {yrange=>$yr,axis=>'logx',xtitle=>'rank_desc(f0)',ytitle=>'h(nnz0/NNZ)',color=>'red'} ); hold;
+  points( $bgufr, $bguh,      {yrange=>$yr,axis=>'logx',xtitle=>'rank_desc(f0)',ytitle=>'h(f0/N)',color=>'blue'} ); hold;
+  points( $bgufr, $bgf_hcons+$bguh, {yrange=>$yr,axis=>'logx',xtitle=>'rank_desc(f0)',ytitle=>'h(nnz0/NNZ)+h(f0/N)'} ); release;
+
+  ##--
+  my $bgnz = $bgf->_nzvals();
+  my ($bgf_v,$bgf_vc) = $bgnz->valcounts;
+  my $bgf_vp = $bgf_vc->double / $bgf_vc->sumover->double;
+  my $bgf_vh = -log2($bgf_vp);
+  my $bgnz_vh = $bgnz->interpol($bgf_v,$bgf_vh);
+  my $bgvh    = $bgf->shadow(which=>$bgf->_whichND->pdl, vals=>$bgnz_vh->append(0));
+
+  ##--
+  my $bgvh_u0  = $bgvh->sumover;
+  my $bgvh_u0r = $bgvh_u0->ranks(order=>'desc')+1;
+  points( $bgvh_u0r, $bgvh_u0, {axis=>'logx',xtitle=>'rank_desc(sum(ff/NNZ))',ytitle=>'sum(ff/NNZ)',color=>'red'} ); hold;
+
+  ##~~~~
   my $bgf_nzavg0   = $bgf->average_nz->decode;
   my $bgf_nzsigma0 = ($bgf**2)->average_nz->decode - ($bgf->average_nz->decode**2);
 
