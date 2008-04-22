@@ -7,7 +7,7 @@ use PDL;
 use PDL::CCS::Nd qw(:all);;
 use MUDL::PdlDist;
 use MUDL::PDL::Smooth;
-use MUDL::PDL::Stats;
+use MUDL::PDL::Stats qw(:all);
 use MUDL::PDL::Ranks;
 use MUDL::PDL::Compress qw(:all);
 use Benchmark qw(cmpthese timethese);
@@ -139,7 +139,7 @@ sub iterlog {
 
 
 ##----------------------------------------------------------------------
-## test: gaussian fitting
+## test: gaussian fitting (and more)
 
 ##-- random gaussian
 sub ggrandom {
@@ -270,7 +270,7 @@ sub test_gfit {
   points( $bgufr, $bgf_hcons+$bguh, {yrange=>$yr,axis=>'logx',xtitle=>'rank_desc(f0)',ytitle=>'h(nnz0/NNZ)+h(f0/N)'} ); release;
 
   ##--
-  my $bgnz = $bgf->_nzvals();
+  #my $bgnz = $bgf->_nzvals();
   my ($bgf_v,$bgf_vc) = $bgnz->valcounts;
   my $bgf_vp = $bgf_vc->double / $bgf_vc->sumover->double;
   my $bgf_vh = -log2($bgf_vp);
@@ -363,7 +363,107 @@ sub test_gfit {
   ##-- what now?
   print STDERR "$0: test_gfit done: what now?\n";
 }
-test_gfit();
+#test_gfit();
+
+##----------------------------------------------------------------------
+## Test: bigram model+corpus size
+
+sub test_totalsize {
+  $PDL::CCS::Nd::CCSND_FLAGS_DEFAULT |= $PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING;
+
+  my $bgd = load("utrain-nl.t.bg.pdist.bin");
+  loadModule($bgd);
+
+  ##----------------------------
+  ## corpus frequencies
+
+  ##-- corpus freqs: bigrams
+  my $fab = $bgd->{pdl}->double;                    ##-- [a,b] -> f(a,b)
+  #$fab->[$PDIMS]->set(1,50000);                     ##-- DEBUG
+  my $fba = $fab->xchg(0,1)->to_physically_indexed; ##-- [b,a] -> f(a,b)
+  ##
+  ##-- corpus freqs: unigrams
+  my $fa  = $fba->sumover->decode;        ##-- [a] -> f(a,*)
+  my $fb  = $fab->sumover->decode;        ##-- [b] -> f(*,b)
+  my $far = $fa->ranks(order=>'desc')+1;  ##-- [a] -> rank(f(a,*))
+  #my $fbr = $far;
+  ##
+  ##-- corpus freqs: totals
+  my $N   = $fa->sumover;
+  my $A   = $fa->nelem;
+
+  ##----------------------------
+  ## corpus probabilities
+
+  ##-- corpus probabilities: unigrams
+  my $pa = $fa / $N;    ##-- [a] -> p(a)
+  my $pb = $fb / $N;    ##-- [b] -> p(b)
+  ##
+  ##-- corpus probabilities: bigrams
+  my $pab  = $fab / $N;                 ##-- [a,b] -> p(a,b)
+  #my $pba  = $fba / $N;                 ##-- [b,a] -> p(a,b)
+  my $pbga = $fab / $fa->slice(",*1");  ##-- [a,b] -> p(b|a)
+  my $pagb = $fab / $fb->slice("*1,");  ##-- [a,b] -> p(a|b)
+
+  ##----------------------------
+  ## corpus entropies
+
+  ##-- corpus probabilities: unigrams
+  my $ha = -log2z($pa);      ##-- [a] -> h(a) = -log2(p(a))
+  my $hb = -log2z($pb);      ##-- [b] -> h(b) = -log2(p(b))
+  ##
+  ##-- corpus probabilities: bigrams
+  my $hab  = -log2z($pab);   ##-- [a,b] -> h(a,b)
+  my $hbga = -log2z($pbga);  ##-- [a,b] -> h(b|a)
+  my $hagb = -log2z($pagb);  ##-- [a,b] -> h(a|b)
+
+  ##----------------------------
+  ## model stuff: promiscuity
+
+  ##-- model counts: promiscuity (via number of non-zeroes "nnz")
+  ##   + used to approximate p(sink_type) in model
+  my $Nnz  = $fab->_nnz;        ##-- []  -> |{ (a,b) : f(a,b)>0 }| = |f(A,B)^{-1}(NatNum - {0})| ~ N_nz
+  my $nnza = $fba->nnz->decode; ##-- [a] -> |{ b : f(a,b)>0 }| ~ f_nz(b)
+  my $nnzb = $fab->nnz->decode; ##-- [b] -> |{ a : f(a,b)>0 }| ~ f_nz(a)
+  ##
+  ##-- model probabilities: promiscuity
+  my $pnza = $nnza/$Nnz;        ##-- [a] -> p_nz(a)
+  my $pnzb = $nnzb/$Nnz;        ##-- [b] -> p_nz(b)
+  ##
+  ##-- model entropies: promiscuity
+  my $hnza = -log2z($pnza);     ##-- [a] -> h_nz(a)
+  my $hnzb = -log2z($pnzb);     ##-- [b] -> h_nz(b)
+
+  ##----------------------------
+  ## model stuff: freq-freqs
+
+  ##-- freq-freqs: CCS::Nd base data
+  my $fab_nzvals  = $fab->_nzvals;             ##-- [nzi] -> f(a_nzi,b_nzi)
+  my $fab_which   = $fab->_whichND;            ##-- [nzi] ->  [a_nzi,b_nzi]
+  my $fab_which_a = $fab_which->slice("(0),"); ##-- [nzi] -> a_nzi
+  my $fab_which_b = $fab_which->slice("(1),"); ##-- [nzi] -> b_nzi
+
+  ##-- freq-freqs: value counts
+  my ($fab_fv,$fab_fc) = $fab_nzvals->valcounts();
+  my $fab_fcz = $fab_fc->smearvals($fab_fv);  ##-- smear GT-style?
+  #$fab_fcz = $fab_fc;                        ##-- ... or don't
+  my $pab_fcz = $fab_fcz / $fab_fcz->sumover;
+
+  ##-- freq-freqs: back-fit
+  my $fab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$fab_fcz)->append(0); ##-- [nzi] -> f( f(a_nzi,b_nzi) )
+  my $pab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$pab_fcz)->append(0); ##-- [nzi] -> p( f(a_nzi,b_nzi) )
+  my $fab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$fab_ff_nzvals); ##-- [a,b] -> f( f(a,b) )
+  my $pab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$pab_ff_nzvals); ##-- [a,b] -> p( f(a,b) )
+  my $hab_ff        = -log2z($pab_ff);                                            ##-- [a,b] -> h( f(a,b) )
+
+  ##-- ???
+ points( $fab_nzvals->xvals+1, ($hab_ff->_nzvals+$hnza->index($fab_which_a)/2+$hnzb->index($fab_which_b)/2+$hagb->indexND($fab_which)/2+$hbga->indexND($fab_which)/2)->qsort->slice("-1:0"), {axis=>'logx'});
+
+
+  print "$0: test_totalsize() done: what now?\n";
+}
+test_totalsize();
+
 
 
 ##----------------------------------------------------------------------

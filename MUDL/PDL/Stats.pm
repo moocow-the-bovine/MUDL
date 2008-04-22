@@ -17,7 +17,7 @@ our %EXPORT_TAGS =
   (
    all => [
 	   'mean','variance','stddev',
-	   'log2',
+	   'log2','logz','log2z','log10z',
 	  ],
   );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
@@ -53,9 +53,12 @@ BEGIN { *PDL::stddev = \&stddev; }
 sub stddev { return $_[0]->variance->sqrt(); }
 
 
-## $log2 = $pdl->log2()
+##======================================================================
+## Logarithms
+
+## $pdl_log2 = $pdl->log2()
 BEGIN {
-  *PDL::log2 = \&log2;
+  *PDL::log2 = *PDL::CCS::Nd::log2 = \&log2;
   our $LOG2  = log(2.0);
 }
 sub log2 {
@@ -67,6 +70,31 @@ sub log2 {
   }
   return $_[0]->log / $LOG2;
 }
+
+## $logz_pdl = $pdl->logz($z=0)
+BEGIN { *PDL::logz = *PDL::CCS::Nd::logz = \&logz; }
+sub logz {
+  my $lp = $_[0]->log;
+  $lp->inplace->setnantobad->inplace->setbadtoval(defined($_[1]) ? $_[1] : 0);
+  return $lp;
+}
+
+## $log2z_pdl = $pdl->log2z($z=0)
+BEGIN { *PDL::log2z = *PDL::CCS::Nd::log2z = \&log2z; }
+sub log2z {
+  my $lp = $_[0]->log2;
+  $lp->inplace->setnantobad->inplace->setbadtoval(defined($_[1]) ? $_[1] : 0);
+  return $lp;
+}
+
+## $log10z_pdl = $pdl->log10z($z=0)
+BEGIN { *PDL::log10z = *PDL::CCS::Nd::log10z = \&log2z; }
+sub log10z {
+  my $lp = $_[0]->log10;
+  $lp->inplace->setnantobad->inplace->setbadtoval(defined($_[1]) ? $_[1] : 0);
+  return $lp;
+}
+
 
 1;
 
