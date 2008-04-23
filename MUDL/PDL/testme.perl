@@ -450,21 +450,85 @@ sub test_totalsize {
   my $pab_fcz = $fab_fcz / $fab_fcz->sumover;
 
   ##-- freq-freqs: back-fit
-  my $fab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$fab_fcz)->append(0); ##-- [nzi] -> f( f(a_nzi,b_nzi) )
-  my $pab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$pab_fcz)->append(0); ##-- [nzi] -> p( f(a_nzi,b_nzi) )
-  my $fab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$fab_ff_nzvals); ##-- [a,b] -> f( f(a,b) )
-  my $pab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$pab_ff_nzvals); ##-- [a,b] -> p( f(a,b) )
+  my $fab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$fab_fcz); ##-- [nzi] -> f( f(a_nzi,b_nzi) )
+  my $pab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$pab_fcz); ##-- [nzi] -> p( f(a_nzi,b_nzi) )
+  my $fab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$fab_ff_nzvals->append(0)); ##-- [a,b] -> f( f(a,b) )
+  my $pab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$pab_ff_nzvals->append(0)); ##-- [a,b] -> p( f(a,b) )
   my $hab_ff        = -log2z($pab_ff);                                            ##-- [a,b] -> h( f(a,b) )
 
   ##-- ???
- points( $fab_nzvals->xvals+1, ($hab_ff->_nzvals+$hnza->index($fab_which_a)/2+$hnzb->index($fab_which_b)/2+$hagb->indexND($fab_which)/2+$hbga->indexND($fab_which)/2)->qsort->slice("-1:0"), {axis=>'logx'});
+  #usepgplot;
+  #points( $fab_nzvals->xvals+1, ($hab_ff->_nzvals+$hnza->index($fab_which_a)/2+$hnzb->index($fab_which_b)/2+$hagb->indexND($fab_which)/2+$hbga->indexND($fab_which)/2)->qsort->slice("-1:0"), {axis=>'logx'});
 
+  ##----------------------------
+  ## model stuff: nnz-freqs
+
+  my ($nnza_v,$nnza_vc) = $nnza->valcounts;
+  my ($nnzb_v,$nnzb_vc) = $nnzb->valcounts;
+  my $nnza_vcz = $nnza_vc->smearvals($nnza_v);
+  my $nnzb_vcz = $nnzb_vc->smearvals($nnzb_v);
+  ##-- safety/debug
+  $nnza_vc = $nnza_vc->double;
+  $nnzb_vc = $nnzb_vc->double;
+
+  ##-- plots
+  usepgplot;
+  %plot = (axis=>'logxy', xtitle=>'nnz', ytitle=>'E(f(nnz))'); # yrange=>[$nnzb_vcz->minmax]
+  points( $nnza_v, $nnza_v->interpol($nnzb_v,$nnzb_vcz), 0, {%plot,color=>'cyan'} ); hold;
+  points( $nnza_v, $nnza_vcz, 2, {%plot,color=>'red'}); release;
+
+  %plot = (axis=>'logxy', xtitle=>'nnz', ytitle=>'f(nnz)');
+  points( $nnza_v, $nnza_v->interpol($nnzb_v,$nnzb_vc), 1, {%plot,color=>'cyan'} ); hold;
+  points( $nnza_v, $nnza_vc, 1, {%plot,color=>'red'}); release;
 
   print "$0: test_totalsize() done: what now?\n";
 }
 test_totalsize();
 
+##-- util: tuple creation
+## $tuples = tuples($x,$y,$z,...)
+sub tuples {
+  my $tuples = shift->flat->slice("*1,");
+  my ($vals);
+  while (defined($vals=shift(@_))) {
+    $tuples = $tuples->glue(0,$vals->flat->slice("*1"));
+  }
+  return $tuples;
+}
 
+##-- util: unique tuples
+## ($ux,$uy,...) = utuples($x,$y,...); ##-- multi-arg, list context
+## $utuples      = utuples($x,$y,...); ##-- multi-arg, scalar context
+## ($ux,$uy,...) = utuples($tuples);   ##-- single-arg, list context
+## $utuples      = utuples($tuples);   ##-- single-arg, scalar context
+##  + ($x,$y,...) : pdl($N)     : $NT of them, so ($x,$y,...) = ($v[0],$v[1],...,$v[$NT-1])
+##  + $tuples     : pdl($NT,$N) : vector-valued list
+use PDL::VectorValued;
+sub utuples {
+  my $tuples = tuples(@_);
+  my $utuples = $tuples->vv_qsortvec->vv_uniqvec;
+  return wantarray ? ($utuples->xchg(0,1)->dog) : $utuples;
+}
+
+
+##-- test: unique tuples
+sub test_utuples {
+  my $b=sequence(10);
+  my ($x,$y,$z)=($b,$b*10,$b*100);
+  my $t = $x->slice("*1")->glue(0,$y->slice("*1"))->glue(0,$z->slice("*1"));
+
+  my $utt = utuples($t);
+  my $utx = utuples($x,$y,$z);
+
+  ##-- try with dups
+  ($x,$y,$z) = ($b->zeroes,$b->ones,$b%2);
+  $t = tuples($x,$y,$z);
+  $utt = utuples($t);
+  $utx = utuples($x,$y,$z);
+
+  print STDERR "$0: test_utuples() done: what now?\n";
+}
+#test_utuples();
 
 ##----------------------------------------------------------------------
 ## Dummy
