@@ -6,7 +6,7 @@ use MUDL::CmdUtils;
 use PDL;
 use PDL::CCS::Nd qw(:all);;
 use MUDL::PdlDist;
-use MUDL::PDL::Smooth;
+use MUDL::PDL::Smooth qw(:all);
 use MUDL::PDL::Stats qw(:all);
 use MUDL::PDL::Ranks;
 use MUDL::PDL::Compress qw(:all);
@@ -414,6 +414,7 @@ sub test_totalsize {
   ##
   ##-- corpus probabilities: bigrams
   my $hab  = -log2z($pab);   ##-- [a,b] -> h(a,b)
+  my $hab_nzvals = $hab->indexND($fab->_whichND);
   my $hbga = -log2z($pbga);  ##-- [a,b] -> h(b|a)
   my $hagb = -log2z($pagb);  ##-- [a,b] -> h(a|b)
 
@@ -423,8 +424,8 @@ sub test_totalsize {
   ##-- model counts: promiscuity (via number of non-zeroes "nnz")
   ##   + used to approximate p(sink_type) in model
   my $Nnz  = $fab->_nnz;        ##-- []  -> |{ (a,b) : f(a,b)>0 }| = |f(A,B)^{-1}(NatNum - {0})| ~ N_nz
-  my $nnza = $fba->nnz->decode; ##-- [a] -> |{ b : f(a,b)>0 }| ~ f_nz(b)
-  my $nnzb = $fab->nnz->decode; ##-- [b] -> |{ a : f(a,b)>0 }| ~ f_nz(a)
+  my $nnza = $fba->nnz->decode; ##-- [a] -> |{ b : f(a,b)>0 }| ~ f_nz(a,*)
+  my $nnzb = $fab->nnz->decode; ##-- [b] -> |{ a : f(a,b)>0 }| ~ f_nz(*,b)
   ##
   ##-- model probabilities: promiscuity
   my $pnza = $nnza/$Nnz;        ##-- [a] -> p_nz(a)
@@ -450,11 +451,13 @@ sub test_totalsize {
   my $pab_fcz = $fab_fcz / $fab_fcz->sumover;
 
   ##-- freq-freqs: back-fit
-  my $fab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$fab_fcz); ##-- [nzi] -> f( f(a_nzi,b_nzi) )
-  my $pab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$pab_fcz); ##-- [nzi] -> p( f(a_nzi,b_nzi) )
-  my $fab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$fab_ff_nzvals->append(0)); ##-- [a,b] -> f( f(a,b) )
-  my $pab_ff        = $fab->shadow(which=>$fab_which->pdl, vals=>$pab_ff_nzvals->append(0)); ##-- [a,b] -> p( f(a,b) )
-  my $hab_ff        = -log2z($pab_ff);                                            ##-- [a,b] -> h( f(a,b) )
+  my $fab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$fab_fcz); ##-- [nzi] -> f_ff( f(a_nzi,b_nzi) )
+  my $pab_ff_nzvals = $fab_nzvals->interpol($fab_fv,$pab_fcz); ##-- [nzi] -> p_ff( f(a_nzi,b_nzi) )
+  my $hab_ff_nzvals = -log2z($pab_ff_nzvals);                  ##-- [nzi] -> h_ff( f(a_nzi,b_nzi) )
+
+  my $fab_ff        = $fab->shadow(which=>$fab_which,vals=>$fab_ff_nzvals->append(0)); ##-- [a,b] -> f_ff( f(a,b) )
+  my $pab_ff        = $fab->shadow(which=>$fab_which,vals=>$pab_ff_nzvals->append(0)); ##-- [a,b] -> p_ff( f(a,b) )
+  my $hab_ff        = -log2z($pab_ff);                                                 ##-- [a,b] -> h_ff( f(a,b) )
 
   ##-- ???
   #usepgplot;
@@ -471,15 +474,57 @@ sub test_totalsize {
   $nnza_vc = $nnza_vc->double;
   $nnzb_vc = $nnzb_vc->double;
 
-  ##-- plots
-  usepgplot;
-  %plot = (axis=>'logxy', xtitle=>'nnz', ytitle=>'E(f(nnz))'); # yrange=>[$nnzb_vcz->minmax]
-  points( $nnza_v, $nnza_v->interpol($nnzb_v,$nnzb_vcz), 0, {%plot,color=>'cyan'} ); hold;
-  points( $nnza_v, $nnza_vcz, 2, {%plot,color=>'red'}); release;
+  ##-- nnz-freqs: back-fit
+  my $nnza_ff = $nnza->interpol($nnza_v,$nnza_vcz); ##-- [a] -> f_fnz( f_nz(a,*) )
+  my $nnzb_ff = $nnzb->interpol($nnzb_v,$nnzb_vcz); ##-- [b] -> f_fnz( f_nz(*,b) )
 
-  %plot = (axis=>'logxy', xtitle=>'nnz', ytitle=>'f(nnz)');
-  points( $nnza_v, $nnza_v->interpol($nnzb_v,$nnzb_vc), 1, {%plot,color=>'cyan'} ); hold;
-  points( $nnza_v, $nnza_vc, 1, {%plot,color=>'red'}); release;
+  my $nnza_pf = $nnza_ff / $nnza_ff->sumover;       ##-- [a] -> p_fnz( f_nz(a,*) )
+  my $nnzb_pf = $nnzb_ff / $nnzb_ff->sumover;       ##-- [b] -> p_fnz( f_nz(*,b) )
+
+  my $nnza_hf = -log2z($nnza_pf);                   ##-- [a] -> h_fnz( f_nz(a,*) )
+  my $nnzb_hf = -log2z($nnzb_pf);                   ##-- [b] -> h_fnz( f_nz(*,b) )
+
+  ##-- plots
+  #usepgplot;
+  #%plot = (axis=>'logxy', xtitle=>'nnz', ytitle=>'E(f(nnz))'); # yrange=>[$nnzb_vcz->minmax]
+  #points( $nnza_v, $nnza_v->interpol($nnzb_v,$nnzb_vcz), 0, {%plot,color=>'cyan'} ); hold;
+  #points( $nnza_v, $nnza_vcz, 2, {%plot,color=>'red'}); release;
+  #%plot = (axis=>'logxy', xtitle=>'nnz', ytitle=>'f(nnz)');
+  #points( $nnza_v, $nnza_v->interpol($nnzb_v,$nnzb_vc), 1, {%plot,color=>'cyan'} ); hold;
+  #points( $nnza_v, $nnza_vc, 1, {%plot,color=>'red'}); release;
+
+  ##----------------------------
+  ## model size: arc-list
+  ##  size(model) := sum_{(a,b) : f(a,b)>0} size( arc(a->b) )
+  ##   + where:
+  ##       size(arc(a->b))   = \sum size{ptr(a),ptr(b),ptr(f(a,b))}
+  ##       size(ptr(a))      = h_fnz( f_nz(a,*) )                   ~ $nnza_hf
+  ##       size(ptr(b))      = h_fnz( f_nz(*,b) )                   ~ $nnzb_hf
+  ##       size(ptr(f(a,b))) = h_ff (    f(a,b) )                   ~ $hab_ff_nzvals
+  my $nnza_hf_nzvals = $nnza_hf->index($fab_which_a);
+  my $nnzb_hf_nzvals = $nnzb_hf->index($fab_which_b);
+  my $size_arclist = ($nnza_hf_nzvals + $nnzb_hf_nzvals + $hab_ff_nzvals);
+
+
+  ##-- plot
+  usepgplot;
+  %plot1 = (axis=>'logx', xtitle=>'rank', ytitle=>'Size(Arc)'); # yrange=>[$nnzb_vcz->minmax]
+  points($size_arclist->xvals+1, $size_arclist->qsort->slice("-1:0"), {%plot1});
+  #points($fab_nzvals->ranks(order=>'desc')+1, $size_arclist, {%plot1});
+  #points($fab_nzvals->ranks(order=>'desc')+1, $size_arclist-$hab_ff_nzvals, {%plot1});
+  #points($fab_nzvals, $size_arclist, {%plot1,xtitle=>'f(a,b)'});
+  points($size_arclist->xvals+1, $size_arclist->qsort, {%plot1,axis=>'grid'});
+
+  #bin(hist($size_arclist)); ##-- looks normal!
+  my ($x,$y) = hist($size_arclist);
+  my @fit    = $y->smoothGaussian($x); ##-- @fit = ($yfit,$peak,$mu,$sigma)
+  $y /= $y->sum;
+  my $xrange = [$x->min-10,$x->max+10];
+  my $yrange = [0,(gausspeak($fit[3]) > $y->max ? gausspeak($fit[3]) : $y->max)+.01];
+  %plot = (xrange=>$xrange,yrange=>$yrange,xtitle=>'Arc Size: s',ytitle=>'p(ArcSize=s) via histogram');
+  errbin($x,$y,{color=>'cyan'});
+  hold; line(gausspoints(undef,@fit[2,3], @$xrange,100), {color=>'red'});
+  hold; legend(["Histogram Data", "Gaussian fit pdf"], $xrange->[1]*.7,$yrange->[1]*.95, {color=>['cyan','red']}); release;
 
   print "$0: test_totalsize() done: what now?\n";
 }

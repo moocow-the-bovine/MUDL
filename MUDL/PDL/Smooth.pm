@@ -21,7 +21,7 @@ our %EXPORT_TAGS =
    'fit'   => ['zipf_fit','linfit','loglinfit'],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
-	       'gausspdf', 'gausscdf',
+	       'gausspdf', 'gausscdf', 'gausspeak',
 	       'gaussquantiles', 'gaussqvals', 'gausscdfi', ##-- all aliases for one another
 	       'uosm',
 	      ],
@@ -227,6 +227,17 @@ sub gaussyvals {
   $peak  = 1/($sigma*sqrt(2*$pi)) if (!defined($peak)); ##-- for pdf
   my $y = $peak * exp( -($x-$mu)**2 / (2*$sigma**2) );
   return $y;
+}
+
+## $ypeak = gausspeak($sigma)
+##  + y peak of gaussian pdf
+##  + should be equiv to gausspdf($mu,$mu,$sigma) == gausspdf(0,0,$sigma)
+BEGIN { *PDL::gausspeak = \&gausspeak; }
+sub gausspeak {
+  #return gausspdf(0,0,@_);
+  my $sigma = shift;
+  our ($pi);
+  return 1/($sigma*sqrt(2*$pi));
 }
 
 ## $pvals = gausspdf($xvals, $mu,$sigma);
