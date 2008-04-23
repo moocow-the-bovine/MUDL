@@ -278,7 +278,7 @@ sub test_gfit {
   my $bgvh    = $bgf->shadow(which=>$bgf->_whichND->pdl, vals=>$bgnz_vh->append(0));
 
   ##--
-  my $bgvh_u0  = $bgvh->sumover;
+  my $bgvh_u0  = $bgvh->sumover->decode;
   my $bgvh_u0r = $bgvh_u0->ranks(order=>'desc')+1;
   points( $bgvh_u0r, $bgvh_u0, {axis=>'logx',xtitle=>'rank_desc(sum(ff/NNZ))',ytitle=>'sum(ff/NNZ)',color=>'red'} ); hold;
 
