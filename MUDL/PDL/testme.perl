@@ -414,9 +414,12 @@ sub test_totalsize {
   ##
   ##-- corpus probabilities: bigrams
   my $hab  = -log2z($pab);   ##-- [a,b] -> h(a,b)
-  my $hab_nzvals = $hab->indexND($fab->_whichND);
   my $hbga = -log2z($pbga);  ##-- [a,b] -> h(b|a)
   my $hagb = -log2z($pagb);  ##-- [a,b] -> h(a|b)
+
+  my $hab_nzvals = $hab->indexND($fab->_whichND);
+  my $hbga_nzvals = $hbga->indexND($fab->_whichND);
+  my $hagb_nzvals = $hagb->indexND($fab->_whichND);
 
   ##----------------------------
   ## model stuff: promiscuity
@@ -495,7 +498,7 @@ sub test_totalsize {
 
   ##----------------------------
   ## model size: arc-list
-  ##  size(model) := sum_{(a,b) : f(a,b)>0} size( arc(a->b) )
+  ## size(model_arclist) := sum_{(a,b) : f(a,b)>0} size( arc(a->b) )
   ##   + where:
   ##       size(arc(a->b))   = \sum size{ptr(a),ptr(b),ptr(f(a,b))}
   ##       size(ptr(a))      = h_fnz( f_nz(a,*) )                   ~ $nnza_hf
@@ -505,26 +508,68 @@ sub test_totalsize {
   my $nnzb_hf_nzvals = $nnzb_hf->index($fab_which_b);
   my $size_arclist = ($nnza_hf_nzvals + $nnzb_hf_nzvals + $hab_ff_nzvals);
 
+  ##----------------------------
+  ## model size: arc-list + literal joint code
+  ##  size(model_arclist_code) := sum_{(a,b) : f(a,b)>0} size( arc(a->b) ) + size(code(a->b))
+  ##   + where:
+  ##       size(arc(a->b))   = \sum size{ptr(a),ptr(b),ptr(f(a,b))}
+  ##       size(ptr(a))      = h_fnz( f_nz(a,*) )                   ~ $nnza_hf
+  ##       size(ptr(b))      = h_fnz( f_nz(*,b) )                   ~ $nnzb_hf
+  ##       size(ptr(f(a,b))) = h_ff (    f(a,b) )                   ~ $hab_ff_nzvals
+  ##       size(code(a->b))  = h_corpus( f(a,b) )                   ~ $hab
+  ##  == $size_arclist + $hab_nzvals
+  ##   + oddly, this pdl has slightly fewer distinct values than $size_arclist (18288 (9.74%) vs 18519 (9.86%) of Nnz=187827)
+  ##   + Gaussian fit and scatter plots look pretty much the same
+  ##     - $xsigma (stddev) is slightly smaller for $size_arclist_code (7.18 vs. 7.41)
+  ##   + Q-Q plot for $size_arclist_code gets a better fit line, esp. for high values (~ high freqs)
+  my $size_arclist_code = ($nnza_hf_nzvals + $nnzb_hf_nzvals + $hab_ff_nzvals + $hab_nzvals);
 
-  ##-- plot
+  ##----------------------------
+  ## model size: arc-list + literal conditional codes
+  ##  size(model_arclist_bicode) := sum_{(a,b) : f(a,b)>0} size( arc(a->b) ) + size(code(a->b|a)) + size(code(a->b|b))
+  ##   + where:
+  ##       size(arc(a->b))   = \sum size{ptr(a),ptr(b),ptr(f(a,b))}
+  ##       size(ptr(a))      = h_fnz( f_nz(a,*) )                   ~ $nnza_hf
+  ##       size(ptr(b))      = h_fnz( f_nz(*,b) )                   ~ $nnzb_hf
+  ##       size(ptr(f(a,b))) = h_ff (    f(a,b) )                   ~ $hab_ff_nzvals
+  ##       size(code(a->b|a)) = h_corpus( p(b|a) )                  ~ $hbga_nzvals
+  ##       size(code(a->b|b)) = h_corpus( p(a|b) )                  ~ $hagb_nzvals
+  ##  == $size_arclist + $hbga_nzvals + $hagb_nzvals
+  ##   + more distinct values than $size_arclist (71754 (38.2%) vs 18519 (9.86%) of Nnz=187827)
+  ##   + Q-Q plot for $size_arclist_code shows "long tail" pattern
+  ##   + Gaussian fit and scatter plots look similar
+  ##     - $xsigma (stddev) is larger smaller for $size_arclist_bicode vs. $size_arclist_code (10.6 vs. 7.41)
+  my $size_arclist_bicode = ($nnza_hf_nzvals + $nnzb_hf_nzvals + $hab_ff_nzvals + $hagb_nzvals + $hbga_nzvals);
+
+  ##-- plot(s)
   usepgplot;
-  %plot1 = (axis=>'logx', xtitle=>'rank', ytitle=>'Size(Arc)'); # yrange=>[$nnzb_vcz->minmax]
+  %plot1 = (axis=>'logx', xtitle=>'rank', ytitle=>'Size(Arc(a->b))', symbol=>'dot'); # yrange=>[$nnzb_vcz->minmax]
   points($size_arclist->xvals+1, $size_arclist->qsort->slice("-1:0"), {%plot1});
   #points($fab_nzvals->ranks(order=>'desc')+1, $size_arclist, {%plot1});
   #points($fab_nzvals->ranks(order=>'desc')+1, $size_arclist-$hab_ff_nzvals, {%plot1});
   #points($fab_nzvals, $size_arclist, {%plot1,xtitle=>'f(a,b)'});
   points($size_arclist->xvals+1, $size_arclist->qsort, {%plot1,axis=>'grid'});
+  #points($pa->index($fab_which_a)*$pb->index($fab_which_b), $size_arclist, {%plot1,xtitle=>'p(a)*p(b)'});
+  #points(-log2($pa->index($fab_which_a)*$pb->index($fab_which_b)), $size_arclist, {%plot1,axis=>'grid',xtitle=>'-log2(p(a)*p(b))'});
 
+  ##-- Q-Q plots
+  qqplot($size_arclist,      {ytitle=>'Sample Quantiles: size(arc)',           symbol=>'cross'}, {color=>'red',linewidth=>5});
+  qqplot($size_arclist_code, {ytitle=>'Sample Quantiles: size(arc)+size(code)',symbol=>'cross'}, {color=>'red',linewidth=>5});
+
+  ##-- histogram plots
   #bin(hist($size_arclist)); ##-- looks normal!
-  my ($x,$y) = hist($size_arclist);
-  my @fit    = $y->smoothGaussian($x); ##-- @fit = ($yfit,$peak,$mu,$sigma)
+  my ($x,$y, $yfit,$ypk,$xmu,$xsigma, $gypk, $xrange,$yrange, %plot2);
+  ($x,$y) = hist($size_arclist);
+  ($yfit,$ypk,$xmu,$xsigma) = $y->smoothGaussian($x);
   $y /= $y->sum;
-  my $xrange = [$x->min-10,$x->max+10];
-  my $yrange = [0,(gausspeak($fit[3]) > $y->max ? gausspeak($fit[3]) : $y->max)+.01];
-  %plot = (xrange=>$xrange,yrange=>$yrange,xtitle=>'Arc Size: s',ytitle=>'p(ArcSize=s) via histogram');
-  errbin($x,$y,{color=>'cyan'});
-  hold; line(gausspoints(undef,@fit[2,3], @$xrange,100), {color=>'red'});
+  $gypk   = gausspeak($xsigma)->sclr;
+  $xrange = [$x->min-10,$x->max+10];
+  $yrange = [0,($gypk > $y->max ? $gypk : $y->max)+.01];
+  %plot2 = (xrange=>$xrange,yrange=>$yrange,xtitle=>'Arc Size: s',ytitle=>'p(ArcSize=s) via histogram');
+  errbin($x,$y,{%plot2,color=>'cyan'});
+  hold; line(gausspoints(undef,$xmu,$xsigma, @$xrange,100), {%plot2,color=>'red',linewidth=>5});
   hold; legend(["Histogram Data", "Gaussian fit pdf"], $xrange->[1]*.7,$yrange->[1]*.95, {color=>['cyan','red']}); release;
+
 
   print "$0: test_totalsize() done: what now?\n";
 }
