@@ -555,6 +555,7 @@ sub test_totalsize {
   ##-- Q-Q plots
   qqplot($size_arclist,      {ytitle=>'Sample Quantiles: size(arc)',           symbol=>'cross'}, {color=>'red',linewidth=>5});
   qqplot($size_arclist_code, {ytitle=>'Sample Quantiles: size(arc)+size(code)',symbol=>'cross'}, {color=>'red',linewidth=>5});
+  qqplot($size_arclist_bicode, {ytitle=>'Sample Quantiles: size(arc)+size(code(a|b)+code(b|a))',symbol=>'cross'}, {color=>'red',linewidth=>5});
 
   ##-- histogram plots
   #bin(hist($size_arclist)); ##-- looks normal!
