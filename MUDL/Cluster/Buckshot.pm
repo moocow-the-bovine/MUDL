@@ -79,8 +79,10 @@ sub new {
 			  protomethod=>'random',
 			  #protoweights=>undef,
 
+			  ##-- tree clustering object
+			  tree=>undef, ##--MUDL::Cluster::Tree->new(),
+
 			  ##-- DISTANCE:OLD
-			  #tree=>MUDL::Cluster::Tree->new(),
 			  #dist  =>'b',   ##-- Manhattan distance
 			  #method=>'m',   ##-- maximum link
 			  ###
@@ -105,7 +107,15 @@ sub new {
 			 );
 
   ##-- setup tree
-  $bc->{tree}{$_} = $bc->{$_} foreach (grep { $_ ne 'class' && $_ ne 'tree' } keys(%$bc));
+  if (!defined($bc->{tree})) {
+    $bc->{tree} = MUDL::Cluster::Tree->new(
+					   map  { ($_=>$bc->{$_}) }
+					   grep { $_ ne 'class' && $_ ne 'tree' }
+					   keys (%$bc)
+					  );
+  } else {
+    $bc->{tree}{$_} = $bc->{$_} foreach (grep { $_ ne 'class' && $_ ne 'tree' } keys(%$bc));
+  }
   delete($bc->{tree}{data});
 
   return $bc;

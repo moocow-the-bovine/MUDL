@@ -18,7 +18,7 @@ use Carp;
 
 use strict;
 
-our @ISA = qw(MUDL::Cluster::Buckshot);
+our @ISA = ('MUDL::Cluster::Buckshot');
 our @EXPORT_OK = qw();
 
 ##======================================================================
@@ -120,7 +120,15 @@ sub new {
 			 );
 
   ##-- setup tree
-  $ac->{tree}{$_} = $ac->{$_} foreach (grep { $_ ne 'class' && $_ ne 'tree' } keys(%$ac));
+  if (!defined($ac->{tree})) {
+    $ac->{tree} = MUDL::Cluster::Tree->new(
+					   map  { ($_=>$ac->{$_}) }
+					   grep { $_ ne 'class' && $_ ne 'tree' }
+					   keys (%$ac)
+					  );
+  } else {
+    $ac->{tree}{$_} = $ac->{$_} foreach (grep { $_ ne 'class' && $_ ne 'tree' } keys(%$ac));
+  }
   delete($ac->{tree}{data});
 
   return $ac;

@@ -734,6 +734,11 @@ our %FIELDS =
    'xvars->tck' => { path=>[qw(xvars tck)], title=>'tck', n=>1 },
 
    ##-- MetaProfile xvars aliases: labels
+   'mpc'     => 'mpclass',
+   'mpwhich' => 'mpclass',
+   'mplabel' => 'mpclass',
+   'mpclass' => { path=>[qw(xvars mpc)], title=>'mpclass', alt=>['xvars->mplabel'], },
+
    'method'=>'xlabel',
    'xlabel'     => { path=>[qw(xvars xlabel)], title=>'method',
 		     alt=>[qw(xvars->tcclass xvars->tcm xvars->tccm),

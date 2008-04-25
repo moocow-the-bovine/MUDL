@@ -66,8 +66,8 @@ sub log2 {
   return log($_[0])/$LOG2 if (!ref($_[0]));
   if ($_[0]->is_inplace) {
     $_[0]->log();
-    $p /= $LOG2;
-    return $p;
+    $_[0] /= $LOG2;
+    return $_[0];
   }
   return $_[0]->log / $LOG2;
 }

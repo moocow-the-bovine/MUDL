@@ -449,8 +449,13 @@ sub test_totalsize {
 
   ##-- freq-freqs: value counts
   my ($fab_fv,$fab_fc) = $fab_nzvals->valcounts();
-  my $fab_fcz = $fab_fc->smearvals($fab_fv);  ##-- smear GT-style?
-  #$fab_fcz = $fab_fc;                        ##-- ... or don't
+  my ($fab_fcz);
+  my $SMEAR_FF = 0;
+  if ($SMEAR_FF) {
+    $fab_fcz = $fab_fc->smearvals($fab_fv);  ##-- smear GT-style?
+  } else {
+    $fab_fcz = $fab_fc->double;               ##-- ... or don't
+  }
   my $pab_fcz = $fab_fcz / $fab_fcz->sumover;
 
   ##-- freq-freqs: back-fit
@@ -471,11 +476,15 @@ sub test_totalsize {
 
   my ($nnza_v,$nnza_vc) = $nnza->valcounts;
   my ($nnzb_v,$nnzb_vc) = $nnzb->valcounts;
-  my $nnza_vcz = $nnza_vc->smearvals($nnza_v);
-  my $nnzb_vcz = $nnzb_vc->smearvals($nnzb_v);
-  ##-- safety/debug
-  $nnza_vc = $nnza_vc->double;
-  $nnzb_vc = $nnzb_vc->double;
+  my ($nnza_vcz,$nnzb_vcz);
+  my $SMEAR_NNZ_FF = 0;
+  if ($SMEAR_NNZ_FF) {
+    $nnza_vcz = $nnza_vc->smearvals($nnza_v);
+    $nnzb_vcz = $nnzb_vc->smearvals($nnzb_v);
+  } else {
+    $nnza_vcz = $nnza_vc->double;
+    $nnzb_vcz = $nnzb_vc->double;
+  }
 
   ##-- nnz-freqs: back-fit
   my $nnza_ff = $nnza->interpol($nnza_v,$nnza_vcz); ##-- [a] -> f_fnz( f_nz(a,*) )
@@ -569,7 +578,7 @@ sub test_totalsize {
   %plot2 = (xrange=>$xrange,yrange=>$yrange,xtitle=>'Arc Size: s',ytitle=>'p(ArcSize=s) via histogram');
   errbin($x,$y,{%plot2,color=>'cyan'});
   hold; line(gausspoints(undef,$xmu,$xsigma, @$xrange,100), {%plot2,color=>'red',linewidth=>5});
-  hold; legend(["Histogram Data", "Gaussian fit pdf"], $xrange->[1]*.7,$yrange->[1]*.95, {color=>['cyan','red']}); release;
+  hold; legend(["Histogram Data", "Gaussian fit pdf"], $xrange->[1]*.7,$yrange->[1]*.95, {color=>['cyan','red']}); releas;e
 
 
   print "$0: test_totalsize() done: what now?\n";

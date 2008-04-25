@@ -30,8 +30,8 @@ our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::PdlProfile); #)
 ##       smoothgt=>$which,           ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
 ##
 ##   + data acquired [NEW: PDL-ized]
-##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq
-##       pright=>$right_bigrams,     ## MUDL::PdlDist::SparseNd: ($target_id,$right_bound_id) => $freq
+##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq  (~ $pdl3d->xvals==0)
+##       pright=>$right_bigrams,     ## MUDL::PdlDist::SparseNd: ($target_id,$right_bound_id) => $freq  (~ $pdl3d->xvals==1)
 ##       ptugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for targets
 ##       pbugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for bounds
 ##       ftotal=>$total,             ## total number of w2 tokens processed (perl scalar)
