@@ -137,12 +137,12 @@ sub finishPdl {
     #my $arcsize_nzvals = ($hwb_ff_nzvals + $nnzw_hf_nzvals + $nnzb_hf_nzvals + $hwgb_nzvals + $hbgw_nzvals); ##-- arcs + cond codes
     ##-- DEBUG: try to use h() only : should be equivalent to lrlogf() ... but isn't, by a ___long___ shot @ stage>1
     #my $arcsize_nzvals = $hwb_nzvals;
-    #my $arcsize_nzvals = -log2z( ($fwb_nzvals+1)/$N );  ##-- 83%, 25%, ...
-    #my $arcsize_nzvals = -log( ($fwb_nzvals+1)/$N );    ##-- 83%, 25%, ...
-    my $arcsize_nzvals = log2z($N)-log2z($fwb_nzvals+1); ##-- 83%, 25%, ...
-    #my $arcsize_nzvals = log( $fwb_nzvals+1 );    ##-- ==logf: 83%, 74%, 66%, ...
-    #my $arcsize_nzvals = log2z( $fwb_nzvals+1 );  ##-- ==logf: 83%, 74%, 66%, ...
-    #my $arcsize_nzvals = log2z( $fwb_nzvals );     ##-- <=logf, same pattern but slightly worse
+    #my $arcsize_nzvals = -log2z( ($fwb_nzvals+1)/$N );  ##-- 83%, 25%, ... !=logf --why?!
+    #my $arcsize_nzvals = -log( ($fwb_nzvals+1)/$N );    ##-- 83%, 25%, ... !=logf --why?!
+    my $arcsize_nzvals = log2z($N)-log2z($fwb_nzvals+1); ##-- 83%, 25%, ... !=logf --why?!
+    #my $arcsize_nzvals = log( $fwb_nzvals+1 );          ##-- 83%, 74%, ... ==logf
+    #my $arcsize_nzvals = log2z( $fwb_nzvals+1 );        ##-- 83%, 74%, ... ==logf
+    #my $arcsize_nzvals = log2z( $fwb_nzvals );          ##-- <=logf, same pattern but slightly worse
 
     my $arcsize_nd = $fwb->shadow(which=>$fwb_which,vals=>$arcsize_nzvals->append(0));
 
