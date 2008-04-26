@@ -578,12 +578,12 @@ sub test_totalsize {
   %plot2 = (xrange=>$xrange,yrange=>$yrange,xtitle=>'Arc Size: s',ytitle=>'p(ArcSize=s) via histogram');
   errbin($x,$y,{%plot2,color=>'cyan'});
   hold; line(gausspoints(undef,$xmu,$xsigma, @$xrange,100), {%plot2,color=>'red',linewidth=>5});
-  hold; legend(["Histogram Data", "Gaussian fit pdf"], $xrange->[1]*.7,$yrange->[1]*.95, {color=>['cyan','red']}); releas;e
+  hold; legend(["Histogram Data", "Gaussian fit pdf"], $xrange->[1]*.7,$yrange->[1]*.95, {color=>['cyan','red']}); release;
 
 
   print "$0: test_totalsize() done: what now?\n";
 }
-test_totalsize();
+#test_totalsize();
 
 ##-- util: tuple creation
 ## $tuples = tuples($x,$y,$z,...)
@@ -629,6 +629,42 @@ sub test_utuples {
   print STDERR "$0: test_utuples() done: what now?\n";
 }
 #test_utuples();
+
+##----------------------------------------------------------------------
+## test: logf() vs. h()
+
+sub vrange {
+  my $p = shift->flat;
+  while (@_) {
+    $p = $p->append(shift->flat);
+  }
+  return [$p->minmax];
+}
+
+sub test_logf_vs_h {
+  our $f = pdl([1,1,2,0,0,0,0])->qsort;
+  our $N = 8;
+  our $eps = 1;
+
+  our $lf1 = log($f+$eps)/log(2);
+  our ($lf1_mu,$lf1_sigma) = ($lf1->mean,$lf1->stddev);
+  our $lf1_z  = ($lf1-$lf1_mu)/$lf1_sigma;
+
+  our $h1 = -log(($f+$eps)/$N)/log(2);
+  our ($h1_mu,$h1_sigma) = ($h1->mean,$h1->stddev);
+  our $h1_z  = ($h1-$h1_mu)/$h1_sigma;
+
+  our $lf0 = log2z($f);
+  our ($lf0_mu,$lf0_sigma) = ($lf0->mean,$lf0->stddev);
+  our $lf0_z  = ($lf0-$lf0_mu)/$lf0_sigma;
+
+  our $h0 = -log2z($f/$N);
+  our ($h0_mu,$h0_sigma) = ($h0->mean,$h0->stddev);
+  our $h0_z  = ($h0-$h0_mu)/$h0_sigma;
+
+  print STDERR "$0: test_logf_vs_h() done: what now?\n";
+}
+test_logf_vs_h();
 
 ##----------------------------------------------------------------------
 ## Dummy
