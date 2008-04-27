@@ -383,23 +383,14 @@ sub addPdlBigrams {
   my $l_nz     = $vals->where($l_isgood);
   my $lbi_bds  = $bge2bds->index($lbi_bgi);
   my $lti_tgs  = $bge2tgs->index($lti_bgi);
-  ##
-  ##-- BUG: PDL::CCS::Nd::shadow() doesn't sort 'which' argument!
-  #  my $lpd      = $bgpd->{pdl}->shadow(
-  #				      pdims=>pdl(long,$Ntgs,$Nbds),
-  #				      vdims=>sequence(long,2),
-  #				      which=>$lti_tgs->cat($lbi_bds)->xchg(0,1),
-  #				      vals =>$l_nz->append($missing),
-  #				     );
-  ##--
   my $lpd      = $bgpd->{pdl}->shadow(
   				      pdims=>pdl(long,$Ntgs,$Nbds),
   				      vdims=>sequence(long,2),
   				      which=>$lti_tgs->cat($lbi_bds)->xchg(0,1),
   				      vals =>$l_nz->append($missing),
-  				     )->sortwhich;
-  $lpd->_whichND->badflag(0) if ($lpd->_whichND->isgood->all);
-  $lpd->_vals->badflag(0)    if ($lpd->_vals->isgood->all);
+  				     )->sortwhich;             ##-- ensure index-sort on primary dimension
+  $lpd->_whichND->badflag(0) if ($lpd->_whichND->isgood->all); ##-- bad flag gets set by setvaltobad() above
+  $lpd->_vals->badflag(0)    if ($lpd->_vals->isgood->all);    ##-- ... ditto, probably
 
   ##-- get {right} CCS distribution: bounds-on-right, targets-on-left
   my $r_isgood = $bds_msk->index($bgw2) & $tgs_msk->index($bgw1);
@@ -408,23 +399,14 @@ sub addPdlBigrams {
   my $r_nz     = $vals->where($r_isgood);
   my $rbi_bds  = $bge2bds->index($rbi_bgi);
   my $rti_tgs  = $bge2tgs->index($rti_bgi);
-  ##
-  ##-- BUG: PDL::CCS::Nd::shadow() doesn't sort 'which' argument!
-  #  my $rpd      = $bgpd->{pdl}->shadow(
-  #				      pdims=>pdl(long,$Ntgs,$Nbds),
-  #				      vdims=>sequence(long,2),
-  #				      which=>$rti_tgs->cat($rbi_bds)->xchg(0,1),
-  #				      vals =>$r_nz->append($missing),
-  #				     );
-  ##--
   my $rpd      = $bgpd->{pdl}->shadow(
   				      pdims=>pdl(long,$Ntgs,$Nbds),
   				      vdims=>sequence(long,2),
   				      which=>$rti_tgs->cat($rbi_bds)->xchg(0,1),
   				      vals =>$r_nz->append($missing),
-  				     )->sortwhich;
-  $rpd->_whichND->badflag(0) if ($rpd->_whichND->isgood->all);
-  $rpd->_vals->badflag(0)    if ($rpd->_vals->isgood->all);
+  				     )->sortwhich;             ##-- ensure index-sort on primary dimension
+  $rpd->_whichND->badflag(0) if ($rpd->_whichND->isgood->all); ##-- bad flag gets set by setvaltobad() above
+  $rpd->_vals->badflag(0)    if ($rpd->_vals->isgood->all);    ##-- ... ditto, probably
 
   ##-- pack up {right} and {left} distributions into {pright}, {pleft}
   my $tbenum   = MUDL::Enum::Nary->new(nfields=>2, enums=>[$tgs,$bds]);
