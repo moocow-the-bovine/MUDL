@@ -68,10 +68,10 @@ sub finishPdl {
     my $zpdl    = $pdl->slice("($z)");
 
     my $fwb        = $lr->{$z==0 ? 'pleft' : 'pright'}{pdl}->double;
-    my $fwb_nzvals = $fwb->_nzvals;             ##-- [nzi] -> f(w_nzi,b_nzi)
     my $fwb_which  = $fwb->_whichND;            ##-- [nzi] -> [w_nzi,b_nzi]
+    my $fwb_nzvals = $fwb->_nzvals;             ##-- [nzi] -> f(w_nzi,b_nzi)
 
-    ##-- sanity check: bad flags
+    ##-- sanity check: bad flags (now in LRBigrams::addPdlBigrams())
     $fwb_which->badflag(0)  if ($fwb_which->badflag && $fwb_which->isgood->all);
     $fwb_nzvals->badflag(0) if ($fwb_nzvals->badflag && $fwb_nzvals->isgood->all);
 
@@ -137,11 +137,23 @@ sub finishPdl {
     #my $arcsize_nzvals = ($hwb_ff_nzvals + $nnzw_hf_nzvals + $nnzb_hf_nzvals + $hwgb_nzvals + $hbgw_nzvals); ##-- arcs + cond codes
     ##-- DEBUG: try to use h() only : should be equivalent to lrlogf() ... but isn't, by a ___long___ shot @ stage>1
     #my $arcsize_nzvals = $hwb_nzvals;
-    #my $arcsize_nzvals = -log2z( ($fwb_nzvals+1)/$N );  ##-- 83%, 25%, ... !=logf --why?!
+    my $arcsize_nzvals = -log2z( ($fwb_nzvals+1)/$N );  ##-- 83%, 25%, ... !=logf --why?!
+    ##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ##-- see data/argh.perl, func test_lrarcsize_update()
+    ##   + problem are freq-zeroes (missing in $arcsize_nd, assigned below)
+    ##   + these get val=0 in arcsize profile pdl, which is just decode()d from $arcsize_nd
+    ##   + BUT, h=0 means p=2**-h=1 means E(f)=N*p=N, which is Just Plain Wrong!
+    ##!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #my $arcsize_nzvals = -log( ($fwb_nzvals+1)/$N );    ##-- 83%, 25%, ... !=logf --why?!
-    my $arcsize_nzvals = log2z($N)-log2z($fwb_nzvals+1); ##-- 83%, 25%, ... !=logf --why?!
+    #my $arcsize_nzvals = log2z($N)-log2z($fwb_nzvals+1); ##-- 83%, 25%, ... !=logf --why?!
+    #my $arcsize_nzvals = -log( ($fwb_nzvals+1)/$N );    ##-- 83%, 25%, ... !=logf --why?!
+    ##
+    #my $arcsize_nzvals0 = -log2z( ($fwb_nzvals+1)/$N );
+    #my $arcsize_nzvals  = log( (2**-$arcsize_nzvals0)*$N ); ##-- 83%, 74%, ... == logf
+    ##--
     #my $arcsize_nzvals = log( $fwb_nzvals+1 );          ##-- 83%, 74%, ... ==logf
     #my $arcsize_nzvals = log2z( $fwb_nzvals+1 );        ##-- 83%, 74%, ... ==logf
+    ##~~
     #my $arcsize_nzvals = log2z( $fwb_nzvals );          ##-- <=logf, same pattern but slightly worse
 
     my $arcsize_nd = $fwb->shadow(which=>$fwb_which,vals=>$arcsize_nzvals->append(0));
