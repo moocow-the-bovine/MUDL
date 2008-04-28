@@ -25,6 +25,8 @@ our %EXPORT_TAGS =
 	       'gaussquantiles', 'gaussqvals', 'gausscdfi', ##-- all aliases for one another
 	       'uosm',
 	      ],
+   'di' => ['diLambdas2',
+	   ],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -358,6 +360,56 @@ sub uosm {
   return $m;
 }
 
+##======================================================================
+## Deleted Interpolation
+
+## $lambdas             = diLambdas2($f12,%args) ##-- scalar context
+## ($lambda2,$lambda12) = diLambdas2($f12,%args) ##-- list context
+##  + $f12 is either a dense PDL or a PDL::CCS::Nd
+##  + finds $lambdas = pdl([$lambda1,$lambda2]) for estimating values of dim=1 of $f12
+##    by $f2 independent probabilities ($lambda2) or dim=0 conditional probabilities ($lambda12)
+##  + %args:
+##     f1 => $f1, ##-- optional, dense or CCS::Nd
+##     f2 => $f2, ##-- optional, dense or CCS::Nd
+##     N  => $N,  ##-- optional
+BEGIN { *PDL::diLambdas2 = *PDL::CCS::Nd::diLambdas2 = \&diLambdas2; }
+sub diLambdas2 {
+  my ($f12,%args) = @_;
+  my $f1  = defined($args{f1}) ? $args{f1} : $f12->xchg(0,1)->sumover;
+  my $f2  = defined($args{f2}) ? $args{f2} : $f12->sumover;
+  my $N   = defined($args{N})  ? $args{N}  : $f2->sumover;
+  #$f12 = $f12->toccs if (!UNIVERSAL::isa($f12,'PDL::CCS::Nd'));
+  $f1  = $f1->decode if (UNIVERSAL::isa($f1,'PDL::CCS::Nd'));
+  $f2  = $f2->decode if (UNIVERSAL::isa($f2,'PDL::CCS::Nd'));
+
+  my $f12i = $f12->whichND;
+  my $f12v = UNIVERSAL::isa($f12,'PDL::CCS::Nd') ? $f12->whichVals : $f12->indexND($f12i);
+  my $f1v  = $f1->index( $f12i->slice("(0),") );
+  my $f2v  = $f2->index( $f12i->slice("(1),") );
+
+  my $p12v = ($f12v-1) / ($f1v-1);
+  my $p2v  = ($f2v-1)  / ($N-1);
+
+  my $f1_hapax_mask  = ($f1v  <= 1);
+  #$p12v->where($f1_hapax_mask) .= 0; ##-- prefer independent p2 for hapax
+  $p12v->where($f1_hapax_mask) .= 1;  ##-- prefer conditional p12 for hapax
+
+  ##-- compare
+  my $p12_best = ($p12v >= $p2v);
+  my $p2_best  = $p12_best->not;
+
+  ##-- extract frequencies
+  my $p12_best_f = $f12v->where($p12_best);
+  my $p2_best_f  = $f12v->where($p2_best);
+
+  ##-- compute lambdas
+  my $lambda12f = $p12_best_f->sumover;
+  my $lambda2f  = $p2_best_f->sumover;
+  my $lambdas   = pdl(PDL::double, [$lambda2f,$lambda12f]);
+  $lambdas     /= $lambdas->sumover;
+
+  return wantarray ? $lambdas->dog : $lambdas;
+}
 
 1;
 

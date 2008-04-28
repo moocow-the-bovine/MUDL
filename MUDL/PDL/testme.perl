@@ -664,7 +664,31 @@ sub test_logf_vs_h {
 
   print STDERR "$0: test_logf_vs_h() done: what now?\n";
 }
-test_logf_vs_h();
+#test_logf_vs_h();
+
+##----------------------------------------------------------------------
+## test: deleted interpolation
+
+sub test_dilambdas {
+  my $bgd = load("bgd.bin");
+  loadModule($bgd);
+
+  my $f12 = $bgd->{pdl}->double;
+  my $f21 = $f12->xchg(0,1)->to_physically_indexed;
+  my $f1  = $f21->sumover;
+  my $f2  = $f1;
+  my $N   = $f2->sumover;
+
+  my $f12l = $f12->diLambdas2(f1=>$f1,f2=>$f2,N=>$N);
+  my $f21l = $f21->diLambdas2(f1=>$f1,f2=>$f2,N=>$N);
+
+  my $dr   = 100;
+  my $f12r = (1/(sequence($dr**2)+1)*$dr**2)->index(random($dr**2)->qsorti)->reshape($dr,$dr)->rint;
+  my $f12rl = $f12r->diLambdas2();
+
+  print STDERR "$0: test_dilambdas() done: what now?\n";
+}
+test_dilambdas();
 
 ##----------------------------------------------------------------------
 ## Dummy
