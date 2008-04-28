@@ -459,18 +459,10 @@ sub boundUgPdl {
 ## $pdl = $lr->toPDL()
 ## $pdl = $lr->toPDL($pdl)
 
-## $pdl_3d = $lr->toPDL3d()
-## $pdl_3d = $lr->toPDL3d($pdl_3d,%args)
-##   + converts to pdl
-##   + returned $pdl_3d is of dimensions: (2,$d,$n), where:
-##     - $n == number-of-targets
-##     - $d == (number-of-bounds ^ $nfields)   ##-- left-bounds & right-bounds
-##   + may call the following:
-##     - undef = $lr->finishPdl($pdl_3d)
-##     - undef = $lr->normalizePdl($pdl_3d)
-##   + %args:
-##     clobber %$lr
-sub toPDL3d {
+## $pdl3d = $lr->getPdl3d($pdl_3d,%args)
+##  + gets suitable 3d-pdl, and zeroes it
+##  + %args: clobber %$lr
+sub getPdl3d {
   my ($lr,$pdl,%args) = @_;
   @$lr{keys %args} = values %args; ##-- args: clobber
 
@@ -486,21 +478,29 @@ sub toPDL3d {
     if ($pdl->ndims < 3 || $pdl->dim(0) < 2 || $pdl->dim(1) < ($neb**$nfields) || $pdl->dim(2) < $net);
   $pdl .= 0;
 
-  ##-- frequency data: variables
-  #my ($spdl,$xi,$yi);
+  return $pdl;
+}
+
+## $pdl_3d = $lr->toPDL3d()
+## $pdl_3d = $lr->toPDL3d($pdl_3d,%args)
+##   + converts to pdl
+##   + returned $pdl_3d is of dimensions: (2,$d,$n), where:
+##     - $n == number-of-targets
+##     - $d == (number-of-bounds ^ $nfields)   ##-- left-bounds & right-bounds
+##   + may call the following:
+##     - undef = $lr->finishPdl($pdl_3d)
+##     - undef = $lr->normalizePdl($pdl_3d)
+##   + %args: clobber %$lr
+sub toPDL3d {
+  my ($lr,$pdl,%args) = @_;
+  @$lr{keys %args} = values %args; ##-- args: clobber
+
+  $pdl = $lr->getPdl3d($pdl);
 
   ##-- frequency data: left-context
-  #$spdl = $lr->{pleft};
-  #($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
-  #$pdl->slice('(0),')->index2d($yi,$xi) .= $spdl->{nzvals};
-  ##--
   $lr->{pleft}{pdl}->decode( $pdl->slice('(0),')->xchg(0,1) );
 
   ##-- frequency data: right-context
-  #$spdl = $lr->{pright};
-  #($xi,$yi) = ccswhichND(@$spdl{qw(ptr rowids nzvals)});
-  #$pdl->slice('(1),')->index2d($yi,$xi) .= $spdl->{nzvals};
-  ##--
   $lr->{pright}{pdl}->decode( $pdl->slice('(1),')->xchg(0,1) );
 
   ##-- smoothing

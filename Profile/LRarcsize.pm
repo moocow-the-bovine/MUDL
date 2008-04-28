@@ -92,8 +92,8 @@ sub finishPdl {
     ##-- freq-freqs
     #my ($fwb_fv,$fwb_fc) = $fwb_nzvals->valcounts;
     my ($fwb_fv,$fwb_fc) = $fwb->valcounts;
-    my $SMEAR_FF = 1; ##-- ?
-    #$SMEAR_FF    = 0; ##-- ?
+    my $SMEAR_FF = 1; ##-- GT-style value-smearing?
+    #$SMEAR_FF    = 0; ##-- ... or none
     my ($fwb_fcz);
     if ($SMEAR_FF) {
       $fwb_fcz = $fwb_fc->double->smearvals($fwb_fv); ##-- WITH GT-style value smearing (?)
@@ -114,8 +114,8 @@ sub finishPdl {
     my ($nnzw_v,$nnzw_vc) = $nnzw->valcounts;
     my ($nnzb_v,$nnzb_vc) = $nnzb->valcounts;
     my ($nnzw_vcz,$nnzb_vcz);
-    my $SMEAR_NNZ_FF = 1;
-    #$SMEAR_NNZ_FF = 0;
+    my $SMEAR_NNZ_FF = 1; ##-- GT-style value-smearing?
+    $SMEAR_NNZ_FF = 0;    ##-- ... or none
     if ($SMEAR_NNZ_FF) {
       $nnzw_vcz = $nnzw_vc->double->smearvals($nnzw_v);
       $nnzb_vcz = $nnzb_vc->double->smearvals($nnzb_v);
@@ -132,6 +132,36 @@ sub finishPdl {
     #my $nnzb_hf_nzvals = $nnzb_hf->index($fwb_bi);    ##-- [nzi] -> h( f_fnz(B=b_nzi)/NNZF )
 
     if (1) {
+      ##-- seems to work well: next thing to try: gt-smoothed log-freqs
+      ##   WHERE GT-smoothing is applied at the raw-frequency bigram level
+      my ($fwb_fcz_fit,$fwb_fcz_coeffs) = $fwb_fcz->loglinfit($fwb_fv+1);
+      my $fwb_ff_fit_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz_fit);
+      my $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals/$fwb_fcz_fit->sumover);
+      my $hwb_ff_nd = $fwb->shadow(which=>$fwb_which, vals=>$hwb_ff_fit_vals);
+      $hwb_ff_nd->decode($zpdl->xchg(0,1));
+      print STDERR "<<<DEBUG>>>: ", ref($lr)."::finishPdl(z=$z): fwb_fcz_coeffs=".$fwb_fcz_coeffs."\n";
+    }
+    elsif (0) {
+      my $hwb_ff_nd = $fwb->shadow(which=>$fwb_which, vals=>$hwb_ff_vals);
+      $zpdl .= $hwb_ff_nd->xchg(0,1)->decode;
+    }
+    elsif (0) {
+      my $zmask = ($zpdl>0);                   ##-- [b,w] --> I[f(b,w)>0]
+      $zpdl .= log2($zpdl+1);                  ##-- [b,w] --> len(code(f(w,b)))
+
+      ##-- pointers: constant size (==logf)
+      #$zpdl += log2($zpdl->dim(0));
+      #$zpdl += log2($zpdl->dim(1));
+
+      ##-- pointers: non-zeroes only
+      #$zpdl->where($zmask) += $nnzb_hf->index($zpdl->xvals->where($zmask));  ##-- [b,w] +-> len(ptr(b))
+      #$zpdl->where($zmask) += $nnzw_hf->index($zpdl->yvals->where($zmask));  ##-- [b,w] +-> len(ptr(w))
+
+      ##-- pointers: all: WORSE
+      #$zpdl += $nnzb_hf->index($zpdl->xvals); ##-- hurts less at attachment stages than $nnzw_hf
+      #$zpdl += $nnzw_hf->index($zpdl->yvals);
+    }
+    elsif (0) {
       $zpdl .= 0;
       $zpdl += $nnzb_hf->index($zpdl->xvals);
       $zpdl += $nnzw_hf->index($zpdl->yvals);
