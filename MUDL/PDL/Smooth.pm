@@ -46,6 +46,17 @@ sub valcounts {
   return ($values->where($counts_mask),$counts->where($counts_mask));
 }
 
+BEGIN { *PDL::CCS::Nd::valcounts = \&ccs_nd_valcounts; }
+sub ccs_nd_valcounts {
+  my $ccs = shift;
+  my ($v,$vc)  = $ccs->_vals->valcounts;
+  my $vmissing = $ccs->missing;
+  my $nmissing = $ccs->nmissing;
+  my $imissing = $vmissing->vsearch($v);
+  $vc->index($imissing) .= $nmissing;
+  return ($v,$vc);
+}
+
 ##======================================================================
 ## Value Smearing (GT-style)
 

@@ -197,6 +197,7 @@ sub toPDL {
 
 ## $pdl_3d = $lr->toPDL3d()
 ## $pdl_3d = $lr->toPDL3d($pdl_3d,%args)
+##   + overridden e.g. by LRBigrams
 ##   + converts to pdl
 ##   + returned $pdl_3d is of dimensions: (2,$d,$n), where:
 ##     - $n == number-of-targets

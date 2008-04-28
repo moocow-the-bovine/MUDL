@@ -7,9 +7,25 @@
 ##======================================================================
 
 package MUDL::PDL::Ranks;
+use Exporter;
 use PDL;
 
 use strict;
+
+our @ISA = qw(Exporter);
+our %EXPORT_TAGS =
+  (
+   'ranks'  => [
+		'ranks', 'ranks_asc','ranks_dsc',
+		'ranks1', 'ranks1_asc', 'ranks1_dsc',
+		'avgranks', 'avgranks_asc', 'avgranks_dsc',
+		'avgranks1', 'avgranks1_asc', 'avgranks1_dsc',
+	       ],
+  );
+$EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
+our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
+our @EXPORT      = @EXPORT_OK;
+
 
 ##======================================================================
 ## Ranks
@@ -21,7 +37,11 @@ use strict;
 ##     order=>$asc_or_desc, ##-- one of 'asc' (default) or 'desc'
 ##     ranks=>$rankpdl,     ##-- pre-allocated output pdl
 ##     ?
-BEGIN { *PDL::ranks = \&ranks; }
+BEGIN {
+  *PDL::ranks = \&ranks;
+  *PDL::ranks_asc = \&ranks_asc;
+  *PDL::ranks_dsc = \&ranks_dsc;
+}
 sub ranks {
   my ($pdl,%opts) = @_;
 
@@ -39,6 +59,24 @@ sub ranks {
   return $pdl_ranks;
 }
 
+## $rankpdl = $pdl->ranks_asc(%opts)    ##-- alias for $pdl->ranks(order=>'asc')
+## $rankpdl = $pdl->ranks_dsc(%opts)    ##-- alias for $pdl->ranks(order=>'desc')
+sub ranks_asc { ranks(@_,order=>'asc'); }
+sub ranks_dsc { ranks(@_,order=>'dsc'); }
+
+## $rank1pdl = $pdl->ranks1(%opts)       ##-- alias for $pdl->ranks(%opts)+1
+## $rank1pdl = $pdl->ranks1_asc(%opts)   ##-- alias for $pdl->ranks_asc(%opts)+1
+## $rank1pdl = $pdl->ranks1_dsc(%opts)   ##-- alias for $pdl->ranks_asc(%opts)+1
+BEGIN {
+  *PDL::ranks1 = \&ranks1;
+  *PDL::ranks1_asc = \&ranks1_asc;
+  *PDL::ranks1_dsc = \&ranks1_dsc;
+}
+sub ranks1 { ranks(@_)+1; }
+sub ranks1_asc { ranks(@_,order=>'asc')+1; }
+sub ranks1_dsc { ranks(@_,order=>'dsc')+1; }
+
+
 ##======================================================================
 ## Ranks: average
 
@@ -49,7 +87,11 @@ sub ranks {
 ##     order=>$asc_or_desc, ##-- one of 'asc' (default) or 'desc'
 ##     ranks=>$rankpdl,     ##-- pre-allocated output pdl
 ##     ?
-BEGIN { *PDL::avgranks = \&avgranks; }
+BEGIN {
+  *PDL::avgranks = \&avgranks;
+  *PDL::avgranks_asc = \&avgranks_asc;
+  *PDL::avgranks_dsc = \&avgranks_dsc;
+}
 sub avgranks {
   my ($pdl,%opts) = @_;
 
@@ -74,6 +116,24 @@ sub avgranks {
 
   return $pdl_ranks;
 }
+
+## $rankpdl = $pdl->avgranks_asc(%opts)    ##-- alias for $pdl->avgranks(order=>'asc')
+## $rankpdl = $pdl->avgranks_dsc(%opts)    ##-- alias for $pdl->avgranks(order=>'desc')
+sub avgranks_asc { avgranks(@_,order=>'asc'); }
+sub avgranks_dsc { avgranks(@_,order=>'dsc'); }
+
+## $rank1pdl = $pdl->avgranks1(%opts)       ##-- alias for $pdl->ranks(%opts)+1
+## $rank1pdl = $pdl->avgranks1_asc(%opts)   ##-- alias for $pdl->ranks_asc(%opts)+1
+## $rank1pdl = $pdl->avgranks1_dsc(%opts)   ##-- alias for $pdl->ranks_asc(%opts)+1
+BEGIN {
+  *PDL::avgranks1 = \&avgranks1;
+  *PDL::avgranks1_asc = \&avgranks1_asc;
+  *PDL::avgranks1_dsc = \&avgranks1_dsc;
+}
+sub avgranks1 { avgranks(@_)+1; }
+sub avgranks1_asc { avgranks(@_,order=>'asc')+1; }
+sub avgranks1_dsc { avgranks(@_,order=>'dsc')+1; }
+
 
 1;
 
