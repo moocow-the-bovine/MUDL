@@ -1,11 +1,11 @@
 #-*- Mode: CPerl -*-
-## File: MUDL::Corpus::Profile::LRegamma.pm
+## File: MUDL::Corpus::Profile::LREliasGammaSize.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profile: L-R frequency: elias gamma coding
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRegamma;
+package MUDL::Corpus::Profile::LREliasGammaSize;
 use MUDL::Corpus::Profile::LRFBigrams;
 use MUDL::Object;
 use MUDL::EDist;
