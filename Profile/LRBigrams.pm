@@ -28,13 +28,20 @@ our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::PdlProfile); #)
 ##       bounds => $bounds_enum,
 ##       targets => $targets_enum,
 ##       smoothgt=>$which,           ## whether/where to apply Good-Turing smoothing: false,'bigrams','pdl'
+##       smoothli=>$where,           ## whether/where to smooth by (deleted) interpolation: 'global', 'local'
+##       li_which=>$which,           ## + independent value to add in with \lambda1: 'b':bound (default), 't':target
+##       li_hapax =>$how,            ## + how to handle hapax events for li-smoothing (default: ignore)
 ##
 ##   + data acquired [NEW: PDL-ized]
-##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq  (~ $pdl3d->xvals==0)
-##       pright=>$right_bigrams,     ## MUDL::PdlDist::SparseNd: ($target_id,$right_bound_id) => $freq  (~ $pdl3d->xvals==1)
+##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq  (~ $pdl3d->xvals==0), bound-is-left
+##       pright=>$right_bigrams,     ## MUDL::PdlDist::SparseNd: ($target_id,$right_bound_id) => $freq  (~ $pdl3d->xvals==1), bound-is-right
 ##       ptugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for targets
 ##       pbugs =>$target_unigrams,   ## MUDL::PdlDist: w2-unigram totals for bounds
 ##       ftotal=>$total,             ## total number of w2 tokens processed (perl scalar)
+##
+##   + linear interpolation data:
+##       diLambdasLR=>$lambdas,    ## labmdas for left-to-right prediction, see MUDL::PDL::Smooth::diLambdas2()
+##       diLambdasRL=>$lambdas,    ## labmdas for right-to-left prediction, see MUDL::PDL::Smooth::diLambdas2()
 ##
 ##   + backwards-compatibility data:
 ##       left =>$left_bigrams,       ## ($target_id,$lneighbor_id) => $count
@@ -54,6 +61,10 @@ sub new {
 			       nfields=>1,
 			       donorm=>1,
 			       norm_min=>0,
+			       smoothgt=>0,
+			       smoothli=>0,
+			       #li_which=>'b',
+			       #li_hapax=>'ignore',
 			       %args,
 			      );
   $self->{tugs} = MUDL::EDist->new(enum=>$self->{targets}) if (!$self->{tugs});
@@ -67,7 +78,7 @@ sub reset {
   my $prf = shift;
 
   ##-- clear: pdls
-  delete(@$prf{qw(ptugs pbugs pleft pright)});
+  delete(@$prf{qw(ptugs pbugs pleft pright diLambdasLR diLambdasRL)});
 
   ##-- clear: unigram EDists (backwards-compatibility)
   #delete(@$prf{qw(tugs bugs left right)});
@@ -91,7 +102,8 @@ sub shadow {
 
   ##-- save temps: pdls
   my (%pdtmp);
-  foreach (qw(pleft pright ptugs pbugs)) {
+  my @ptmpkeys = qw(pleft pright ptugs pbugs diLambdasLR diLambdasRL);
+  foreach (@ptmpkeys) {
     next if (!defined($lr->{$_}));
     $pdtmp{$_} = $lr->{$_};
     #$lr->{$_} = ref($pdtmp{$_})->new();
@@ -117,9 +129,9 @@ sub shadow {
     $lr->{$_}{nz} = $nztmp{$_};
   }
   ##-- restore temps: pdls
-  foreach (qw(pleft pright ptugs pbugs)) {
+  foreach (@ptmpkeys) {
     $lr->{$_}  = $pdtmp{$_};
-    $lr2->{$_} = $lr->{$_}->new;
+    $lr2->{$_} = $lr->{$_}->new if (defined($lr->{$_}));
   }
 
   return $lr2;
@@ -268,7 +280,7 @@ sub addBigrams_OLD {
     $lr->{bounds}->addSymbol($lr->{eos});
   }
 
-  ##-- smoothing
+  ##-- smoothing: GT
   $lr->{smoothgt} = $args{smoothgt} if (defined($args{smoothgt}));
   if ($lr->{smoothgt} && $lr->{smoothgt} eq 'bigrams') {
     $bg->smoothGTLogLin;
@@ -336,12 +348,25 @@ sub finishPdlProfile {
 sub addPdlBigrams {
   my ($lr,$bgpd,%args) = @_;
 
-  ##-- maybe smooth
+  ##-- smoothing: GT
   $lr->{smoothgt} = $args{smoothgt} if (defined($args{smoothgt}));
   if ($lr->{smoothgt} && $lr->{smoothgt} eq 'bigrams') {
     print STDERR "<<DEBUG>>: ", ref($lr)."::addPdlBigrams() GT-smoothing bigrams!\n";
     $bgpd->smoothGTLogLin();
     $lr->{norm_zero_f} += $bgpd->zeroCount->sclr;
+  }
+
+  ##-- smoothing: LI: global
+  $lr->{smoothli} = $args{smoothli} if (defined($args{smoothli}));
+  if ($lr->{smoothli} && ($lr->{smoothli} eq 'global' || $lr->{smoothli} eq 'bigrams')) {
+    require MUDL::PDL::Smooth;
+    my $f12 = $bgpd->{pdl};
+    my $f21 = $f12->xchg(0,1);
+    my $f2  = $f12->sumover;
+    my $f1  = $f21->sumover;
+    my $N   = $f1->sumover;
+    $lr->{diLambdasLR} = $f12->diLambdas2(f1=>$f1,f2=>$f2,N=>$N,hapax=>$lr->{li_hapax}); ##-- left  -> right
+    $lr->{diLambdasRL} = $f21->diLambdas2(f1=>$f2,f2=>$f1,N=>$N,hapax=>$lr->{li_hapax}); ##-- right -> left
   }
 
   ##-- get enums
@@ -503,7 +528,7 @@ sub toPDL3d {
   ##-- frequency data: right-context
   $lr->{pright}{pdl}->decode( $pdl->slice('(1),')->xchg(0,1) );
 
-  ##-- smoothing
+  ##-- smoothing: default
   $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));
 
   ##-- data munging
@@ -519,6 +544,52 @@ sub toPDL3d {
 }
 
 ## undef = $lr->smoothPdl($pdl);
+##  + applies LI-smoothing if requested
+sub smoothPdl {
+  my ($lr,$pdl) = @_;
+
+  ##-- smoothing: LI
+  if ($lr->{smoothli}) {
+    my $which = $lr->{li_which};
+    my ($ft,$fb,$N) = ($lr->{ptugs}{pdl},$lr->{pbugs}{pdl},$lr->{ftotal});
+    $which    = 'b' if (!$which);
+
+    ##-- smoothing: LI: local
+    if ($lr->{smoothli} eq 'local') {
+      require MUDL::PDL::Smooth;
+      my ($pl,$pr)    = ($lr->{pleft}{pdl},$lr->{pright}{pdl});
+      if ($which eq 't') {
+	##-- bound->target
+	$lr->{diLambdasLR} = $pl->diLambdas2(f1=>$ft,f2=>$fb,N=>$N); ##-- target -> leftBound
+	$lr->{diLambdasRL} = $pr->diLambdas2(f1=>$ft,f2=>$fb,N=>$N); ##-- target -> rightBound
+      } else {
+	##-- target->bound
+	$lr->{diLambdasLR} = $pl->xchg(0,1)->diLambdas2(f1=>$fb,f2=>$ft,N=>$N); ##-- leftBound  -> target
+	$lr->{diLambdasRL} = $pr->xchg(0,1)->diLambdas2(f1=>$fb,f2=>$ft,N=>$N); ##-- rightBound -> target
+      }
+    }
+
+    ##-- smoothing: LI: apply
+    my $lamLR = $lr->{diLambdasLR};
+    my $lamRL = $lr->{diLambdasRL};
+
+    if ($which eq 't') {
+      ##-- bound->target
+      $pdl->slice("(0)") *= $lamLR->index(1);
+      $pdl->slice("(0)") += $lamLR->index(0)*$ft->index($pdl->slice("(0)")->yvals);
+      $pdl->slice("(1)") *= $lamRL->index(1);
+      $pdl->slice("(1)") += $lamRL->index(0)*$ft->index($pdl->slice("(1)")->yvals);
+    } else {
+      ##-- target->bound
+      $pdl->slice("(0)") *= $lamRL->index(1);
+      $pdl->slice("(0)") += $lamRL->index(0)*$fb->index($pdl->slice("(0)")->xvals);
+      $pdl->slice("(1)") *= $lamLR->index(1);
+      $pdl->slice("(1)") += $lamLR->index(0)*$fb->index($pdl->slice("(1)")->xvals);
+    }
+  }
+
+  return $pdl;
+}
 
 ## undef = $lr->finishPdl($pdl);
 
