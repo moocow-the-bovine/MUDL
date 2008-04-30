@@ -141,7 +141,7 @@ sub finishPdl {
       $zt .= ($fw-$nnzw)/$fw * ($fb1-$nnzb1)/$fb1 * -log2z( ($zt+1)/$N ); ##-- p(old|w) * p(old|b) * h(old,w,b)
       $zt += $nnzw/$fw * $nnzb1/$fb1 * (-log2z($pw) -log2z($pb1));        ##-- p(new|w) * p(new|b) * (h(w)+h(b))
     }
-    elsif (0) {
+    elsif (1) {
       ##-- profile by internal-promiscuity-weighted h : >90% at stage=0 (>logf=89%), then craps out to 4% at stage=1
       ##  + maybe saving "real" (word-based) nnz values would help here?
       my $zt    = $zpdl->xchg(0,1);
@@ -149,10 +149,25 @@ sub finishPdl {
       my $nnzb1 = $nnzb->slice("*1");
       my $pw  = $fw/$N;
       my $pb1 = $fb1/$N;
-      $zt .= -log2z( ($fw-$nnzw)/$fw * ($fb1-$nnzb1)/$fb1 * ($zt+1)/$N );
-      $zt += -log2z( $nnzw/$fw       * $nnzb1/$fb1        * $pw * $pb1);
+      #$zt .= -log2z(($fw-$nnzw)/$fw) -log2z(($fb1-$nnzb1)/$fb1) -log2z(($zt+1)/$N);
+      #$zt += -log2z($nnzw/$fw)       -log2z($nnzb1/$fb1)        -log2z($pw)-log2z($pb1);
+      ##--
+      my $nb = $nnzb->nelem;
+      my $nw = $nnzw->nelem;
+      #my $h_old = -log2z(1-$nnzw/$nb) -log2z(1-$nnzb1/$nw) -log2z(($zt+1)/$N);
+      #my $h_new = -log2z($nnzw/$nb)   -log2z($nnzb1/$nw)   -log2z($pw)-log2z($pb1);
+      #$zt .= $h_old + $h_new;
+      ##--
+      my $h_old = -log2z(1-$nnzw/$fw)/$nb -log2z(1-$nnzb1/$fb1)/$nw -log2z(($zt+1)/$N);
+      my $h_new = -log2z($nnzw/$fw)/$nb -log2z($nnzb1/$fb1)/$nw -log2z($pw)/$nb-log2z($pb1)/$nw;
+      #$zz = $zpdl->zeroes; $zz->where($zt) .= $h_old->where($zt); $zz->where(!$zt) .= $h_new->where(!$zt);
+      #my $zt_mask = ($zt>0);
+      #$zt->where($zt_mask)  .= $h_old->where($zt_mask);
+      #$zt->where(!$zt_mask) .= $h_new->where(!$zt_mask);
+      ##--
+      $zt .= $h_old+$h_new;
     }
-    elsif (1) {
+    elsif (0) {
       ##-- profile by distributed promiscuity*p + h: ALSO similar to but slightly better than logf alone
       my $zt  = $zpdl->xchg(0,1);
       my $fb1    = $fb->slice("*1");
