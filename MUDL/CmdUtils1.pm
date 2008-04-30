@@ -34,26 +34,12 @@ sub loadModule {
   $args{search} =  ['',qw(MUDL::)] if (!$args{search} || !@{$args{search}});
 
   $name = ref($name) if (ref($name));
-  my ($fprefix,$cprefix,$fqfile,$fqname);
+  my ($fprefix,$cprefix,$fqname);
   (my $fname = $name) =~ s/::/\//g;
-
-  my @fqfiles = (
-		 map  {
-		   $cprefix = $_;
-		   ($fprefix = $cprefix) =~ s/::/\//g;
-		   $fqfile = "${fprefix}${fname}.pm";
-		   map {
-		     -f "$_/$fqfile" ? [$cprefix.$name,$fqfile] : qw()
-		   } @::INC
-		 } @{$args{search}}
-		);
-  if (!@fqfiles) {
-    $@ = 'File not found';
-    return undef;
-  }
-  foreach (@fqfiles) {
-    if (eval { require "$_->[1]"; }) {
-      $fqname = $_->[0];
+  foreach $cprefix (@{$args{search}}) {
+    ($fprefix = $cprefix) =~ s/::/\//g;
+    if (eval { require "${fprefix}${fname}.pm"; }) {
+      $fqname = $cprefix.$name;
       last;
     }
   }
