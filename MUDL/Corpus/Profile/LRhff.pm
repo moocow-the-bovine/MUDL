@@ -96,12 +96,14 @@ sub finishPdl {
     my $fwb_ff_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz);
     my $hwb_ff_vals = -log2z($fwb_ff_vals/$fwb_fcz->sumover);
 
-    ##-- decode to $zpdl
+    ##-- log-linear fit (handle zeroes)
     my ($fwb_fcz_fit,$fwb_fcz_coeffs) = $fwb_fcz->loglinfit($fwb_fv+1);
     print STDERR "<<<DEBUG>>>: ", ref($lr)."::finishPdl(z=$z): fwb_fcz_coeffs=".$fwb_fcz_coeffs."\n";
 
     my $fwb_ff_fit_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz_fit);
     my $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals/$fwb_fcz_fit->sumover);
+
+    ##-- decode to $zpdl
     my $hwb_ff_nd = $fwb->shadow(which=>$fwb_which, vals=>$hwb_ff_fit_vals);
     $hwb_ff_nd->decode($zpdl->xchg(0,1));
   }

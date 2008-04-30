@@ -137,9 +137,11 @@ sub qqplot {
   $popts->{xtitle} = 'Normal Theoretical Quantiles' if (!defined($popts->{xtitle}));
   $popts->{ytitle} = 'Sample Quantiles' if (!defined($popts->{ytitle}));
 
-  my $uosm  = $data->sequence->double->uosm();   ##-- uniform order statistic medians
-  my $qvals = gaussqvals($uosm);                 ##-- (standard) normal theoretical values
-  return qqplotx($data,$qvals, $popts,$lopts);
+  my $uosm  = $data->flat->sequence->double->uosm();  ##-- uniform order statistic medians
+  my $mu    = $data->flat->double->mean;
+  my $sigma = $data->flat->double->stddev;
+  my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
+  return qqplotx($qvals, ($data-$mu/$sigma), $popts,$lopts);
 }
 
 

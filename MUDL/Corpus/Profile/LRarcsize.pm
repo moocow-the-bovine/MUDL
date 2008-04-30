@@ -131,9 +131,49 @@ sub finishPdl {
     #my $nnzw_hf_nzvals = $nnzw_hf->index($fwb_wi);    ##-- [nzi] -> h( f_fnz(W=w_nzi)/NNZF )
     #my $nnzb_hf_nzvals = $nnzb_hf->index($fwb_bi);    ##-- [nzi] -> h( f_fnz(B=b_nzi)/NNZF )
 
-    if (1) {
+    if (0) {
+      ##-- profile by external-promiscuity-weighted h: crappyish
+      my $zt    = $zpdl->xchg(0,1);
+      my $fb1   = $fb->slice("*1");
+      my $nnzb1 = $nnzb->slice("*1");
+      my $pw    = $fw/$N;
+      my $pb1   = $fb1/$N;
+      $zt .= ($fw-$nnzw)/$fw * ($fb1-$nnzb1)/$fb1 * -log2z( ($zt+1)/$N ); ##-- p(old|w) * p(old|b) * h(old,w,b)
+      $zt += $nnzw/$fw * $nnzb1/$fb1 * (-log2z($pw) -log2z($pb1));        ##-- p(new|w) * p(new|b) * (h(w)+h(b))
+    }
+    elsif (0) {
+      ##-- profile by internal-promiscuity-weighted h : >90% at stage=0 (>logf=89%), then craps out to 4% at stage=1
+      ##  + maybe saving "real" (word-based) nnz values would help here?
+      my $zt    = $zpdl->xchg(0,1);
+      my $fb1   = $fb->slice("*1");
+      my $nnzb1 = $nnzb->slice("*1");
+      my $pw  = $fw/$N;
+      my $pb1 = $fb1/$N;
+      $zt .= -log2z( ($fw-$nnzw)/$fw * ($fb1-$nnzb1)/$fb1 * ($zt+1)/$N );
+      $zt += -log2z( $nnzw/$fw       * $nnzb1/$fb1        * $pw * $pb1);
+    }
+    elsif (1) {
+      ##-- profile by distributed promiscuity*p + h: ALSO similar to but slightly better than logf alone
+      my $zt  = $zpdl->xchg(0,1);
+      my $fb1    = $fb->slice("*1");
+      my $nnzb1  = $nnzb->slice("*1");
+      my $pw  = $fw/$N;
+      my $pb1 = $fb1/$N;
+      $zt .= -log2z( ($zt+1)/$N );                       ##-- ~= h( p(w,b) )
+      $zt += -log2z( $nnzw/$fw * $pb1 )  / $zt->dim(1);  ##-- ~= h( p(B=new,B=b|W=w) ) / Nbds [~indepdt code for W=w]
+      $zt += -log2z( $nnzb1/$fb1 * $pw ) / $zt->dim(0);  ##-- ~= h( p(W=new,W=w|B=b) ) / Ntgs [~indepdt code for B=b]
+    }
+    elsif (0) {
+      ##-- profile by distributed promiscuity + h: similar to but slightly better than logf alone
+      my $zt  = $zpdl->xchg(0,1);
+      $zt .= -log2z( ($zt+1)/$N );                               ##-- ~= h( f(W=w,B=b)/N )
+      $zt += (-log2z( $nnzw/$fw  ) / $zt->dim(1));               ##-- ~= h( p(B=new|W=w) ) / Nbds
+      $zt += (-log2z( $nnzb/$fb  ) / $zt->dim(0))->slice("*1");  ##-- ~= h( p(W=new|B=b) ) / Ntgs
+    }
+    elsif (0) {
       ##-- seems to work well: next thing to try: gt-smoothed log-freqs
       ##   WHERE GT-smoothing is applied at the raw-frequency bigram level
+      ## + this technique now implemented as Corpus::Profile::LRhff
       my ($fwb_fcz_fit,$fwb_fcz_coeffs) = $fwb_fcz->loglinfit($fwb_fv+1);
       my $fwb_ff_fit_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz_fit);
       my $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals/$fwb_fcz_fit->sumover);
