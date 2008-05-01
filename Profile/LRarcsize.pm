@@ -149,8 +149,9 @@ sub finishPdl {
       my $nnzb1 = $nnzb->slice("*1");
       my $pw  = $fw/$N;
       my $pb1 = $fb1/$N;
-      #$zt .= -log2z(($fw-$nnzw)/$fw) -log2z(($fb1-$nnzb1)/$fb1) -log2z(($zt+1)/$N);
-      #$zt += -log2z($nnzw/$fw)       -log2z($nnzb1/$fb1)        -log2z($pw)-log2z($pb1);
+      ##--
+      #my $h_old = -log2z(($fw-$nnzw)/$fw) -log2z(($fb1-$nnzb1)/$fb1) -log2z(($zt+1)/$N);
+      #my $h_new = -log2z($nnzw/$fw)       -log2z($nnzb1/$fb1)        -log2z($pw)-log2z($pb1);
       ##--
       my $nb = $nnzb->nelem;
       my $nw = $nnzw->nelem;
@@ -158,13 +159,17 @@ sub finishPdl {
       #my $h_new = -log2z($nnzw/$nb)   -log2z($nnzb1/$nw)   -log2z($pw)-log2z($pb1);
       #$zt .= $h_old + $h_new;
       ##--
-      my $h_old = -log2z(1-$nnzw/$fw)/$nb -log2z(1-$nnzb1/$fb1)/$nw -log2z(($zt+1)/$N);
-      my $h_new = -log2z($nnzw/$fw)/$nb -log2z($nnzb1/$fb1)/$nw -log2z($pw)/$nb-log2z($pb1)/$nw;
+      #my $h_old = -log2z(1-$nnzw/$fw)/$nb -log2z(1-$nnzb1/$fb1)/$nw -log2z(($zt+1)/$N);
+      #my $h_new = -log2z($nnzw/$fw)/$nb -log2z($nnzb1/$fb1)/$nw -log2z($pw)/$nb-log2z($pb1)/$nw;
       #$zz = $zpdl->zeroes; $zz->where($zt) .= $h_old->where($zt); $zz->where(!$zt) .= $h_new->where(!$zt);
       #my $zt_mask = ($zt>0);
       #$zt->where($zt_mask)  .= $h_old->where($zt_mask);
       #$zt->where(!$zt_mask) .= $h_new->where(!$zt_mask);
+      ##~~
+      #$zt .= $h_old+$h_new;
       ##--
+      my $h_old = -log2z(($fw-$nnzw)/$fw)/$nb -log2z(($fb1-$nnzb1)/$fb1)/$nw -log2z(($zt+1)/$N);
+      my $h_new = -log2z($nnzw/$fw)/$nb       -log2z($nnzb1/$fb1)/$nw        -log2z($pw)/$nb-log2z($pb1)/$nw;
       $zt .= $h_old+$h_new;
     }
     elsif (0) {
