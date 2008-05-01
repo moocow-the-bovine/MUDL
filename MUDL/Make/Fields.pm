@@ -92,6 +92,7 @@ our %aggregateFuncs =
   (
    min=>{ aggregateName=>'min', aggregate=>'min', },
    max=>{ aggregateName=>'max', aggregate=>'max', },
+   amax=>{ aggregateName=>'max', aggregate=>'max', },
    sum=>{ aggregateName=>'sum', aggregate=>'sum', },
    prd=>{ aggregateName=>'prd', aggregate=>'prod', },
 

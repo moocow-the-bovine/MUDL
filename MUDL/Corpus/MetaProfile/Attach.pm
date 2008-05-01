@@ -260,10 +260,10 @@ sub populatePhat {
 			       ##   the default (beta=ones(double,$cdm->dim(1)))
 			       ##   seems to work quite well, giving us:
 			       ##     p(c|w) = b^(-1 * dist(c,w)) / sum ...
-			       ##   TODO:
-			       ##     try varying beta with STAGE:
-			       ##     - low  beta [<1] --> high-entropy result dist (very uniform) ~ early targets
-			       ##     - high beta [>1] --> low-entropy  result dist (very certain) ~ later targets
+			       ##   NOTE: varying beta with STAGE:
+			       ##     - low  beta [<1] --> high-entropy result dist (very uniform) ~ early targets?
+			       ##     - high beta [>1] --> low-entropy  result dist (very certain) ~ later targets?
+			       ##     --> other way around (low-beta early, high-beta later) works better!
 			       ##   BUT:
 			       ##     - combination 
 			       ##         high beta ~ low entropy  @ EARLY targets
@@ -406,6 +406,7 @@ sub update {
   }
 
   ##-- construct targets+centers data pdl: NEW_TARGETS . OLD_CLUSTERS
+  ##   + old code: we might not need this anymore with new attach() routine...
   my $cmdata_k = zeroes(double, $data_k->dim(0), $data_k->dim(1)+$cdata->dim(1));
   my $trowids  = sequence(long, $data_k->dim(1));
   my $crowids  = sequence(long, $cdata->dim(1)) + $trowids->nelem;
@@ -425,45 +426,24 @@ sub update {
     $cm_k->{dataweights}->index($trowids) .= $curprof->targetUgPdl();
   }
 
-  my $UPDATE_ATTACH_OLD=0;
-  if ($UPDATE_ATTACH_OLD) {
-    ##-- update:attach:old: cluster: clusterDistanceMatrix()
-    $mp->vmsg($vl_info, "update(): clusterDistanceMatrix()\n");
-    $mp->vmsg($vl_info, "        : dims = ", join(' ', $cmdata_k->dims), "\n");
-    my ($csizes,$celtids,$cdm);
-    PDL::Cluster::clusterdistancematrix(@$cm_k{qw(data mask weight)},
-					$trowids,
-					($csizes=ones(long, $cdata->dim(1))),
-					($celtids=$crowids->slice("*1,")),
-					($cdm=$cm_k->{cdmatrix}=zeroes(double, $cdata->dim(1), $trowids->dim(0))),
-					$cm_k->cddist, $cm_k->cdmethod);
+  ##-- update:attach:new: cluster: clusterDistanceMatrix()
+  $mp->vmsg($vl_info, "update(): attach()\n");
+  $mp->vmsg($vl_info, "        : GU data dims = ", join(' ', $cmdata_k->dims), "\n");
 
-    ##-- update:attach:old: cluster: attachtonearest()
-    $mp->vmsg($vl_info, "update(): attachtonearestd()\n");
-    my $cids_k  = $cm_k->{clusterids} = zeroes(long, $trowids->nelem);
-    my $cdist_k = zeroes(double, $trowids->nelem);
-    PDL::Cluster::attachtonearestd($cdm, $trowids, $cids_k, $cdist_k);
-  }
-  else {
-    ##-- update:attach:new: cluster: clusterDistanceMatrix()
-    $mp->vmsg($vl_info, "update(): attach()\n");
-    $mp->vmsg($vl_info, "        : GU data dims = ", join(' ', $cmdata_k->dims), "\n");
+  my ($cids_k,$cdist_k,$cdmat_k) = $cm_k->attach
+    (
+     tpdata => $cdata,
+     tpmask => $cmask,
+     tpcids => sequence(long,$cdata->dim(1)), ##-- $crowids-$trowids->nelem
+     adata  => $data_k,
+     amask  => $data_k->isgood,
+     arows  => $trowids,
+     adopt  => 0,
+    );
 
-    my ($cids_k,$cdist_k,$cdmat_k) = $cm_k->attach
-      (
-       tpdata => $cdata,
-       tpmask => $cmask,
-       tpcids => sequence(long,$cdata->dim(1)), ##-- $crowids-$trowids->nelem
-       adata  => $data_k,
-       amask  => $data_k->isgood,
-       arows  => $trowids,
-       adopt  => 0,
-      );
-
-    ##-- update:attach:new: cluster: cluster ids() [HACK]
-    $cm_k->{clusterids} = $cids_k;
-    $cm_k->{cdmatrix}   = $cdmat_k;
-  }
+  ##-- update:attach:new: cluster: cluster ids() [backwards-compatible HACK for updateCm() method!]
+  $cm_k->{clusterids} = $cids_k;
+  $cm_k->{cdmatrix}   = $cdmat_k;
 
   ##-- update:attach:common: apply hard-clustering bonus (?)
   if ($cm_k->{cdbonus}) {
@@ -474,7 +454,6 @@ sub update {
   ##-- update:attach:common: cm
   $mp->vmsg($vl_info, "update(): cm\n");
   $mp->updateCm();
-
 
   ##-- update: phat (pdl-ized)
   $mp->vmsg($vl_info, "update(): phat ~ ^p( c_{k} | w_{<=k} )\n");
@@ -698,7 +677,6 @@ sub xlateTargetPdls {
 ##      $mp->{pb2cb} : PDL::CCS::Nd ($NProfileBounds , $NMetaProfileBounds)
 ##      $mp->{pt2c}  : PDL::CCS::Nd ($NProfileTargets, $NMetaProfileClusters)
 ##      $mp->{pt2tk} : PDL::CCS::Nd ($NProfileTargets, $NTargets_k)
-##  + FIXME: pdl-ize
 sub updateProfileUnigramDists {
   my ($mp, $prf_wv_raw, $prf_cb_new, $prf_wb_new) = @_;
 
@@ -749,82 +727,6 @@ sub updateProfileUnigramDists {
   return $mp;
 }
 
-sub updateProfileUnigramDists_OLD {
-  my ($mp, $prf_wv_raw, $prf_cb_new, $prf_wb_new) = @_;
-
-  my $tenum_w_raw = $prf_wv_raw->{targets};
-  my $benum_v_raw = $prf_wv_raw->{bounds};
-  my $lbenum      = $mp->lbenum();
-  my ($tenum,$tenum_k,$cenum,$cbenum) = @$mp{qw(tenum tenum_k cenum cbenum)};
-  my $cids_ltk = $mp->{clusterids};
-
-  ##-- update: target unigrams
-  my ($id_w_raw,$f,$w,$id_w_k,$id_c);
-  if (defined($prf_wv_raw->{tugs})) {
-    while (($id_w_raw,$f)=each(%{$prf_wv_raw->{tugs}{nz}})) {
-      $w = $tenum_w_raw->{id2sym}[$id_w_raw];
-
-      if (defined($id_w_k = $tenum_k->{sym2id}{$w})) {
-	##-- target is new: add data to $prf_wv_raw->{tugs}
-	$prf_wb_new->{tugs}{nz}{$id_w_k} += $f;
-      }
-      elsif (defined($prf_cb_new)) {
-	##-- target is old: add data to $prf_cb->{tugs} (no smearing)
-	$id_c = $cids_ltk->at($tenum->{sym2id}{$w});
-	$prf_cb_new->{tugs}{nz}{$id_c} += $f;
-      }
-    }
-#    ##-- totals
-#    if (defined($prf_wv_raw->{ftotal})) {
-#      $prf_wb_new->{ftotal} = $prf_wv_raw->{ftotal};
-#      $prf_cb_new->{ftotal} = $prf_wv_raw->{ftotal};
-#    }
-  }
-
-  ##-- update: bound unigrams
-  my ($id_v_raw,$v,$id_v_ltk,$id_v_lb);
-  my ($Ncb,$bugs_pdl,$phat);
-  if (defined($prf_wv_raw->{bugs})) {
-    $Ncb = $cbenum->size();
-    $bugs_pdl = zeroes(double, $Ncb);
-
-    $phat = $mp->{phat} * $mp->{phatm};
-    $phat /= $phat->sumover->slice("*1,");
-    $phat->inplace->setnantobad->inplace->setbadtoval(0); ##-- hack
-
-    ##-- $c2cb->at($ci) = $cbenum->index( $cenum->symbol($ci) )
-    ##   + used to index $cbenum distribution PDLs for non-literal class-bounds
-    my $c2cb = pdl(long, [ @{$cbenum->{sym2id}}{ @{$cenum->{id2sym}} } ]);
-
-    while (($id_v_raw,$f)=each(%{$prf_wv_raw->{bugs}{nz}})) {
-
-      ##-- get bound-index ($id_v_ltk)
-      $v        = $benum_v_raw->{id2sym}[$id_v_raw];
-
-      if (exists($lbenum->{sym2id}{$v})) {
-	##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
-	$id_v_ltk = $cbenum->{sym2id}{$v};
-	$bugs_pdl->slice("$id_v_ltk") += $f;
-      } elsif ($mp->{use_cbounds}) {
-	##-- usual case: bound-word is a previous target: respect $mp->{phat}
-	$id_v_ltk                = $tenum->{sym2id}{$v};
-	$bugs_pdl->index($c2cb) += $phat->slice(",($id_v_ltk)") * $f;
-      }
-    }
-    ##-- PDL-to-EDist
-    $prf_wb_new->{bugs}->fromPDLnz($bugs_pdl);
-    %{$prf_cb_new->{bugs}{nz}} = %{$prf_wb_new->{bugs}{nz}} if (defined($prf_cb_new));
-  }
-
-  ##-- totals
-  if (defined($prf_wv_raw->{ftotal})) {
-    $prf_wb_new->{ftotal} = $prf_wv_raw->{ftotal};
-    $prf_cb_new->{ftotal} = $prf_wv_raw->{ftotal} if (defined($prf_cb_new));
-  }
-
-  return $mp;
-}
-
 ##--------------------------------------------------------------
 ## undef = $mp->updateProfileDists($rawSparsePdlDistNd, $ctrSparsePdlDistNd, $curSparsePdlDistNd)
 ##  + populates $ctrSparsePdlDistNd and $curSparsePdlDistNd from $rawSparsePdlDistNd, where:
@@ -839,7 +741,6 @@ sub updateProfileUnigramDists_OLD {
 ##    ~ $mp->{pt2c}         : CCS::Nd ($NProfileTargets, $NMetaProfileClusters)
 ##    ~ $mp->{pt2tk}        : CCS::Nd ($NProfileTargets, $NTargets_k)
 ##  + $ctrSparsePdlDistNd may be undef, in which case it's ignored
-##  + TODO: test me!
 sub updateProfileDists {
   my ($mp,$wvdist,$cbdist,$wbdist) = @_;
 
@@ -873,86 +774,6 @@ sub updateProfileDists {
   return;
 }
 
-sub updateProfileDists_OLD {
-  my ($mp,$wvdist,$cbdist,$wbdist) = @_;
-
-  my $wenum   = $wvdist->{enum}{enums}[0];
-  my $venum   = $wvdist->{enum}{enums}[1];
-  my $tenum   = $mp->{tenum};
-  my $cbenum  = $mp->{cbenum};
-  my $cenum   = $mp->{cenum};
-  my $lbenum  = $mp->lbenum();
-
-  my $tenum_k  = $mp->{tenum_k};
-  my $cids_ltk = $mp->{clusterids};
-  #my $c2tk     = $mp->{c2tk};
-
-  my $Nc      = $cenum->size;
-  my $Ncb     = $cbenum->size;
-  my $Nt      = $tenum->size;
-  my $Ntk     = $tenum_k->size;
-
-  my $fwb_pdl = zeroes(double, $Ntk, $Ncb);
-  my $fcb_pdl = (defined($cbdist) ? zeroes(double, $Nc,  $Ncb) : undef);
-  my $phat    = $mp->{phat} * $mp->{phatm};
-  $phat      /= $phat->sumover->slice("*1,");
-  $phat->inplace->setnantobad->inplace->setbadtoval(0); ##-- hack
-
-  ##-- $c2cb->at($ci) = $cbenum->index( $cenum->symbol($ci) )
-  ##   + used to index {cbenum} distribution PDLs for non-literal class-bounds
-  my $c2cb = pdl(long, [ @{$cbenum->{sym2id}}{ @{$cenum->{id2sym}} } ]);
-
-  my ($key,$f, $w,$v, $ws,$wi, $vs,$vi, $Pbv, $opdl);
-  while (($key,$f)=each(%{$wvdist->{nz}})) {
-    ($w,$v) = $wvdist->split($key);
-
-    ##-- get target-index ($wi)
-    $ws = $wenum->{id2sym}[$w];
-    $wi = $tenum_k->{sym2id}{$ws};
-    if (defined($wi)) {
-      ##-- target is new: add data to $fwb_pdl
-      $opdl = $fwb_pdl;
-    } elsif (defined($fcb_pdl)) {
-      ##-- target is old: add associated class-data to $fcb_pdl
-      $opdl = $fcb_pdl;
-      $wi   = $cids_ltk->at($tenum->{sym2id}{$ws}); ##-- HACK: no smearing
-    } else {
-      ##-- totally bizarre target, or $ctrDistNaryDir was undef
-      next;
-    }
-
-    ##-- get bound-index ($vi)
-    $vs  = $venum->{id2sym}[$v];
-
-    if (exists($lbenum->{sym2id}{$vs})) {
-      ##-- whoa: bound-word is a literal singleton class-bound -- i.e. {BOS},{EOS}
-      $vi = $cbenum->{sym2id}{$vs};
-      $opdl->slice("$wi,$vi") += $f;
-    } elsif ($mp->{use_cbounds}) {
-      ##-- bound-word is a previous target
-      $vi = $tenum->{sym2id}{$vs};
-      $Pbv                                 = $phat->slice(",($vi)");
-      $opdl->slice("($wi)")->index($c2cb) += $Pbv * $f;
-    }
-  }
-
-  $mp->{ugs_k} += $fwb_pdl->xchg(0,1)->sumover; ##-- new stage-local target unigrams, may be needed later
-
-  ##-- output: {ctrdist}
-  if (defined($cbdist)) {
-    @$cbdist{qw(nfields sep enum)} = (@$wvdist{qw(nfields sep)},
-				      MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
-							    enums=>[$cenum, $cbenum]));
-    MUDL::PdlDist->new(pdl=>$fcb_pdl, enum=>$cbdist->{enum})->toEDist($cbdist);
-  }
-
-  @$wbdist{qw(nfields sep enum)} = (@$wvdist{qw(nfields sep)},
-				    MUDL::Enum::Nary->new(nfields=>$wvdist->{enum}{nfields},
-							  enums=>[$tenum_k, $cbenum]));
-  MUDL::PdlDist->new(pdl=>$fwb_pdl, enum=>$wbdist->{enum})->toEDist($wbdist);
-
-  return;
-}
 
 ##--------------------------------------------------------------
 ## $beta_pdl = $mp->beta()
@@ -969,7 +790,6 @@ sub beta {
 
 ##--------------------------------------------------------------
 ## $phatPdl = $mp->updatePhat(%args)
-##  + FIXME: pdl-ize
 ##  + populates $mp->{phat} ~ $phat->at($cid,$wid) = ^p($cid | $wid)
 ##    from $mp->{cm_k} and $mp->{phat} (last iteration)
 ##  + %args:
@@ -1054,7 +874,6 @@ sub updatePhat {
 
 ##--------------------------------------------------------------
 ## $cm = $mp-updateCm(%args)
-##  + FIXME: pdl-ize
 ##  + updates $mp->{cm} from $mp->{cm_k} and $mp->{cm_ltk}
 ##  + %args:
 ##    - ignored
