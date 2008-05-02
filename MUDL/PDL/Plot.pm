@@ -9,14 +9,15 @@
 package MUDL::PDL::Plot;
 use PDL;
 use PDL::Graphics::PGPLOT;
-use MUDL::PDL::Smooth;
+use MUDL::PDL::Smooth ':all';
 use MUDL::PDL::Stats;
 use strict;
 
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
-   all => ['hist1','loghist','errbin','qqplot','qqplotx'],
+   'hist' => ['hist1','loghist','errbin','errbin_gfit'],
+   'qq'   => ['qqplot','qqplotx'],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -143,6 +144,57 @@ sub qqplot {
   my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
   return qqplotx($qvals, ($data-$mu/$sigma), $popts,$lopts);
 }
+
+##======================================================================
+## histogram + gaussian fit
+
+## undef = errbin_gfit($x,$y, \%errbin_opts, \%gfit_opts)
+##  + %errbin_opts:
+##     peak =>$which,   ##-- false or 'f':frequency, 'p':probability, literal: force value
+##     mu   =>$mu,      ##-- if given, replaces fit $mu
+##     sigma=>$sigma,   ##-- if given, replaces fit $sigma
+##     raw  =>$raw,     ##-- if given, used to fit $mu,$sigma in place of smoothGaussian()
+##     nx   =>$nx,      ##-- number of x points for gaussian fit (default=100)
+##  + %gfit_opts: none
+BEGIN { *PDL::errbin_gfit = \&errbin_gfit; }
+sub errbin_gfit {
+  my ($x,$y,$ebopts,$gfopts) = @_;
+  $ebopts = {} if (!defined($ebopts));
+  $gfopts = { color=>'red',%$ebopts } if (!defined($gfopts));
+  my %opts  = (%$ebopts,%$gfopts);
+  $opts{nx} = 100 if (!$opts{nx});
+  my @localkeys = qw(peak mu sigma raw nx);
+  delete(@$ebopts{@localkeys});
+  delete(@$gfopts{@localkeys});
+
+  ##-- pre-fit
+  my @fit = $y->double->smoothGaussian($x->double); ##-- ($yfit,$ypk,$mu,$sigma)
+
+  my ($mu);
+  if (defined($opts{mu}))     { $mu = $opts{mu}; }
+  elsif (defined($opts{raw})) { $mu = $opts{raw}->double->mean; }
+  else                        { $mu = $fit[2]; }
+
+  my ($sigma);
+  if (defined($opts{sigma}))  { $sigma = $opts{sigma}; }
+  elsif (defined($opts{raw})) { $sigma = $opts{raw}->double->stddev; }
+  else                        { $sigma = $fit[3]; }
+
+  my ($y_adj,$gpeak);
+  if    (!$opts{peak} || $opts{peak} eq 'f') { $gpeak=$y->max; $y_adj=$y; }
+  elsif ( $opts{peak} && $opts{peak} eq 'p') { $gpeak=gausspeak($sigma); $y_adj=$y->double/$y->max*$gpeak; }
+  elsif ( $opts{peak} )                      { $gpeak=$opts{peak};       $y_adj=$y->double/$y->max*$gpeak; }
+
+  my $xr = $ebopts->{xrange} ? $ebopts->{xrange} : [$x->minmax];
+  my ($gx,$gy) = gausspoints($gpeak,$mu,$sigma, @$xr,$opts{nx});
+  my $yr = [0,$y_adj->append($gy)->max];
+
+  errbin($x,$y_adj,{xrange=>$xr,yrange=>$yr,%$ebopts});
+  hold;
+  line($gx,$gy,{xrange=>$xr,yrange=>$yr,%$gfopts});
+  release;
+}
+
 
 
 1;
