@@ -477,8 +477,44 @@ sub update {
 ##    ~ Bounds_{stage=$i} \subseteq Bounds_{stage=$i+1}, \forall i, 1 <= $i <= $mp->{stage}
 ##    ~ $mp->{tenum_k} ????
 ##    ~ anything required by xlateBoundsPdl,xlateTargetPdls,updateProfileDists
-##  + basically just calls addProfileDist() for each $dir qw(left right)
+##  + basically just calls $lr->updateBounds(), $lr->updateTargets for each of $ctrprof, $curprof
 sub populateProfiles {
+  my ($mp,$prof) = @_;
+  $prof = $mp->{prof} if (!defined($prof));
+
+  ##-- map ids (profile->mp)
+  ##  + $pb2cb : ($NProfileBounds , $NMetaProfileBounds)
+  ##  + $pt2c  : ($NProfileTargets, $NMetaProfileClusters)
+  ##  + $pt2tk : ($NProfileTargets, $NTargets_k)
+  my $pb2cb         = $mp->{pb2cb}         = $mp->xlateBoundsPdl($prof->{bounds});
+  my ($pt2c,$pt2tk) = @$mp{qw(pt2c pt2tk)} = $mp->xlateTargetPdls($prof->{targets});
+
+  ##-- update underlying profiles
+  ##-- NEW: dispatch update to "safe-cloned" underlying profiles
+
+  ##-- NEW: update: ctrprof
+  my $ctrprof = $mp->{ctrprof} = $prof->safeClone(); ##-- expensive but otherwise Storable chokes on PDLs
+  $ctrprof->updateBounds ($pb2cb, $mp->{cbenum});
+  $ctrprof->updateTargets($pt2c,  $mp->{cenum});
+
+  ##-- NEW: update: curprof
+  my $curprof = $mp->{curprof} = $prof->safeClone(); ##-- expensive but otherwise Storable chokes on PDLs
+  $curprof->updateBounds ($pb2cb, $mp->{cbenum});
+  $curprof->updateTargets($pt2tk, $mp->{tenum_k});
+
+  ##-- NEW: update {ugs_k}, {ugs_kz}: index hack
+  my $ugs_k  = $mp->{ugs_k} = $curprof->targetUgPdl->double;
+  my $ugs_kz = $curprof->{pleft}{pdl}->xchg(0,1)->sumover->todense;
+  $ugs_kz   += $curprof->{pright}{pdl}->xchg(0,1)->sumover->todense;
+  $mp->{ugs_kz} = $ugs_kz->float / 2;
+
+  ##-- common: cleanup
+  delete(@$mp{qw(pb2cb pt2c pt2tk pt2tk_xi pt2tk_xw pt2c_xi pt2c_xw)});
+
+  return ($ctrprof,$curprof);
+}
+
+sub populateProfiles_OLD {
   my ($mp,$prof) = @_;
   $prof = $mp->{prof} if (!defined($prof));
 
@@ -670,6 +706,7 @@ sub xlateTargetPdls {
 
 ##--------------------------------------------------------------
 ## undef = $mp->updateProfileUnigramDists($rawProfile, $ctrProfile, $curProfile)
+##  + OBSOLETE!
 ##  + updates 'ptugs', 'pbugs', and 'ftotal' for each of $ctrProfile, $curProfile
 ##  + uses $mp->{tenum_k}, $mp->{cbenum}, $mp->{cenum}
 ##  + $ctrProfile may be undef, in which case it's ignored
@@ -729,6 +766,7 @@ sub updateProfileUnigramDists {
 
 ##--------------------------------------------------------------
 ## undef = $mp->updateProfileDists($rawSparsePdlDistNd, $ctrSparsePdlDistNd, $curSparsePdlDistNd)
+##  + OBSOLETE!
 ##  + populates $ctrSparsePdlDistNd and $curSparsePdlDistNd from $rawSparsePdlDistNd, where:
 ##    - $rawSparsePdlDistNd : prof directed nary dist wrt targets (\in T_<=k) & bound-words   (\in     (LB u T_<k ))
 ##    - $ctrSparsePdlDistNd : prof directed nary dist wrt classes (\in C_k-1) & bound-classes (\in B_k=(LB u C_k-1))
@@ -992,8 +1030,6 @@ sub getSummaryInfo {
 
   return bless($info,'MUDL::Object');
 }
-
-
 
 ##======================================================================
 ## Viewing: Tree

@@ -99,6 +99,8 @@ sub init {
 *clone = \&copy;
 sub copy { return Storable::dclone($_[0]); }
 
+*safeClone = \&safeCopy;
+sub safeCopy { return ref($_[0])->loadBinString($_[0]->saveBinString); }
 
 ########################################################################
 ## class MUDL::Array

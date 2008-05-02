@@ -137,7 +137,6 @@ sub shadow {
   return $lr2;
 }
 
-
 ##======================================================================
 ## MUDL::Profile API
 
@@ -433,7 +432,7 @@ sub updateBounds {
   my ($wvdist,$wvpdl,$wbpdl);
   foreach my $dirkey (qw(pleft pright)) {
     $wvdist = $lr->{$dirkey};
-    $wvpdl  = $pdist->{pdl};       ##-- [w,b_old] -->   f(w,b_old)
+    $wvpdl  = $wvdist->{pdl};      ##-- [w,b_old] -->   f(w,b_old)
     $wbpdl  = $xmatrix x $wvpdl;   ##-- [w,b_new] --> E(f(w,b_new))
     $wvdist->{pdl} = $wbpdl;
   }
@@ -441,9 +440,9 @@ sub updateBounds {
   ##-- translate: {pbugs}
   ##   : $xmatrix(nOldBds,nNewBds) x $fb_old(1,nOldBds) --> $fb_new(1,nNewBds)
   my $fbdist = $lr->{pbugs};
-  my $fb_old = $fvdist->{pdl};
+  my $fb_old = $fbdist->{pdl};
   my $fb_new = ($xmatrix x $fb_old->toccs->dummy(0,1))->todense->flat;
-  $fvdist->{pdl} = $fb_new;
+  $fbdist->{pdl} = $fb_new;
 
   ##-- translate: {enum}
   if (!defined($xenum)) { $xenum = MUDL::Enun->new(); } ##-- new, empty enum
@@ -453,7 +452,7 @@ sub updateBounds {
   $lr->{bounds}                 = $xenum;
 
   ##-- translation hook: post
-  $lr->updateBoundsPostHook($xmat,$xenum) if ($lr->can('updateBoundsPostHook'));
+  $lr->updateBoundsPostHook($xmatrix,$xenum) if ($lr->can('updateBoundsPostHook'));
 
   return $lr;
 }
@@ -479,12 +478,12 @@ sub updateTargets {
 
   ##-- translate: {pleft},{pright}
   ##   : $wvpdl(nOldTgs,nBds) x $xmatrix^T(nNewTgs,nOldTgs) --> $wbpdl(nNewTgs,nBds)
-  my ($wvdist,$wvpdl,$wbpdl);
+  my ($wbdist,$wbpdl,$tbpdl);
   foreach my $dirkey (qw(pleft pright)) {
-    $wvdist = $lr->{$dirkey};
-    $wvpdl  = $pdist->{pdl};                  ##-- [w_old,b] -->   f(w_old,b)
-    $tvpdl  = $wvpdl x $xmatrix->xchg(0,1);   ##-- [w_new,b] --> E(f(w_new,b))
-    $tvdist->{pdl} = $tvpdl;
+    $wbdist = $lr->{$dirkey};
+    $wbpdl  = $wbdist->{pdl};                 ##-- [w_old,b] -->   f(w_old,b)
+    $tbpdl  = $wbpdl x $xmatrix->xchg(0,1);   ##-- [w_new,b] --> E(f(w_new,b))
+    $wbdist->{pdl} = $tbpdl;
   }
 
   ##-- translate: {ptugs}
@@ -502,7 +501,7 @@ sub updateTargets {
   $lr->{targets}                = $xenum;
 
   ##-- translation hook: post
-  $lr->updateTargetsPostHook($xmat,$xenum) if ($lr->can('updateTargetsPostHook'));
+  $lr->updateTargetsPostHook($xmatrix,$xenum) if ($lr->can('updateTargetsPostHook'));
 
   return $lr;
 }
