@@ -145,59 +145,6 @@ sub shadow {
 ##  + push to pdl buffer
 #(inherited from Corpus::Profile::PdlProfile)
 
-sub addSentence_OLD {
-  my ($pr,$s) = @_;
-
-  ##-- sanity checks: bos/eos
-  if (defined($pr->{bos})) {
-    $pr->{bounds}->addSymbol($pr->{bos});
-  }
-  if (defined($pr->{eos})) {
-    $pr->{bounds}->addSymbol($pr->{eos});
-  }
-
-
-  ##------ temporary sentence index profiles
-
-  ##-- @st: sentence text
-  my @st = ((defined($pr->{bos}) ? $pr->{bos} : qw()),
-	    (map { $_->text } @$s),
-	    (defined($pr->{eos}) ? $pr->{eos} : qw()));
-
-  ##-- @tids, @bids: sentence target (bound) ids
-  my @tids = map { $pr->{targets}{sym2id}{$_} } @st;
-  my @bids = map { $pr->{bounds}{sym2id}{$_}  } @st;
-
-  my $lbg = $pr->{left};
-  my $rbg = $pr->{right};
-
-  my ($i,$tid,$bid);
-  for ($i=0; $i <= $#st; $i++) {
-    next if (!defined($tid=$tids[$i]));
-
-    ##-- left
-    if ($i > 0 && defined($bid=$bids[$i-1])) {
-      ++$lbg->{nz}{$tid.$lbg->{sep}.$bid};
-    }
-
-    ##-- right
-    if ($i < $#st && defined($bid=$bids[$i+1])) {
-      ++$rbg->{nz}{$tid.$rbg->{sep}.$bid};
-    }
-  }
-
-  ##-- unigrams
-  my $tugs = $pr->{tugs};
-  my $bugs = $pr->{bugs};
-  ++$tugs->{nz}{$_} foreach (grep {defined($_)} @tids);
-  ++$bugs->{nz}{$_} foreach (grep {defined($_)} @bids);
-
-  ##-- total
-  $pr->{ftotal} += scalar(@$s);
-
-  return $pr;
-}
-
 
 ##======================================================================
 ## Profiling:: Deprecated: addBigrams($bg)
@@ -264,53 +211,6 @@ sub addBigrams {
   $rbg->clear();
   $lr->{tugs}->clear();
   $lr->{bugs}->clear();
-
-  return $lr;
-}
-
-sub addBigrams_OLD {
-  my ($lr,$bg,%args) = @_;
-  require MUDL::Bigrams;
-
-  ##-- sanity checks: bos/eos
-  if (defined($lr->{bos})) {
-    $lr->{bounds}->addSymbol($lr->{bos});
-  }
-  if (defined($lr->{eos})) {
-    $lr->{bounds}->addSymbol($lr->{eos});
-  }
-
-  ##-- smoothing: GT
-  $lr->{smoothgt} = $args{smoothgt} if (defined($args{smoothgt}));
-  if ($lr->{smoothgt} && $lr->{smoothgt} eq 'bigrams') {
-    $bg->smoothGTLogLin;
-    $lr->{norm_zero_f} += $bg->zeroCount;
-  }
-
-  my ($tgs,$bds,$lbg,$rbg) = @$lr{qw(targets bounds left right)};
-  my ($tugs,$bugs)         = @$lr{qw(tugs bugs)};
-  my ($w12,$f12,$w1,$w2, $tid,$bid);
-  while (($w12,$f12)=each(%{$bg->{nz}})) {
-    ##-- split
-    my ($w1,$w2) = $bg->split($w12);
-
-    ##-- left-bound
-    if (defined($bid=$bds->{sym2id}{$w1}) && defined($tid=$tgs->{sym2id}{$w2})) {
-      $lbg->{nz}{$tid.$lbg->{sep}.$bid} += $f12;
-    }
-
-    ##-- right-bound
-    if (defined($tid=$tgs->{sym2id}{$w1}) && defined($bid=$bds->{sym2id}{$w2})) {
-      $rbg->{nz}{$tid.$rbg->{sep}.$bid} += $f12;
-    }
-
-    ##-- unigrams (on w1)
-    $lr->{tugs}{nz}{$tid} += $f12 if (defined($tid=$tgs->{sym2id}{$w1}));
-    $lr->{bugs}{nz}{$bid} += $f12 if (defined($bid=$bds->{sym2id}{$w1}));
-
-    ##-- total freq
-    $lr->{ftotal} += $f12;
-  }
 
   return $lr;
 }
@@ -470,6 +370,141 @@ sub boundUgPdl {
   #return $_[0]{bugs}->toPDL();
   ##--
   return $_[0]{pbugs}{pdl};
+}
+
+##======================================================================
+## MetaProfile interface
+##
+## Common arguments:
+##  + $xlateMatrix :
+##    - a PDL::CCS::Nd matrix probabilistically mapping old items to new items
+##    - dims : ($nOldItems,$nNewItems)
+##    - vals : [$oldId,$newId] --> p($newId|$oldId)
+##    - can be generated from $xlateMap
+##  + $xlateMap :
+##    - a PDL univocally mapping old to new items, representing a "hard" mapping
+##    - dims : ($nOldItems)
+##    - vals : [$oldId] --> $newId
+##    - can be generated from $xlateMatrix, via maximum_ind()
+
+
+## $xlateMatrix = $lr->xlateMap2Matrix($xlateMap)
+##  + see "Common Arguments", above
+sub xlateMap2Matrix {
+  my ($lr,$xmap) = @_;
+  return PDL::CCS::Nd->newFromWhich(
+				    $xmap->sequence->cat($xmap)->xchg(0,1),
+				    $xmap->ones->append(0)->double,
+				    pdims  =>pdl(long,$xmap->dim(0),$xmap->max+1),
+				    sorted =>1,
+				    steal  =>1,
+				   );
+}
+
+## $xlateMap = $lr->xlateMatrix2Map($xlateMatrix)
+##  + see "Common Arguments", above
+sub xlateMatrix2Map {
+  my ($lr,$xmatrix) = @_;
+  return $xmatrix->xchg(0,1)->maximum_ind->todense;
+}
+
+## $lr = $lr->updateBounds($xlateBoundsMatrix, $newBoundsEnum)
+##  + $xlateBoundsMatrix :
+##    - a PDL::CCS::Nd matrix probabilistically mapping old to new bounds
+##    - dims : ($nOldBounds,$nNewBounds)
+##    - vals : [$oldBoundId,$newBoundId] --> p($newBound|$oldBound)
+##    - default : from $xlateBoundsMap, if specified
+##  + $newBoundsEnum
+##    - MUDL::Enum for new bounds (undef for a new, empty MUDL::Enum)
+##  + child classes can define hooks:
+##      $lr->updateBoundsPreHook ($xmatrix,$xenum)
+##      $lr->updateBoundsPostHook($xmatrix,$xenum)
+sub updateBounds {
+  my ($lr,$xmatrix,$xenum) = @_;
+
+  ##-- sanity check
+  croak(ref($lr)."::updateBounds(): no \$xlateBoundsMatrix specified!") if (!defined($xmatrix));
+
+  ##-- translation hook: pre
+  $lr->updateBoundsPreHook($xmatrix,$xenum) if ($lr->can('updateBoundsPreHook'));
+
+  ##-- translate: {pleft},{pright}
+  ##   : $xmatrix(nOldBds,nNewBds) x $wvpdl(nTgs,nOldBds) --> $wbpdl(nTgs,nNewBds)
+  my ($wvdist,$wvpdl,$wbpdl);
+  foreach my $dirkey (qw(pleft pright)) {
+    $wvdist = $lr->{$dirkey};
+    $wvpdl  = $pdist->{pdl};       ##-- [w,b_old] -->   f(w,b_old)
+    $wbpdl  = $xmatrix x $wvpdl;   ##-- [w,b_new] --> E(f(w,b_new))
+    $wvdist->{pdl} = $wbpdl;
+  }
+
+  ##-- translate: {pbugs}
+  ##   : $xmatrix(nOldBds,nNewBds) x $fb_old(1,nOldBds) --> $fb_new(1,nNewBds)
+  my $fbdist = $lr->{pbugs};
+  my $fb_old = $fvdist->{pdl};
+  my $fb_new = ($xmatrix x $fb_old->toccs->dummy(0,1))->todense->flat;
+  $fvdist->{pdl} = $fb_new;
+
+  ##-- translate: {enum}
+  if (!defined($xenum)) { $xenum = MUDL::Enun->new(); } ##-- new, empty enum
+  $lr->{pleft}{enum}{enums}[1]  = $xenum;
+  $lr->{pright}{enum}{enums}[1] = $xenum;
+  $lr->{pbugs}{enum}            = $xenum;
+  $lr->{bounds}                 = $xenum;
+
+  ##-- translation hook: post
+  $lr->updateBoundsPostHook($xmat,$xenum) if ($lr->can('updateBoundsPostHook'));
+
+  return $lr;
+}
+
+## undef = $lr->updateTargets($xlateTargetsMatrix, $newTargetsEnum)
+##  + $xlateTargetsMatrix :
+##    - a PDL::CCS::Nd matrix probabilistically mapping old to new targets
+##    - dims : ($nOldTargets,$nNewTargets)
+##    - vals : [$oldTargetId,$newTargetId] --> p($newTarget|$oldTarget)
+##  + $newTargetsEnum
+##    - MUDL::Enum for new targets (undef for a new, empty MUDL::Enum)
+##  + child classes can define hooks:
+##      $lr->updateTargetsPreHook ($xmatrix,$xenum)
+##      $lr->updateTargetsPostHook($xmatrix,$xenum)
+sub updateTargets {
+  my ($lr,$xmatrix,$xenum) = @_;
+
+  ##-- sanity check
+  croak(ref($lr)."::updateTargets(): neither \$xlateTargetsMatrix specified!") if (!defined($xmatrix));
+
+  ##-- translation hook: pre
+  $lr->updateTargetsPreHook($xmatrix,$xenum) if ($lr->can('updateTargetsPreHook'));
+
+  ##-- translate: {pleft},{pright}
+  ##   : $wvpdl(nOldTgs,nBds) x $xmatrix^T(nNewTgs,nOldTgs) --> $wbpdl(nNewTgs,nBds)
+  my ($wvdist,$wvpdl,$wbpdl);
+  foreach my $dirkey (qw(pleft pright)) {
+    $wvdist = $lr->{$dirkey};
+    $wvpdl  = $pdist->{pdl};                  ##-- [w_old,b] -->   f(w_old,b)
+    $tvpdl  = $wvpdl x $xmatrix->xchg(0,1);   ##-- [w_new,b] --> E(f(w_new,b))
+    $tvdist->{pdl} = $tvpdl;
+  }
+
+  ##-- translate: {ptugs}
+  ##   : xmatrix(nOldTgs,nNewTgs) x ft_old(1,nOldTgs) --> ft_new(1,nNewTgs)
+  my $fwdist = $lr->{ptugs};
+  my $ft_old = $fwdist->{pdl};
+  my $ft_new = ($xmatrix x $ft_old->toccs->dummy(0,1))->todense->flat;
+  $fwdist->{pdl} = $ft_new;
+
+  ##-- translate: {enum}
+  if (!defined($xenum)) { $xenum = MUDL::Enun->new(); } ##-- new, empty enum
+  $lr->{pleft}{enum}{enums}[0]  = $xenum;
+  $lr->{pright}{enum}{enums}[0] = $xenum;
+  $lr->{ptugs}{enum}            = $xenum;
+  $lr->{targets}                = $xenum;
+
+  ##-- translation hook: post
+  $lr->updateTargetsPostHook($xmat,$xenum) if ($lr->can('updateTargetsPostHook'));
+
+  return $lr;
 }
 
 
