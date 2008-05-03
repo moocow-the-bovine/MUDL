@@ -503,7 +503,7 @@ sub populateProfiles {
   $curprof->updateTargets($pt2tk, $mp->{tenum_k});
 
   ##-- NEW: update {ugs_k}, {ugs_kz}: index hack
-  my $ugs_k  = $mp->{ugs_k} = $curprof->targetUgPdl->double;
+  my $ugs_k  = $mp->{ugs_k} = $curprof->targetUgPdl;
   my $ugs_kz = $curprof->{pleft}{pdl}->xchg(0,1)->sumover->todense;
   $ugs_kz   += $curprof->{pright}{pdl}->xchg(0,1)->sumover->todense;
   $mp->{ugs_kz} = $ugs_kz->float / 2;

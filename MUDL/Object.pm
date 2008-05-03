@@ -95,12 +95,16 @@ sub init {
 
 ##======================================================================
 ## Deep copy
-##  $copy = copy($obj)
+
+## $copy = copy($obj)
+##  + chokes on embedded PDLs
 *clone = \&copy;
 sub copy { return Storable::dclone($_[0]); }
 
+## $copy = safeCopy($obj)
+##  + useful for runtime cloning, since copy() aka clone() chokes on PDLs
 *safeClone = \&safeCopy;
-sub safeCopy { return ref($_[0])->loadBinString($_[0]->saveBinString); }
+sub safeCopy { return loadBinString((ref($_[0])||$_[0]), saveBinString($_[0])); }
 
 ########################################################################
 ## class MUDL::Array

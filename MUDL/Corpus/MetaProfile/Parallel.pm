@@ -182,7 +182,7 @@ sub update {
 
   my $tk2t = $mp->{tk2t} = $tenum_k->xlatePdlTo($mp->{tenum},badval=>-1); ##-- $tk2t->at($tid_k  ) = $tid_lek
   #my $t2tk = $mp->{t2tk} = $mp->{tenum}->xlatePdlTo($tenum_k,badval=>-1); ##-- $t2tk->at($tid_lek) = $tid_k_or_-1
-  ##-- it should be the case that: all( $tk2t == sequence($tk2t->nelem)+256 )
+  ##-- it should be the case that: all( $tk2t == sequence($tk2t->nelem)+$tenum_ltk->size )
 
   ##-- update: stg2ntgs
   $mp->{stg2ntgs} = $mp->{stg2ntgs}->reshape($mp->{stage});
@@ -203,7 +203,11 @@ sub update {
   ##-- update: cluster method
   $mp->vmsg($vl_info, "update(): cm_k()\n");
   my $cm   = $mp->{cm};
-  my $cm_k = $mp->{cm_k} = $cm->shadow(enum=>$mp->{tenum_k}, nprotos=>undef, nclusters=>$mp->{nclusters});
+  my $cm_k = $mp->{cm_k} = $cm->shadow(
+				       enum=>$mp->{tenum_k},
+				       nprotos=>undef,
+				       nclusters=>$mp->{nclusters},
+				      );
 
   ##-- update: cluster method: SVD
   $mp->vmsg($vl_info, "        : SVD: present   ? ", ($cm->{svd} ? 'yes' : 'no'), "\n");
@@ -282,6 +286,50 @@ sub update {
 ##  + $ctrprof may be undef, in which case it's ignored
 *populateProfiles = \&populateProfile;
 sub populateProfile {
+  my ($mp,$prof) = @_;
+  return $mp->populateProfile_OLD($prof) if ($mp->{update_profile_old});
+
+  $prof = $mp->{prof} if (!defined($prof));
+
+  ##-- map ids (profile->mp)
+  ##  + $pb2cb : ($NProfileBounds , $NMetaProfileBounds)
+  ##  + $pt2c  : ($NProfileTargets, $NMetaProfileClusters)  ##-- not needed here
+  ##  + $pt2tk : ($NProfileTargets, $NTargets_k)
+  my $pb2cb         = $mp->{pb2cb}         = $mp->xlateBoundsPdl($prof->{bounds});
+  my ($pt2c,$pt2tk) = @$mp{qw(pt2c pt2tk)} = $mp->xlateTargetPdls($prof->{targets});
+
+  ##-- target translation pdl: [profileTargetId,mpTargetId] --> 1
+  ##   + this generates a "grand unified" profile directly...
+  #my $pt2t_raw = $prof->{targets}->xlatePdlTo($mp->{tenum},badval=>-1);
+  #my $pt2t_ok  = ($pt2t_raw >= 0)->which;
+  #my $pt2t_w   = $pt2t_raw->xvals->cat($pt2t_raw)->dice_axis(0,$pt2t_ok)->xchg(0,1);
+  #my $pt2t = PDL::CCS::Nd->newFromWhich($pt2t_w, ones(byte,$pt2t_w->dim(1))->append(0),
+	#				dims   =>pdl(long,$prof->{targets}->size,$mp->{tenum}->size),
+	#				sorted =>1,
+	#				steal  =>1,
+	#			       );
+
+  ##-- update underlying profiles
+  ##-- NEW: dispatch update to "safe-cloned" profile
+
+  ##-- NEW: update: curprof
+  my $curprof = $mp->{curprof} = $prof->safeClone(); ##-- ... because clone() chokes on PDLs
+  $curprof->updateBounds ($pb2cb, $mp->{cbenum});
+  $curprof->updateTargets($pt2tk, $mp->{tenum_k});
+
+  ##-- NEW: update {ugs_k}, {ugs_kz}: index hack
+  my $ugs_k  = $mp->{ugs_k} = $curprof->targetUgPdl;
+  my $ugs_kz = $curprof->{pleft}{pdl}->xchg(0,1)->sumover->todense;
+  $ugs_kz   += $curprof->{pright}{pdl}->xchg(0,1)->sumover->todense;
+  $mp->{ugs_kz} = $ugs_kz->float / 2;
+
+  ##-- common: cleanup
+  delete(@$mp{qw(pb2cb pt2c pt2tk pt2tk_xi pt2tk_xw pt2c_xi pt2c_xw)});
+
+  return $curprof;
+}
+
+sub populateProfile_OLD {
   my ($mp,$prof) = @_;
   $prof = $mp->{prof} if (!defined($prof));
 

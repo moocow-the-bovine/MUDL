@@ -310,7 +310,8 @@ sub cdm_defaults {
     ##-- concatenated GU-matrix: ids
     $args->{gucids} = $args->{cids};
     $args->{gurids_rows} = $args->{rids} + $cdata->dim(1);
-    $args->{gurids_cids} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
+    #$args->{gurids_cids} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
+    $args->{gurids_cids} = zeroes(long, $args->{gudata}->dim(1));
     $args->{gurids_cids}->index($args->{gurids_rows}) .= $args->{rids}->sequence;
   } else {
     ##-- shared GU-matrix
