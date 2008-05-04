@@ -244,6 +244,8 @@ sub finishPdlProfile {
 
 ## $lr = $lr->addPdlBigrams($bg,%args);
 ##   + profiles to PDLs
+##   + additional %args:
+##      saveXpdls => $bool, ##-- if true, saves keys (bds2bge,bds_msk,bge2bds, tgs2bge,tgs_msk,bge2tgs)
 sub addPdlBigrams {
   my ($lr,$bgpd,%args) = @_;
 
@@ -287,6 +289,9 @@ sub addPdlBigrams {
   my $bge2bds = zeroes(long,$Nbge)->setvaltobad(0);                ##-- $bge2bds: $bge_id => $bds_id_or_BAD
   $bds_msk->index($bds2bge) .= 1;
   $bge2bds->index($bds2bge) .= sequence(long,$Nbds);
+  if ($args{saveXpdls}) {
+    @$lr{'bds2bge','bds_msk','bge2bds'} = ($bds2bge,$bds_msk,$bge2bds);
+  }
 
   ##-- get translation PDLs: targets
   my $tgs2bge = pdl(long, @{$bge->{sym2id}}{ @{$tgs->{id2sym}} }); ##-- $tgs2bge: $tgs_id => $bge_id
@@ -294,6 +299,9 @@ sub addPdlBigrams {
   my $bge2tgs = zeroes(long,$Nbge)->setvaltobad(0);                ##-- $bge2tgs: $bge_id => $tgs_id_or_BAD
   $tgs_msk->index($tgs2bge) .= 1;
   $bge2tgs->index($tgs2bge) .= sequence(long,$Ntgs);
+  if ($args{saveXpdls}) {
+    @$lr{'tgs2bge','tgs_msk','bge2tgs'} = ($tgs2bge,$tgs_msk,$bge2tgs);
+  }
 
   ##-- get bigram data
   my ($bgw1,$bgw2) = $bgpd->{pdl}->whichND;
