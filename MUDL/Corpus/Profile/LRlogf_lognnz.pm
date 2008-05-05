@@ -54,22 +54,22 @@ sub addPdlBigrams {
   $lr->SUPER::addPdlBigrams($bgpd,%args,saveXpdls=>1)
     or croak(ref($lr)."::addPdlBigrams() failed!");
 
-  ##-- get translation PDLs
+  ##-- nnz: get translation PDLs
   my $bds2bge = $lr->{bds2bge};
   my $tgs2bge = $lr->{tgs2bge};
 
-  ##-- get {nnzl},{nnzr}
+  ##-- nnz: get {nnzl},{nnzr}
   my $f12  = $bgpd->{pdl};
   my $nnz2 = $f12->nnz->decode;             ##-- nnz2: [w] -> |{ v : f(v,w)>0 }| : w-is-second
   my $nnz1 = $f12->xchg(0,1)->nnz->decode;  ##-- nnz1: [w] -> |{ v : f(w,v)>0 }| : w-is-first
 
-  ##-- get {nnzt*}:targets, {nnzb*}:bounds
+  ##-- nnz: get {nnzt*}:targets, {nnzb*}:bounds
   $lr->{nnzt1} = $nnz1->index($tgs2bge);    ##-- nnzt1: [t] -> nnz(t,*) : t-is-first
   $lr->{nnzt2} = $nnz2->index($tgs2bge);    ##-- nnzt2: [t] -> nnz(*,t) : t-is-second
   $lr->{nnzb1} = $nnz1->index($bds2bge);    ##-- nnzb1: [b] -> nnz(b,*) : b-is-first
   $lr->{nnzb2} = $nnz2->index($bds2bge);    ##-- nnzb2: [b] -> nnz(*,b) : b-is-second
 
-  ##-- save total number of nonzero bigram events
+  ##-- nnz: save total number of nonzero bigram events
   $lr->{Nnz}   = $f12->_nnz;
   $lr->{Nw}    = pdl(long,$f12->dims)->max;
 
@@ -86,8 +86,8 @@ sub addPdlBigrams {
 ##  + $xlateBoundsMatrix : pdl($nOldBounds,$nNewBounds) : [$old,$new] --> p($new|$old)
 sub updateBoundsPostHook {
   my ($lr,$xmatrix,$xenum) = @_;
-  $lr->{nnzb1} = ($xmatrix x $lr->{nnzb1}->toccs->dummy(0,1))->todense->flat;
-  $lr->{nnzb2} = ($xmatrix x $lr->{nnzb2}->toccs->dummy(0,1))->todense->flat;
+  $lr->{nnzb1} = ($xmatrix x $lr->{nnzb1}->toccs->double->dummy(0,1))->todense->flat;
+  $lr->{nnzb2} = ($xmatrix x $lr->{nnzb2}->toccs->double->dummy(0,1))->todense->flat;
   return $lr;
 }
 
@@ -95,8 +95,8 @@ sub updateBoundsPostHook {
 ##  + $xlateTargetsMatrix : pdl($nOldTargets,$nNewTargets) : [$old,$new] --> p($new|$old)
 sub updateTargetsPostHook {
   my ($lr,$xmatrix,$xenum) = @_;
-  $lr->{nnzt1} = ($xmatrix x $lr->{nnzt1}->toccs->dummy(0,1))->todense->flat;
-  $lr->{nnzt2} = ($xmatrix x $lr->{nnzt2}->toccs->dummy(0,1))->todense->flat;
+  $lr->{nnzt1} = ($xmatrix x $lr->{nnzt1}->toccs->double->dummy(0,1))->todense->flat;
+  $lr->{nnzt2} = ($xmatrix x $lr->{nnzt2}->toccs->double->dummy(0,1))->todense->flat;
   return $lr;
 }
 
