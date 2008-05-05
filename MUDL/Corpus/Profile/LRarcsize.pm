@@ -37,11 +37,79 @@ sub new {
 ##======================================================================
 ## Profiling
 
-## undef = $profile->addSentence(\@sentence)
-##  + inherited
+## $lr = $lr->addPdlBigrams($bgpd,%args);
+sub addPdlBigrams {
+  my ($lr,$bgpd,%args) = @_;
 
-## undef = $profile->addBigrams($bigrams,%args)
-##  + inherited
+  ##--------------------------------------
+  ##-- call superclass method, caching translation pdls
+  $lr->SUPER::addPdlBigrams($bgpd,%args,saveXpdls=>1)
+    or croak(ref($lr)."::addPdlBigrams() failed!");
+
+  ##--------------------------------------
+  ##-- get unigram freq-freqs
+  my $f12 = $bgpd->{pdl};
+  my $f1  = $f12->sumover->decode;
+  my ($f1_fv,$f1_fc) = $f1->valcounts;
+  my $f1_fcz = $f1_fc->double->smearvals($f1_fv); ##-- WITH GT-style value smearing
+  ##
+  ##-- unigram freq-freqs: log-linear fit (no zeroes)
+  my ($f1_fcz_fit,$f1_fcz_coeffs) = $f1_fcz->loglinfit($f1_fv);
+  print STDERR "<<<DEBUG>>>: ", ref($lr)."::addPdlBigrams(): f1_fcz_coeffs=".$f1_fcz_coeffs."\n";
+  ##
+  ##-- unigram freq-freqs: save coefficients and N
+  $lr->{f1_fcz_coeffs} = $f1_fcz_coeffs;
+  $lr->{f1_fcz_N}      = ($f1_fv*$f1_fcz_fit)->sumover;
+
+  ##--------------------------------------
+  ##-- nnz*
+  ##
+  ##-- nnz: get translation PDLs
+  my $bds2bge = $lr->{bds2bge};
+  my $tgs2bge = $lr->{tgs2bge};
+  ##
+  ##-- nnz: get {nnzl},{nnzr}
+  #my $f12  = $bgpd->{pdl};
+  my $nnz2 = $f12->nnz->decode;             ##-- nnz2: [w] -> |{ v : f(v,w)>0 }| : w-is-second
+  my $nnz1 = $f12->xchg(0,1)->nnz->decode;  ##-- nnz1: [w] -> |{ v : f(w,v)>0 }| : w-is-first
+  ##
+  ##-- nnz: get {nnzt*}:targets, {nnzb*}:bounds
+  $lr->{nnzt1} = $nnz1->index($tgs2bge);    ##-- nnzt1: [t] -> nnz(t,*) : t-is-first
+  $lr->{nnzt2} = $nnz2->index($tgs2bge);    ##-- nnzt2: [t] -> nnz(*,t) : t-is-second
+  $lr->{nnzb1} = $nnz1->index($bds2bge);    ##-- nnzb1: [b] -> nnz(b,*) : b-is-first
+  $lr->{nnzb2} = $nnz2->index($bds2bge);    ##-- nnzb2: [b] -> nnz(*,b) : b-is-second
+  ##
+  ##-- nnz: save total number of nonzero bigram events
+  $lr->{Nnz}   = $f12->_nnz;
+  $lr->{Nw}    = pdl(long,$f12->dims)->max;
+
+  ##--------------------------------------
+  ##-- cleanup cached translation pdls
+  delete(@$lr{'bds2bge','bds_msk','bge2bds', 'tgs2bge','tgs_msk','bge2tgs'});
+
+  return $lr;
+}
+
+##======================================================================
+## MetaProfile interface
+
+## $lr = $lr->updateBoundsPostHook($xlateBoundsMatrix, $newBoundsEnum)
+##  + $xlateBoundsMatrix : pdl($nOldBounds,$nNewBounds) : [$old,$new] --> p($new|$old)
+sub updateBoundsPostHook {
+  my ($lr,$xmatrix,$xenum) = @_;
+  $lr->{nnzb1} = ($xmatrix x $lr->{nnzb1}->toccs->double->dummy(0,1))->todense->flat;
+  $lr->{nnzb2} = ($xmatrix x $lr->{nnzb2}->toccs->double->dummy(0,1))->todense->flat;
+  return $lr;
+}
+
+## $lr = $lr->updateTargetsPostHook($xlateTargetsMatrix, $newTargetsEnum)
+##  + $xlateTargetsMatrix : pdl($nOldTargets,$nNewTargets) : [$old,$new] --> p($new|$old)
+sub updateTargetsPostHook {
+  my ($lr,$xmatrix,$xenum) = @_;
+  $lr->{nnzt1} = ($xmatrix x $lr->{nnzt1}->toccs->double->dummy(0,1))->todense->flat;
+  $lr->{nnzt2} = ($xmatrix x $lr->{nnzt2}->toccs->double->dummy(0,1))->todense->flat;
+  return $lr;
+}
 
 ##======================================================================
 ## Conversion: to PDL
@@ -131,7 +199,32 @@ sub finishPdl {
     #my $nnzw_hf_nzvals = $nnzw_hf->index($fwb_wi);    ##-- [nzi] -> h( f_fnz(W=w_nzi)/NNZF )
     #my $nnzb_hf_nzvals = $nnzb_hf->index($fwb_bi);    ##-- [nzi] -> h( f_fnz(B=b_nzi)/NNZF )
 
-    if (0) {
+    if (1) {
+      ##-- profile by internal-promiscuity-weighted h : >90% at stage=0 (>logf=89%), then craps out to 4% at stage=1
+      ##  + maybe saving "real" (word-based) nnz values would help here?
+      my $zt    = $zpdl->xchg(0,1);
+      my $fb1   = $fb->slice("*1");
+      $nnzw  = $lr->{'nnzt'.($z==0 ? '2' : '1')}->double;  ##-- [t]   -> (z==0 ? nnz(*,t) : nnz(t,*))
+      $nnzb  = $lr->{'nnzb'.($z==0 ? '1' : '2')}->double;  ##-- [b]   -> (z==0 ? nnz(b,*) : nnz(*,b))
+      my $nnzb1 = $nnzb->slice("*1");
+      my $pw    = $fw/$N;
+      my $pb1   = $fb1/$N;
+      my $nb = $nnzb->nelem;
+      my $nw = $nnzw->nelem;
+      ##--
+      #my $h_old = -log2z(1-$nnzw/$fw)/2 -log2z(1-$nnzb1/$fb1)/2 -log2z(($zt+1)/$N);
+      #my $h_new = -log2z($nnzw/$fw)/2   -log2z($nnzb1/$fb1)/2   -log2z($pw)-log2z($pb1);
+      #$zt .= $h_old+$h_new;
+      ##--
+      my $h_old = -log2z(1-$nnzw/$fw)/$nb/2 -log2z(1-$nnzb1/$fb1)/$nw/2 -log2z(($zt+1)/$N);
+      my $h_new = -log2z($nnzw/$fw)/$nb/2   -log2z($nnzb1/$fb1)/$nw/2   ;#-log2z($pw)/$nb-log2z($pb1)/$nw;
+      $zt .= $h_old+$h_new;
+      ##--
+      #my $h_old = -log2z(($zt+1)/$N);
+      #my $h_new = -log2z($nnzb1/$fb1);
+      #$zt .= $h_old+$h_new;
+    }
+    elsif (0) {
       ##-- profile by external-promiscuity-weighted h: crappyish
       my $zt    = $zpdl->xchg(0,1);
       my $fb1   = $fb->slice("*1");
@@ -141,7 +234,7 @@ sub finishPdl {
       $zt .= ($fw-$nnzw)/$fw * ($fb1-$nnzb1)/$fb1 * -log2z( ($zt+1)/$N ); ##-- p(old|w) * p(old|b) * h(old,w,b)
       $zt += $nnzw/$fw * $nnzb1/$fb1 * (-log2z($pw) -log2z($pb1));        ##-- p(new|w) * p(new|b) * (h(w)+h(b))
     }
-    elsif (1) {
+    elsif (0) {
       ##-- profile by internal-promiscuity-weighted h : >90% at stage=0 (>logf=89%), then craps out to 4% at stage=1
       ##  + maybe saving "real" (word-based) nnz values would help here?
       my $zt    = $zpdl->xchg(0,1);

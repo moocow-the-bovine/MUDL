@@ -1,13 +1,13 @@
 #-*- Mode: CPerl -*-
 
-## File: MUDL::Corpus::Profile::LRhff.pm
+## File: MUDL::Corpus::Profile::LRhffg.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL: corpus profile: model size: entropy of (smoothed) freq-freq
+##  + MUDL: corpus profile: model size: entropy of (smoothed) freq-freq (global)
 ##    prof(b,w) = h( smear(f_nz( f(b,w))) )
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRhff;
+package MUDL::Corpus::Profile::LRhffg;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
 use MUDL::EDist;
@@ -39,11 +39,42 @@ sub new {
 ##======================================================================
 ## Profiling
 
-## undef = $profile->addSentence(\@sentence)
-##  + inherited
+## undef = $profile->finishPdlProfile(%args)
+#inherited
 
-## undef = $profile->addBigrams($bigrams,%args)
-##  + inherited
+## $lr = $lr->addPdlBigrams($bgpd,%args);
+sub addPdlBigrams {
+  my ($lr,$bgpd,%args) = @_;
+
+  ##-- call superclass method, caching translation pdls
+  $lr->SUPER::addPdlBigrams($bgpd,%args,saveXpdls=>1)
+    or croak(ref($lr)."::addPdlBigrams() failed!");
+
+  ##-- get smoothing coefficients
+  my $f12              = $bgpd->{pdl};
+  my ($f12_fv,$f12_fc) = $f12->valcounts;
+  my ($f12_fcz);
+  if ($lr->{smear_ff}) {
+    $f12_fcz = $f12_fc->double->smearvals($f12_fv); ##-- WITH GT-style value smearing
+  } else {
+    $f12_fcz = $f12_fc->double;                     ##-- ... or without
+  }
+
+  ##-- log-linear fit (handle zeroes)
+  my ($f12_fcz_fit,$f12_fcz_coeffs) = $f12_fcz->loglinfit($f12_fv+1);
+  print STDERR "<<<DEBUG>>>: ", ref($lr)."::addPdlBigrams(): f12_fcz_coeffs=".$f12_fcz_coeffs."\n";
+
+  ##-- save coefficients
+  $lr->{f12_fcz_coeffs} = $f12_fcz_coeffs;
+
+  ##-- DEBUG: save fit: ok: all($f12_fcz_fit->approx($coeffs->at(0)*($fv+1)**$coeffs->at(1)));
+  #$lr->{f12_fcz_fit} = $f12_fcz_fit;
+
+  ##-- cleanup cached translation pdls
+  delete(@$lr{'bds2bge','bds_msk','bge2bds', 'tgs2bge','tgs_msk','bge2tgs'});
+
+  return $lr;
+}
 
 ##======================================================================
 ## Conversion: to PDL
@@ -62,48 +93,21 @@ sub finishPdl {
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
   ##-- get common data: frequencies
-  my $N  = pdl(double,$lr->{ftotal});
-  my $fw = $lr->{ptugs}{pdl}->double;  ##--  [w]   -> f(w)
-  my $fb = $lr->{pbugs}{pdl}->double;  ##--  [b]   -> f(b)
+  my $N        = pdl(double,$lr->{ftotal});
+  my ($ca,$ce) = $lr->{f12_fcz_coeffs}->dog;
 
   foreach my $z (0,1) {
-    my $zpdl    = $pdl->slice("($z)");
+    my $zpdl = $pdl->slice("($z)");
+    my $fwb  = $lr->{$z==0 ? 'pleft' : 'pright'}{pdl}->double;
 
-    my $fwb        = $lr->{$z==0 ? 'pleft' : 'pright'}{pdl}->double;
-    my $fwb_which  = $fwb->_whichND;            ##-- [nzi] -> [w_nzi,b_nzi]
-    my $fwb_nzvals = $fwb->_nzvals;             ##-- [nzi] -> f(w_nzi,b_nzi)
+    my $fwb_which = $fwb->_whichND;            ##-- [nzi] -> [w_nzi,b_nzi]
+    my $fwb_vals  = $fwb->_vals;               ##-- [nzi] -> f(w_nzi,b_nzi)+1
 
-    ##-- nz-value index components
-    #my $fwb_wi     = $fwb_which->slice("(0),"); ##-- [nzi] -> w_nzi
-    #my $fwb_bi     = $fwb_which->slice("(1),"); ##-- [nzi] -> b_nzi
+    my $fwb_vals_fit = $ca * (($fwb_vals+1)**$ce);
+    my $hwb_vals_fit = -log2z($fwb_vals_fit/$N);
+    my $fwb_fit      = $fwb->shadow(which=>$fwb_which, vals=>$hwb_vals_fit);
 
-    ##-- freq-freqs
-    my ($fwb_fv,$fwb_fc) = $fwb->valcounts;
-    my ($fwb_fcz);
-    if ($lr->{smear_ff}) {
-      $fwb_fcz = $fwb_fc->double->smearvals($fwb_fv); ##-- WITH GT-style value smearing
-    } else {
-      $fwb_fcz = $fwb_fc->double;                     ##-- ... or without
-    }
-
-    ##-- no zeroes in interpolation
-    #my $fwb_ff_nzvals = $fwb_nzvals->interpol($fwb_fv,$fwb_fcz);  ##-- [nzi] -> f_ff( f(w_nzi,b_nzi) )
-    #my $hwb_ff_nzvals = -log2z($fwb_ff_nzvals/$fwb_fcz->sumover); ##-- [nzi] -> h_ff( f(w_nzi,b_nzi) )
-
-    ##-- include zeroes in interpolation
-    my $fwb_ff_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz);  ##-- [nzi] -> f_ff( f(w_nzi,b_nzi) )
-    my $hwb_ff_vals = -log2z($fwb_ff_vals/$fwb_fcz->sumover);   ##-- [nzi] -> h_ff( f(w_nzi,b_nzi) )
-
-    ##-- log-linear fit (handle zeroes)
-    my ($fwb_fcz_fit,$fwb_fcz_coeffs) = $fwb_fcz->loglinfit($fwb_fv+1);
-    print STDERR "<<<DEBUG>>>: ", ref($lr)."::finishPdl(z=$z): fwb_fcz_coeffs=".$fwb_fcz_coeffs."\n";
-
-    my $fwb_ff_fit_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz_fit);
-    my $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals/$fwb_fcz_fit->sumover);
-
-    ##-- decode to $zpdl
-    my $hwb_ff_nd = $fwb->shadow(which=>$fwb_which, vals=>$hwb_ff_fit_vals);
-    $hwb_ff_nd->decode($zpdl->xchg(0,1));
+    $fwb_fit->decode($zpdl->xchg(0,1));
   }
 
   return $pdl;
