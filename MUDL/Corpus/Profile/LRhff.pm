@@ -1,4 +1,4 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRhff.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -21,7 +21,9 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
 ##  + new %args:
-##     smear_ff => $bool,             ## whether to "smear" freq-freqs (see MUDL::PDL::Smooth::smearvals), default=1
+##     global_ff => $bool,      ## whether to use global frequencies for smear/fit (default=0)
+##     smear_ff  => $bool,      ## whether to "smear" freq-freqs (see MUDL::PDL::Smooth::smearvals), default=0
+##     fit_ff    => $bool,      ## whether to back-fit all freq-freqs; (default=0)
 ##  + inherited %args:
 ##     eos     => $eos_str,
 ##     bos     => $bos_str,
@@ -33,17 +35,29 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams); #)
 ##     log_eps =>$eps,                ##-- used to avoid zeroes in log(f(b,w))
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,donorm=>0,smoothgt=>'',log_eps=>1,smear_ff=>1,%args);
+  return $that->SUPER::new(nfields=>1,donorm=>0,smoothgt=>'',dolog=>0, global_ff=>0,smear_ff=>0,fit_ff=>0,%args);
 }
 
 ##======================================================================
 ## Profiling
 
-## undef = $profile->addSentence(\@sentence)
-##  + inherited
+## undef = $profile->finishPdlProfile(%args)
+#inherited
 
-## undef = $profile->addBigrams($bigrams,%args)
-##  + inherited
+## $lr = $lr->addPdlBigrams($bgpd,%args);
+sub addPdlBigrams {
+  my ($lr,$bgpd,%args) = @_;
+
+  ##-- call superclass method, caching translation pdls
+  $lr->SUPER::addPdlBigrams($bgpd,%args,saveXpdls=>0)
+    or croak(ref($lr)."::addPdlBigrams() failed!");
+
+  ##-- save global freq-freq information
+  @$lr{'f12_fv','f12_fc'} = $bgpd->{pdl}->valcounts;
+
+  return $lr;
+}
+
 
 ##======================================================================
 ## Conversion: to PDL
@@ -73,12 +87,17 @@ sub finishPdl {
     my $fwb_which  = $fwb->_whichND;            ##-- [nzi] -> [w_nzi,b_nzi]
     my $fwb_nzvals = $fwb->_nzvals;             ##-- [nzi] -> f(w_nzi,b_nzi)
 
-    ##-- nz-value index components
-    #my $fwb_wi     = $fwb_which->slice("(0),"); ##-- [nzi] -> w_nzi
-    #my $fwb_bi     = $fwb_which->slice("(1),"); ##-- [nzi] -> b_nzi
+    ##-- get value counts
+    my ($fwb_fv,$fwb_fc);
+    if ($lr->{global_ff}) {
+      ##-- retrieve global val-counts
+      ($fwb_fv,$fwb_fc) = @$lr{'f12_fv','f12_fc'};
+    } else {
+      ##-- get local val-counts
+      ($fwb_fv,$fwb_fc) = $fwb->valcounts;
+    }
 
-    ##-- freq-freqs
-    my ($fwb_fv,$fwb_fc) = $fwb->valcounts;
+    ##-- smear value counts (maybe)
     my ($fwb_fcz);
     if ($lr->{smear_ff}) {
       $fwb_fcz = $fwb_fc->double->smearvals($fwb_fv); ##-- WITH GT-style value smearing
@@ -86,20 +105,23 @@ sub finishPdl {
       $fwb_fcz = $fwb_fc->double;                     ##-- ... or without
     }
 
-    ##-- no zeroes in interpolation
-    #my $fwb_ff_nzvals = $fwb_nzvals->interpol($fwb_fv,$fwb_fcz);  ##-- [nzi] -> f_ff( f(w_nzi,b_nzi) )
-    #my $hwb_ff_nzvals = -log2z($fwb_ff_nzvals/$fwb_fcz->sumover); ##-- [nzi] -> h_ff( f(w_nzi,b_nzi) )
+    ##-- get entropy values: $hwb_ff_fit_vals
+    my ($fwb_ff_fit_vals,$hwb_ff_fit_vals);
+    if ($lr->{fit_ff}) {
+      ##-- log-linear fit (handle zeroes)
+      my ($fwb_fcz_fit,$fwb_fcz_coeffs) = $fwb_fcz->loglinfit($fwb_fv+1);
+      print STDERR "<<<DEBUG>>>: ", ref($lr)."::finishPdl(z=$z): fwb_fcz_coeffs=".$fwb_fcz_coeffs."\n";
 
-    ##-- include zeroes in interpolation
-    my $fwb_ff_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz);  ##-- [nzi] -> f_ff( f(w_nzi,b_nzi) )
-    my $hwb_ff_vals = -log2z($fwb_ff_vals/$fwb_fcz->sumover);   ##-- [nzi] -> h_ff( f(w_nzi,b_nzi) )
-
-    ##-- log-linear fit (handle zeroes)
-    my ($fwb_fcz_fit,$fwb_fcz_coeffs) = $fwb_fcz->loglinfit($fwb_fv+1);
-    print STDERR "<<<DEBUG>>>: ", ref($lr)."::finishPdl(z=$z): fwb_fcz_coeffs=".$fwb_fcz_coeffs."\n";
-
-    my $fwb_ff_fit_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz_fit);
-    my $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals/$fwb_fcz_fit->sumover);
+      $fwb_ff_fit_vals = $fwb->_vals->interpol($fwb_fv,$fwb_fcz_fit);        ##-- [nzi] -> f*_ff( f(w_nzi,b_nzi) )
+      $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals/$fwb_fcz_fit->sumover);     ##-- [nzi] -> h*_ff( f(w_nzi,b_nzi) )
+    } else {
+      ##-- "no fit": log-linear interpolation
+      my ($err);
+      ($fwb_ff_fit_vals,$err) = (($fwb->_vals+1)->log
+				 ->interpolate(($fwb_fv+1)->log,
+					       $fwb_fcz->log));               ##-- [nzi] -> log(f_ff( f(w_nzi,b_nzi) ))
+      $hwb_ff_fit_vals = -log2z($fwb_ff_fit_vals->exp/$fwb_fcz->sumover);     ##-- [nzi] -> h_ff( f(w_nzi,b_nzi) )
+    }
 
     ##-- decode to $zpdl
     my $hwb_ff_nd = $fwb->shadow(which=>$fwb_which, vals=>$hwb_ff_fit_vals);
@@ -125,7 +147,9 @@ sub helpString {
      .qq(  bos=BOS_STRING   [default='__\$']\n)
      .qq(  donorm=BOOL      [default=1]\n)
      .qq(  smoothgt=WHICH   [default='']\n)
-     .qq(  smearff=BOOL     [default=1 ]\n)
+     .qq(  smear_ff=BOOL    [default=0]\n)
+     .qq(  fit_ff=BOOL      [default=1]\n)
+     .qq(  global_ff=BOOL   [default=0]\n)
     );
 }
 
