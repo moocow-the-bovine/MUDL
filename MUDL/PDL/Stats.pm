@@ -49,7 +49,10 @@ sub variance1 {
 }
 
 ## $stddev = $pdl->stddev()
-BEGIN { *PDL::stddev = \&stddev; }
+BEGIN {
+  *PDL::stddev          = \&stddev;
+  *PDL::CCS::Nd::stddev = \&stddev;
+}
 sub stddev { return $_[0]->variance->sqrt(); }
 
 

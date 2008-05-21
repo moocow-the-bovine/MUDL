@@ -583,7 +583,7 @@ sub test_totalsize {
 
   print "$0: test_totalsize() done: what now?\n";
 }
-#test_totalsize();
+test_totalsize();
 
 ##-- util: tuple creation
 ## $tuples = tuples($x,$y,$z,...)
@@ -688,7 +688,7 @@ sub test_dilambdas {
 
   print STDERR "$0: test_dilambdas() done: what now?\n";
 }
-test_dilambdas();
+#test_dilambdas();
 
 ##----------------------------------------------------------------------
 ## Dummy
