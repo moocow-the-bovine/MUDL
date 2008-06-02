@@ -1,4 +1,4 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::PDL::Stats.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -29,7 +29,8 @@ $EXPORT_TAGS{all} = \@EXPORT_OK;
 
 ## $mean = $pdl->mean()
 BEGIN {
-  *mean = *PDL::mean = \&PDL::average;
+  *mean = *PDL::mean  = \&PDL::average;
+  *PDL::CCS::Nd::mean = \&PDL::CCS::Nd::average;
 }
 
 ## $var = $pdl->variance()
@@ -50,7 +51,7 @@ sub variance1 {
 
 ## $stddev = $pdl->stddev()
 BEGIN {
-  *PDL::stddev          = \&stddev;
+  *PDL::stddev = \&stddev;
   *PDL::CCS::Nd::stddev = \&stddev;
 }
 sub stddev { return $_[0]->variance->sqrt(); }
