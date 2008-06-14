@@ -15,10 +15,9 @@ our @ISA = qw(Exporter);
 our @EXPORT = qw();
 our %EXPORT_TAGS =
   (
-   all => [
-	   'mean','variance','stddev',
-	   'log2','logz','log2z','log10z',
-	  ],
+   'binomial' => [ 'factorial', 'binomial', 'lnfactorial', 'lnbinomial', ],
+   'log'      => [ 'log2','logz','log2z','log10z', ],
+   'misc'     => [ 'mean','variance','stddev', ],
   );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = \@EXPORT_OK;
@@ -100,6 +99,52 @@ sub log10z {
   return $lp;
 }
 
+##======================================================================
+## Factorials & Binomial distribution
+use PDL::GSLSF::GAMMA;
+
+BEGIN {
+  *PDL::factorial   = *PDL::CCS::Nd::factorial   = \&factorial;
+  *PDL::lnfactorial = *PDL::CCS::Nd::lnfactorial = \&lnfactorial;
+  *PDL::binomial    = *PDL::CCS::Nd::binomial    = \&binomial;
+  *PDL::binomial    = *PDL::CCS::Nd::lnbinomial  = \&lnbinomial;
+}
+sub factorial_stirling {
+  my $n = shift;
+  my $pi = 3.14195;
+  return sqrt(2*$pi*$n) * (($n/exp(1))**$n);
+}
+
+sub factorial {
+  my $n = shift;
+  return $n->shadow(which=>$n->_whichND, vals=>factorial($n->_vals)) if (UNIVERSAL::isa($n,'PDL::CCS::Nd'));
+  my ($out,$err) = gsl_sf_fact($n,@_);
+  #return wantarray ? ($out,$err) : $out;
+  return $out;
+}
+sub lnfactorial {
+  my $n = shift;
+  return $n->shadow(which=>$n->_whichND, vals=>lnfactorial($n->_vals)) if (UNIVERSAL::isa($n,'PDL::CCS::Nd'));
+  my ($out,$err) = gsl_sf_lnfact($n,@_);
+  #return wantarray ? ($out,$err) : $out;
+  return $out;
+}
+
+sub binomial {
+  my ($n,$k) = (shift,shift);
+  #return factorial($n) / (factorial($n-$k)*factorial($k));
+  return $n->shadow(which=>$n->_whichND,vals=>binomial($n->_vals)) if (UNIVERSAL::isa($n,'PDL::CCS::Nd'));
+  my ($out,$err) = gsl_sf_choose($n,$k,@_);
+  #return wantarray ? ($out,$err) : $out;
+  return $out;
+}
+sub lnbinomial {
+  my ($n,$k) = (shift,shift);
+  return $n->shadow(which=>$n->_whichND,vals=>lnbinomial($n->_vals)) if (UNIVERSAL::isa($n,'PDL::CCS::Nd'));
+  my ($out,$err) = gsl_sf_lnchoose($n,$k,@_);
+  #return wantarray ? ($out,$err) : $out;
+  return $out;
+}
 
 1;
 
