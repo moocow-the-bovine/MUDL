@@ -18,7 +18,7 @@ our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
    'vals'  => ['valcounts','smearvals','intervals'],
-   'fit'   => ['zipf_fit','linfit','loglinfit'],
+   'fit'   => ['zipf_fit','mooLinfit','loglinfit'],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
 	       'gausspdf', 'gausscdf', 'gausspeak',
@@ -96,7 +96,7 @@ sub smearvals {
 
 ## ($zipf_constant,$freq_fit) = zipf_fit($freq_pdl)   ##-- array context
 ## $zipf_constant             = zipf_fit($freq_pdl)   ##-- scalar context
-## + fits $freq_pdl to best Zipfian distribution
+## + fits $freq_pdl to best Zipfian distribution (linear)
 ##     $freq = $zipf_constant / $rank_desc
 BEGIN { *PDL::zipf_fit = \&zipf_fit; }
 sub zipf_fit {

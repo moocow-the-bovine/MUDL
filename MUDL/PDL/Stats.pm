@@ -18,6 +18,7 @@ our %EXPORT_TAGS =
    'binomial' => [ 'factorial', 'binomial', 'lnfactorial', 'lnbinomial', ],
    'log'      => [ 'log2','logz','log2z','log10z', ],
    'misc'     => [ 'mean','variance','stddev', ],
+   'covar'    => [ 'covariance', 'covarianceMatrix' ],
   );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = \@EXPORT_OK;
@@ -55,6 +56,37 @@ BEGIN {
 }
 sub stddev { return $_[0]->variance->sqrt(); }
 
+
+## $covar = $x->covar($y)
+##  + covariance for ($x,$y)
+##  + Signature: (x(N), y(N), [o]covar())
+BEGIN {
+  *PDL::covariance = \&covariance;
+  *PDL::CCS::Nd::covariance = \&covariance;
+}
+sub covariance {
+  my ($x,$y) = @_;
+  return (($x*$y) - ($x->average*$y->average))->sumover / $x->dim(0);
+}
+
+## $Sigma = $x->covarianceMatrix()
+##  + Signature: (x(N,P), Sigma(N,P))
+##  + computes the Sample Covariance Matrix of
+##    a sample $x of p-dimensional vectors
+##  + adapted from:
+##     "Computing Covariance Matrices with PDL" by lin0 (Curate),
+##     http://www.perlmonks.org/?node_id=625532
+BEGIN {
+  *PDL::covarianceMatrix = \&covarianceMatrix;
+  *PDL::CCS::Nd::covarianceMatrix = \&covarianceMatrix;
+}
+sub covarianceMatrix {
+    my ($x,$cmat) = @_;
+    my $diff = $x - $x->xchg(0,1)->average;
+    my $Sigma = (1 / ($x->getdim(1) - 1)) * $diff->transpose x $diff;
+    return $cmat .= $Sigma if (defined($cmat));
+    return $Sigma;
+}
 
 ##======================================================================
 ## Logarithms
