@@ -17,7 +17,7 @@ our %EXPORT_TAGS =
   (
    'binomial' => [ 'factorial', 'binomial', 'lnfactorial', 'lnbinomial', ],
    'log'      => [ 'log2','logz','log2z','log10z', ],
-   'misc'     => [ 'mean','variance','stddev', ],
+   'misc'     => [ 'mean','variance','stddev','stdz' ],
    'covar'    => [ 'covariance', 'covarianceMatrix' ],
   );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
@@ -55,6 +55,26 @@ BEGIN {
   *PDL::CCS::Nd::stddev = \&stddev;
 }
 sub stddev { return $_[0]->variance->sqrt(); }
+
+
+## $z = $pdl->stdz($mu,$sigma,$z)
+##  + like $z = ($pdl-$mu) / $sigma;
+##  + args:
+##     $mu : mean        ##-- default: $p->average
+##     $sd : stddev      ##-- default: sqrt(($p**2)->average - $p_mean**2);
+##     $z  : output pdl  ##-- default: new
+BEGIN {
+  *PDL::stdz = \&stdz;
+  *PDL::CCS::Nd::stdz = \&stdz;
+}
+sub stdz {
+  my ($p,$mu,$sd,$z) = @_;
+  $mu = $p->average if (!defined($mu) || isnull($mu));
+  $sd = (($p**2)->average - $mu**2)->sqrt if (!defined($sd) || isnull($sd));
+  return ($p-$mu)/$sd if (!defined($z));
+  $z .= ($p-$mu)/$sd;
+  return $z;
+}
 
 
 ## $covar = $x->covar($y)
