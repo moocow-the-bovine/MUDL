@@ -66,7 +66,7 @@ BEGIN {
 }
 sub covariance {
   my ($x,$y) = @_;
-  return (($x*$y) - ($x->average*$y->average))->sumover / $x->dim(0);
+  return (($x*$y) - ($x->average*$y->average)->dummy(0,1))->sumover / $x->dim(0);
 }
 
 ## $Sigma = $x->covarianceMatrix()

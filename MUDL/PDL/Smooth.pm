@@ -35,7 +35,7 @@ our @EXPORT      = @EXPORT_OK;
 ##======================================================================
 ## Value Counts
 
-## ($values,$valcounts) = $pdl->valcounts()  ##-- array context, suitable for PDL::primitive::interpol(ate)
+## ($values,$valcounts) = $pdl->valcounts()  ##-- array context, suitable for PDL::Primitive::interpol(ate)
 ##  + flat only (?)
 ##  + returned PDLs are suitable for back-fitting into $pdl indices with:
 ##    $i2valcount = $pdl->interpol($values,$valcounts);
