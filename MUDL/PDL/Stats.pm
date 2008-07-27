@@ -73,7 +73,7 @@ sub stdz {
   $sd = (($p**2)->average - $mu**2)->sqrt if (!defined($sd) || isnull($sd));
   if (defined($z)) { $z .= ($p-$mu->dummy(0,1))/$sd->dummy(0,1); }
   else             { $z  = ($p-$mu->dummy(0,1))/$sd->dummy(0,1); }
-  $z->missing(0) if ($z->missing->isbad);
+  $z->missing(0) if ($z->isa('PDL::CCS::Nd') && $z->missing->isbad);
   return $z;
 }
 

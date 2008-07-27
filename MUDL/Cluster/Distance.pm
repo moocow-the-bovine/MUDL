@@ -37,6 +37,13 @@ BEGIN {
      'cosine'=>'Cosine',
      'cos'=>'Cosine',
      ##
+     'Bhattacharyya'=>'Bhat',
+     'bhattacharyya'=>'Bhat',
+     'bhat'=>'Bhat',
+     'hellinger'=>'Hellinger',
+     'Hell'=>'Hellinger',
+     'hell'=>'Hellinger',
+     ##
      ##-- PDL::Cluster built-in distance functions
      'e'=>['Builtin', distFlag=>'e', distName=>'Euclid'],
      'b'=>['Builtin', distFlag=>'b', distName=>'L1'],
