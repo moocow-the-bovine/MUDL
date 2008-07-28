@@ -32,11 +32,11 @@ BEGIN {
      'Average' => ['GroupAverage'],
      ##
      ##-- PDL::Cluster::clusterdistance() built-in linkage methods
-     #'a' => ['Builtin', linkFlag=>'a', linkName=>'mean'],
-     #'m' => ['Builtin', linkFlag=>'m', linkName=>'median'],
      #'s' => ['Builtin', linkFlag=>'s', linkName=>'minimum'],
      #'x' => ['Builtin', linkFlag=>'s', linkName=>'maximum'],
-     #'x' => ['Builtin', linkFlag=>'s', linkName=>'average'],
+     #'v' => ['Builtin', linkFlag=>'s', linkName=>'average'],
+     #'a' => ['Builtin', linkFlag=>'a', linkName=>'mean'],
+     #'m' => ['Builtin', linkFlag=>'m', linkName=>'median'],
      ###
      ###-- PDL::Cluster:treecluster() built-in linkage methods (for treecluster())
      ##'s' => ['Builtin', linkFlag=>'s', linkName=>'minimum'],

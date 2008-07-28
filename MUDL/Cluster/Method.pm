@@ -128,7 +128,7 @@ sub new {
     }
     ##
     ##-- respect old 'cdbonus' conventions
-    $args{cdbonus} = ($args{cdmethod} =~ m/\+b/ ? 1 : 0);
+    $args{cdbonus} = (defined($args{cdmethod}) && $args{cdmethod} =~ m/\+b/ ? 1 : 0);
   }
   ##-- delete old-style distance/link specification (if any)
   delete(@args{qw(dist method cddist cdmethod)});
