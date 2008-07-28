@@ -239,7 +239,10 @@ sub toPDL3d {
     }
   }
 
-  ##-- smoothing
+  ##-- smoothing: additive constant
+  $pdl += $lr->{smooth_add} if (defined($lr->{smooth_add}));
+
+  ##-- smoothing: default
   $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));
 
   ##-- data munging
@@ -340,7 +343,7 @@ sub smoothPdl {
 ## $pdl_3d = $lr->normalizePdl($pdl_3d)
 ##  + normalize a pdl (3d)
 ##  + relevant flags in $lr:
-##     norm_independent => $bool,  ##-- whether to normalize left and right subvectors independently
+##     norm_independent => $bool,  ##-- whether to normalize left and right subvectors independently [default
 ##     norm_nan         => $value, ##-- value for -nan- & bad values (applied first) [default=0]
 ##     norm_zero_zero   => $zero,  ##-- zero value to feed into normalization method
 ##     norm_zero_p      => $value, ##-- post-normalized zero value

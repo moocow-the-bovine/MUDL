@@ -31,6 +31,11 @@ our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::PdlProfile); #)
 ##       smoothli=>$where,           ## whether/where to smooth by (deleted) interpolation: 'global', 'local'
 ##       li_which=>$which,           ## + independent value to add in with \lambda1: 'b':bound (default), 't':target
 ##       li_hapax =>$how,            ## + how to handle hapax events for li-smoothing (default: ignore)
+##       dolog=>$bool,               ## whether to take log of raw values (default=undef)
+##       log_eps=>$eps,              ## raw epsilon to add before taking logarithm (avoid infinity for raw zeroes; default=1)
+##       donorm=>$bool,              ## whether to normalize pdls into range [0..1] (default=1)
+##       norm_independent=>$bool,    ## whether to normalize left and right subvectors independently (default=1)
+##       smooth_add=>$val,           ## additive constant: applied before smooth,finish,log,norm. (default=undef (0))
 ##
 ##   + data acquired [NEW: PDL-ized]
 ##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq  (~ $pdl3d->xvals==0), bound-is-left
@@ -569,6 +574,9 @@ sub toPDL3d {
 
   ##-- frequency data: right-context
   $lr->{pright}{pdl}->decode( $pdl->slice('(1),')->xchg(0,1) );
+
+  ##-- smoothing: additive constant
+  $pdl += $lr->{smooth_add} if (defined($lr->{smooth_add}));
 
   ##-- smoothing: default
   $lr->smoothPdl($pdl) if ($lr->can('smoothPdl'));
