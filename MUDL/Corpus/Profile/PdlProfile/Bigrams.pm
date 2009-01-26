@@ -19,7 +19,7 @@ use strict;
 our @ISA = qw(MUDL::PdlDist::SparseNd MUDL::Corpus::Profile::PdlProfile MUDL::Corpus::Model);
 
 our $DEFAULT_ZERO_PROB   = $MUDL::Bigrams::DEFAULT_ZERO_PROB;
-our $PROFILE_CCSND_FLAGS = ($CCSND_BAD_IS_MISSING | $CCSND_NAN_IS_MISSING);
+our $PROFILE_CCSND_FLAGS = ($PDL::CCS::Nd::CCSND_BAD_IS_MISSING | $PDL::CCS::Nd::CCSND_NAN_IS_MISSING);
 
 ## OBJECT STRUCTURE:
 ##   + new in MUDL::Corpus::Profile::PdlProfile::Bigrams:
