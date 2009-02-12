@@ -1003,8 +1003,10 @@ sub getSummaryInfo {
   my $info = {};
 
   MUDL::CmdUtils::loadModule($mp->{cm})        if (defined($mp->{cm}));
-  MUDL::CmdUtils::loadModule($mp->{cm}{distf}) if (defined($mp->{cm}{distf}));
-  MUDL::CmdUtils::loadModule($mp->{cm}{distf}{linker}) if (defined($mp->{cm}{distf}{linker}));
+  if (defined($mp->{cm}{distf})) {
+    MUDL::CmdUtils::loadModule($mp->{cm}{distf});
+    MUDL::CmdUtils::loadModule($mp->{cm}{distf}{linker}) if (defined($mp->{cm}{distf}{linker}));
+  }
 
   $info->{stage} = $mp->{stage};
 

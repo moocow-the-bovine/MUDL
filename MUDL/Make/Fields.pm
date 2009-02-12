@@ -819,7 +819,7 @@ our %FIELDS =
 	      #path=>[qw(xvars icbase)],
 	      path=>[qw(xvars fcorpus)],
 	      n=>0, fmt=>'auto', title=>'lg',
-	      eval=>'$_ =~ /^(\w\w)\-/ ? $1 : ($_ =~ /^[uz]/ ? "de" : "en")',
+	      eval=>'$_ =~ /^(\w\w)\b/ ? $1 : ($_ =~ /^[uz]/ ? "de" : "en")',
 	      alt=>[
 		    qw(xvars->icorpus xvars->icbase xvars->tcorpus),
 		    qw(icorpus icbase tcorpus),

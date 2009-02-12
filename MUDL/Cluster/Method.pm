@@ -541,7 +541,7 @@ sub profileElements {
 ##  + just returns $cm->{distf} if defined
 ##  + otherwise creates new distance function from $cm->{dclass}
 sub distance {
-  if (!defined($_[0]{distf})) {
+  if (!defined($_[0]{distf}) || !UNIVERSAL::can($_[0]{distf},'distanceName')) {
     $_[0]{distf}=MUDL::Cluster::Distance->new(class=>$_[0]{dclass});
     croak(ref($_[0])."::distance(): could not create MUDL::Cluster::Distance object!") if (!defined($_[0]{distf}));
   }
