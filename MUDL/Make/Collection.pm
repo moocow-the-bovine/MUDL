@@ -258,35 +258,38 @@ sub xfind {
 ##======================================================================
 ## Expansion
 
-## $cfg = $mcol->expandConfig($cfg)
+## $cfg = $mcol->expandConfig($cfg,%args)
 ##  + expands $cfg according to $mcol->{vars}
 ##  + adds expanded key to $mcol->{xconfigs}
+##  + %args are passed to $cfg->expand()
 sub expandConfig {
-  my ($mcol,$cfg) = @_;
+  my ($mcol,$cfg,%args) = @_;
   print STDERR ref($mcol), "::expandConfig(", $mcol->ukey($cfg), ")...\n";
-  $cfg->expand($mcol->{vars});
+  $cfg->expand($mcol->{vars},%args);
   return $mcol->{xconfigs}{$mcol->xkey($cfg)} = $cfg;
 }
 
-## $mcol = $mcol->expandAll()
+## $mcol = $mcol->expandAll(%args)
 ##  + re-expands all configs according to $mcol->{vars}
+##  + %args are passed to $mcol->expandCondig()
 sub expandAll {
   my $mcol = shift;
   my ($ukey);
   foreach $ukey (keys(%{$mcol->{uconfigs}})) {
-    $mcol->expandConfig($mcol->{uconfigs}{$ukey});
+    $mcol->expandConfig($mcol->{uconfigs}{$ukey},@_);
   }
   return $mcol;
 }
 
-## $mcol = $mcol->expandMissing()
+## $mcol = $mcol->expandMissing(%args)
 ##  + expands all configs $cfg with empty %{$cfg->{xvars}}
+##  + %args are passed to $mcol->expandCondig()
 sub expandMissing {
   my $mcol = shift;
   my ($ukey,$cfg);
   foreach $ukey (keys(%{$mcol->{uconfigs}})) {
     $cfg = $mcol->{uconfigs}{$ukey};
-    $mcol->expandConfig($cfg) if (!$cfg->{xvars} || !%{$cfg->{xvars}});
+    $mcol->expandConfig($cfg,@_) if (!$cfg->{xvars} || !%{$cfg->{xvars}});
   }
   return $mcol;
 }

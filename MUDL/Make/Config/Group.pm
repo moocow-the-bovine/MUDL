@@ -211,7 +211,7 @@ sub acquire { return 1; }
 sub reacquire {
   my $grp = shift;
   foreach (@{$grp->{gconfigs}}) {
-    if (!UNVIERSAL::can($_,'reacquire') || !$_->reacquire(@_)) {
+    if (!UNIVERSAL::can($_,'reacquire') || !$_->reacquire(@_)) {
       confess(ref($grp)."::reacquire() failed!");
       return undef;
     }

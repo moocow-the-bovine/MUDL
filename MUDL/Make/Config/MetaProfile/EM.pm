@@ -45,7 +45,7 @@ sub new {
   my $self = bless $that->SUPER::new(
 				     ##-- Make targets
 				     targets  => 'em-evals',
-				     userfile => 'user.mak',
+				     #userfile => 'user.mak',
 
 				     ##-- acquisition data
 				     eval_global    => undef,
@@ -65,7 +65,7 @@ sub clear {
   $cfg->SUPER::clear();
 
   $cfg->{targets} = 'em-global-eval em-tgs-eval em-tgs-k-eval';
-  $cfg->{userfile} = 'user.mak';
+  #$cfg->{userfile} = 'user.mak';
   delete(@$cfg{qw(eval_global eval_targets eval_targets_k mpsummary)});
 
   return $cfg;

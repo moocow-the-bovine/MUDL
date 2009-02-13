@@ -121,20 +121,22 @@ sub xkey0 { return $_[0]->key($_[0]->{xvars}); }
 ##======================================================================
 ## Expansion: all variables
 
-## $cfg = $cfg->expand($mudl_mak_vars)
+## $cfg = $cfg->expand($mudl_mak_vars,%args)
 ##  + assigns user-variables in $cfg->{vars}
 ##  + expands all variables to $cfg->{xvars}
 ##  + copies $mudl_mak_vars
-sub expand { return $_[0]->_expand($_[1]->clone()); }
+##  + %args are passed to MUDL::Make::Vars::expand()
+sub expand { return $_[0]->_expand($_[1]->clone(),@_[2..$#_]); }
 
 ## $cfg = $cfg->_expand($mudl_mak_vars)
 ##  + assigns user-variables in $cfg->{vars}
 ##  + expands all variables to $cfg->{xvars}
 ##  + destructively alters $mudl_mak_vars !
+##  + %args are passed to $mudl_mak_vars->expand()
 sub _expand {
-  my ($cfg,$vars) = @_;
+  my ($cfg,$vars,%args) = @_;
   $vars->assign($cfg->{uvars});
-  $vars->expand(xvars=>$cfg->{xvars});
+  $vars->expand(%args,xvars=>$cfg->{xvars});
   return $cfg;
 }
 

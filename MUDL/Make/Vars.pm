@@ -81,7 +81,7 @@ sub assign {
 
 ## \%xvars = $vars->expand(%args)
 ##  + %args:
-##     file=>$makefilename,
+##     file     =>$makefilename,
 ##     target=>$target,
 ##     xvars=>\%xvars, ##-- destination object
 ##     unlink=>$bool,  ##-- unlink the generated makefile?
@@ -129,9 +129,10 @@ sub expandMakefile {
 
 ## $filename = $vars->writeMakefile(%args)
 ##  + %args:
-##     file   =>$filename_or_fh, ##-- write to $filename_or_fh
-##     target =>$config_target,  ##-- pseudo-target (default: '__'.(ref($vars)=~s/\:/_/g).'__'
-##                               ##   : use empty string for no pseudo-target
+##     file   =>$filename_or_fh,    ##-- write to $filename_or_fh
+##     userfile => $filename_or_fh, ##-- overrides 'file' key if present
+##     target =>$config_target,     ##-- pseudo-target (default: '__'.(ref($vars)=~s/\:/_/g).'__'
+##                                  ##   : use empty string for no pseudo-target
 sub writeMakefile {
   my ($vars,%args) = @_;
 
@@ -139,7 +140,7 @@ sub writeMakefile {
   my $target = defined($args{target}) ? $args{target} : $vars->ctarget($args{target});
 
   ##-- get filename & fh
-  my $file = $args{file};
+  my $file = defined($args{userfile}) ? $args{userfile} : $args{file};
   my ($fh);
   if (ref($file)) {
     $fh = $file;
@@ -151,6 +152,9 @@ sub writeMakefile {
     $fh = IO::File->new(">$file")
       or confess(ref($vars)."::writeMakefile(): open failed for '$file': $!");
   }
+
+  ##-- DEBUG
+  print STDERR ref($vars), "::writeMakefile(): writing file=$file\n";
 
   ##-- write makefile
   $fh->print(

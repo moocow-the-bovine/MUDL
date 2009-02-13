@@ -80,7 +80,7 @@ sub new {
 			   coldigest=>'',
 			   dir=>'..',
 			   varfile=>'../Default.mak',
-			   userfile=>'user.mak',
+			   #userfile=>"user.mak", ##-- override default user file (tmp)
 			   colmd5=>'',  ##-- MD5 digest for collection
 			   automd5=>1,  ##-- whether to automatically acquire collection MD5 digest on load()
 
@@ -426,7 +426,7 @@ $ACTIONS{expand} = $ACTIONS{expandAll} = $ACTIONS{expandSelected} = $ACTIONS{exp
    code  => \&actExpandAll,
   };
 sub actExpandAll {
-  $_[0]->ensureLoaded() && $_[0]->selected()->expandAll();
+  $_[0]->ensureLoaded() && $_[0]->selected()->expandAll( userfile=>$_[0]{userfile} );
 }
 
 $ACTIONS{expandMissing} =
@@ -436,7 +436,7 @@ $ACTIONS{expandMissing} =
    code  => \&actExpandMissing,
   };
 sub actExpandMissing {
-  $_[0]->ensureLoaded() && $_[0]->selected()->expandMissing();
+  $_[0]->ensureLoaded() && $_[0]->selected()->expandMissing( userfile=>$_[0]{userfile} );
 }
 
 ##---------------------------------------------------------------
@@ -804,7 +804,7 @@ sub actMake {
   my $rc = 1;
   my ($cfg);
   foreach $cfg ($mak->sortSelection()) {
-    $rc &&= $cfg->make( dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
+    $rc &&= $cfg->make( dir=>$mak->{dir}, userfile=>$mak->{userfile}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
     if (!$rc) {
       warn(ref($mak),"::actMake() failed -- bailing out");
       exit(1);
@@ -831,7 +831,7 @@ sub actMakeK {
   my $rc = 1;
   my ($cfg);
   foreach $cfg ($mak->sortSelection()) {
-    $rc &&= $cfg->make( dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
+    $rc &&= $cfg->make( dir=>$mak->{dir}, userfile=>$mak->{userfile}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
     if (!$mak->{dummy}) {
       $mak->syncCollection() if ($mak->{paranoid});
     }
@@ -854,7 +854,7 @@ sub actReacquire {
   my $rc = 1;
   my ($cfg);
   my $fspec = 'stage,emi,auto';
-  my %makargs = (dir=>$mak->{dir}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy});
+  my %makargs = (dir=>$mak->{dir}, userfile=>$mak->{userfile}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy});
   my $mf_ls = $mak->fields($fspec, configs=>$mak->selectedConfigs);
   my $xfields = $mf_ls->xfields;
   my @xtitles = map { $_->{title} } @$xfields;
