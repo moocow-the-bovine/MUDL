@@ -153,8 +153,7 @@ sub writeMakefile {
       or confess(ref($vars)."::writeMakefile(): open failed for '$file': $!");
   }
 
-  ##-- DEBUG
-  print STDERR ref($vars), "::writeMakefile(): writing file=$file\n";
+  #print STDERR ref($vars), "::writeMakefile(): writing file=$file\n" ##-- DEBUG
 
   ##-- write makefile
   $fh->print(

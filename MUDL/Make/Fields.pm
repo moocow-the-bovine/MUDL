@@ -840,6 +840,13 @@ our %FIELDS =
 	      },
 
    ##-- MetaProfile: numeric indices
+   'nstages' => { path=>[qw(xvars nstages)], n=>1, fmt=>'%3d', title=>'nstages',
+		  alt=>[qw(xvars->nstages stagef)],
+		  hr=>'major',
+		  condense=>1,
+		  #part=>'stage',
+		},
+
    'stg' => 'stage',
    'stage' => { path=>[qw(xvars stage)], n=>1, fmt=>'%3d', title=>'stg',
 		alt=>[qw(stage xvars->stage stagef nstages)],
