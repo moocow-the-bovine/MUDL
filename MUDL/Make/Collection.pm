@@ -215,8 +215,9 @@ sub ufind {
 ##  + implicitly creates config for \%uvars if none exists
 ##  + implicitly parses $ukey if it is passed as a string (may be dangerous!)
 ##  + %args:
-##     expand=>$bool, ##-- if true, newly created configs will be auto-expanded
-##     class=>$class, ##-- config class (default: MUDL::Make::Config) [also sets $cfg->{class}]
+##     expand=>$bool,   ##-- if true, newly created configs will be auto-expanded
+##     class=>$class,   ##-- config class (default: MUDL::Make::Config) [also sets $cfg->{class}]
+##     userfile=>$file, ##-- user makefile
 sub uget {
   my ($mcol,$uvars,%args) = @_;
   my ($ukey);
@@ -232,7 +233,7 @@ sub uget {
   ##-- auto-create new config
   my $class = $args{class} ? $args{class} : 'MUDL::Make::Config';
   my $cfg = $mcol->{uconfigs}{$ukey} = $class->new(uvars => $uvars);
-  $mcol->expandConfig($cfg) if ($args{expand});
+  $mcol->expandConfig($cfg,%args) if ($args{expand});
 
   ##-- set config 'class' key
   my $cclass = $class;

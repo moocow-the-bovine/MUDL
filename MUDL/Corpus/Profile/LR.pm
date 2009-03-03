@@ -432,10 +432,19 @@ sub logPdl {
 ## PDL-ization: normalization: subs
 
 ## undef = $lr->normpdl_pmass($pdl_2d);
-##  + normalize $pdl rows by positive mass: pseudo-probabilities
+##  + normalize $pdl *ROWS* by positive mass: pseudo-probabilities
+##  + on completion, all($pdl_2d->sumover==1)
 sub normpdl_pmass {
   my ($lr,$pz) = @_;
   $pz /= sumover($pz)->slice("*1,");
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
+}
+
+## undef = $lr->normpdl_ipmass($pdl_2d);
+##  + normalize $pdl *COLUMNS* by positive mass: pseudo-probabilities
+sub normpdl_ipmass {
+  my ($lr,$pz) = @_;
+  $pz /= sumover($pz->xchg(0,1));
   $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
 }
 

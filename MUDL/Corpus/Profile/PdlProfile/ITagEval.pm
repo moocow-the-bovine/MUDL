@@ -687,8 +687,8 @@ sub finishPdlProfile {
 	   );
 
   ##-- number of *observed* tags
-  $eval->{ntags1} = $tag1dp->nnz;
-  $eval->{ntags2} = $tag2dp->nnz;
+  $eval->{ntags1} = $tag1dp->nnz->sclr;
+  $eval->{ntags2} = $tag2dp->nnz->sclr;
 
   ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ## Cleanup

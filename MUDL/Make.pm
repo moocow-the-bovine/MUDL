@@ -975,14 +975,15 @@ sub ufind {
 ##  + implicitly creates config for \%uvars if none exists
 ##  + implicitly parses $ukey if it is passed as a string (may be dangerous!)
 ##  + %args:
-##     expand=>$bool, ##-- if true, newly created configs will be auto-expanded
-##     class=>$class, ##-- config class (default: MUDL::Make::Config)
+##     expand=>$bool,       ##-- if true, newly created configs will be auto-expanded
+##     class=>$class,       ##-- config class (default: MUDL::Make::Config)
+##     userfile=>$userfile, ##-- override $mak->{userfile} (tmp)
 sub uget {
   my ($mak,$uvars,%args) = @_;
   $mak->ensureLoaded || return undef;
   my $cfg = $mak->{col}->ufind($uvars);
   if (!defined($cfg)) {
-    $cfg = $mak->{col}->uget($uvars,expand=>1,%args);
+    $cfg = $mak->{col}->uget($uvars,expand=>1,userfile=>$mak->{userfile},%args);
   }
   return $cfg;
 }

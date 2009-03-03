@@ -81,7 +81,7 @@ sub assign {
 
 ## \%xvars = $vars->expand(%args)
 ##  + %args:
-##     file     =>$makefilename,
+##     file     =>$makefilename,  ##-- alias: userfile
 ##     target=>$target,
 ##     xvars=>\%xvars, ##-- destination object
 ##     unlink=>$bool,  ##-- unlink the generated makefile?
@@ -156,6 +156,7 @@ sub writeMakefile {
   #print STDERR ref($vars), "::writeMakefile(): writing file=$file\n" ##-- DEBUG
 
   ##-- write makefile
+  local $, = '';
   $fh->print(
 	     ##-- User Variables
 	     (map { ($_, ' :=', $vars->{uvars}{$_}, "\n") } keys(%{$vars->{uvars}})),

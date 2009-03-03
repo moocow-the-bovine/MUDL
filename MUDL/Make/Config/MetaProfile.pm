@@ -124,49 +124,18 @@ sub acquire {
 sub reacquire {
   my ($cfg,%args) = @_;
 
-  ##-- do chdir()
-  $cfg->pushd($args{dir});
-
   ##-- get common data
   my $stagedir = $cfg->{xvars}{stagedir};
   my $stage    = $cfg->{xvars}{stage};
   my $tbase    = $cfg->{xvars}{tbase};
 
-  ##-- re-acquire: global
-  my ($base,$eval,$esum);
-  $base = "$stagedir/stage.t-${tbase}.eval";
-  $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
-    or confess(ref($cfg),"::reacquire(): could not load global-eval file '$base.bin': $!");
-  $eval->finish();
-  $esum = $eval->summary();
-  $eval->saveFile("$base.bin");
-  $esum->saveFile("$base.summary.bin");
-  $cfg->{eval_global} = $esum;
-
-  ##-- re-acquire: targets
-  $base   = "$stagedir/stage.tgs.t-${tbase}.eval";
-  $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
-    or confess(ref($cfg),"::reacquire(): could not load targets-eval file '$base.bin': $!");
-  $eval->finish();
-  $esum = $eval->summary();
-  $eval->saveFile("$base.bin");
-  $esum->saveFile("$base.summary.bin");
-  $cfg->{eval_targets} = $esum;
-
-  ##-- re-acquire: targets-k
-  $base   = "$stagedir/stage.tgs-k.t-${tbase}.eval";
-  $eval = MUDL::Corpus::Profile::ITagEval->loadFile("$base.bin")
-    or confess(ref($cfg),"::reacquire(): could not load targets-eval file '$base.bin': $!");
-  $eval->finish();
-  $esum = $eval->summary();
-  $eval->saveFile("$base.bin");
-  $esum->saveFile("$base.summary.bin");
-  $cfg->{eval_targets_k} = $esum;
-
-  ##-- pop chdir()
+  ##-- force remove: summaries
+  $cfg->pushd($args{dir});
+  unlink(glob("$stagedir/*.summary*"));
   $cfg->popd();
 
-  return $cfg;
+  ##-- now call make()
+  return $cfg->make(%args);
 }
 
 
