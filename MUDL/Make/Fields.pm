@@ -1190,7 +1190,7 @@ our %FIELDS =
    (map { _markmax_fields_latex($_) } @_eval_base_fields),
    (map {
      my $aggr=$_;
-     map { _markmax_fields("${aggr}:$_") } @_eval_base_fields
+     map { _markmax_fields_latex("${aggr}:$_") } @_eval_base_fields
    } @aggregateAvgs), ##--keys(%aggregateFuncs)
 
    ##-------------------------------------
