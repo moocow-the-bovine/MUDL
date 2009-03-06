@@ -8,6 +8,7 @@
 
 package MUDL::PDL::Smooth;
 use MUDL::PDL::Ranks;
+use MUDL::Limits;
 use PDL;
 use PDL::Math;
 use PDL::CCS;
@@ -55,6 +56,11 @@ sub ccs_nd_valcounts {
   my $vmissing = $ccs->missing;
   my $nmissing = $ccs->nmissing;
   my $imissing = $vmissing->vsearch($v);
+  ##
+  ##-- maybe bash to double
+  if ($nmissing > $INT_MAX) {
+    $vc = $vc->float; ##-- bash to float in case of datatype overflow
+  }
   $vc->index($imissing) .= $nmissing;
   return ($v,$vc);
 }
