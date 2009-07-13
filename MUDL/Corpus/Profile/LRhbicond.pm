@@ -3,7 +3,14 @@
 ## File: MUDL::Corpus::Profile::LRhbicond.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
 ## Description:
-##  + MUDL unsupervised dependency learner: corpus profile: L-R conditional code lengths
+##  + MUDL unsupervised dependency learner: corpus profile: L-R "outer" (bi)conditional code lengths
+##  + PROFILE(w,b) =       h~(b|w)            +       h~(w|b)
+##                 = -log2(p~(b|w))           + -log2(p~(w|b))
+##                 = -log2(f~(b,w)     /f(w)) + -log2(f~(w,b)     /f(b))
+##                 = -log2((f(b,w)+EPS)/f(w)) + -log2((f(w,b)+EPS)/f(b))
+##                 =       h~(b,w)     -h(w)  +        h(w,b)     -h(b)
+##                 = 2*h~(b,w) - h(w) - h(b)
+##  + EPS = log_eps (default=0.5)
 ##======================================================================
 
 package MUDL::Corpus::Profile::LRhbicond;

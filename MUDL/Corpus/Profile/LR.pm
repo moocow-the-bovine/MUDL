@@ -343,7 +343,7 @@ sub smoothPdl {
 ## $pdl_3d = $lr->normalizePdl($pdl_3d)
 ##  + normalize a pdl (3d)
 ##  + relevant flags in $lr:
-##     norm_independent => $bool,  ##-- whether to normalize left and right subvectors independently [default
+##     norm_independent => $bool,  ##-- whether to normalize left and right subvectors independently [default=yes]
 ##     norm_nan         => $value, ##-- value for -nan- & bad values (applied first) [default=0]
 ##     norm_zero_zero   => $zero,  ##-- zero value to feed into normalization method
 ##     norm_zero_p      => $value, ##-- post-normalized zero value
@@ -477,6 +477,26 @@ sub normpdl_slimits {
   my $pmin = minimum($pz*$plt0); ##-- negative extremes (fit to -1)
   $pz /= $pgt0*$pmax->slice("*1,") - $plt0*$pmin->slice("*1,");
   $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- sanity check
+}
+
+##--------------------------------------------------------------
+## PDL-ization: normalization: new
+
+## undef = $lr->normpdl_ptugs($pdl_2d);
+##  + normalize $pdl *ROWS* by $lr->{ptugs}
+##  + on completion, all($pdl_2d->sumover==1), if 'smooth_add' was not set or zero
+sub normpdl_ptugs {
+  my ($lr,$pz) = @_;
+  $pz /= $lr->{ptugs}{pdl}->slice("*1,");
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
+}
+
+## undef = $lr->normpdl_pbugs($pdl_2d);
+##  + normalize $pdl *COLUMNS* by $lr->{pbugs}
+sub normpdl_pbugs {
+  my ($lr,$pz) = @_;
+  $pz /= $lr->{pbugs}{pdl};
+  $pz->inplace->setnantobad->inplace->setbadtoval(0); ##-- bad value handling: zero
 }
 
 

@@ -15,9 +15,11 @@ use strict;
 our @ISA = qw(MUDL::Corpus::Profile::LRFBigrams); #)
 
 ##======================================================================
+## new args:
+##   quantize=>$bool, ##-- if true, code-lengths will be integer-quantized
 sub new {
   my ($that,%args) = @_; 
-  return $that->SUPER::new(nfields=>1,donorm=>0,%args);
+  return $that->SUPER::new(nfields=>1,donorm=>0,quantize=>0,%args);
 }
 
 ##======================================================================
@@ -29,6 +31,7 @@ sub finishPdl {
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
   my $binbits = ($pdl+1)->log / log(2.0);
+  $binbits->inplace->floor if ($lr->{quantize}); ##-- quantize to integer?
   $pdl .= 2*$binbits + 1;
 
   ##-- hack in case we still have infinite values [make 'em bad]
