@@ -11,12 +11,14 @@
 ##              := 0                            , otherwise
 ##======================================================================
 
-package MUDL::Corpus::Profile::LRPMI;
+package MUDL::Corpus::Profile::LRRPMI;
 use MUDL::Corpus::Profile::LRBigrams;
 use MUDL::Object;
+use MUDL::PDL::Stats ':all';
 use PDL;
 use Carp;
 our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
+use strict;
 
 ##======================================================================
 ## $lr = $class_or_obj->new(%args)
@@ -31,7 +33,6 @@ our @ISA = qw(MUDL::Corpus::Profile::LRBigrams);
 sub new {
   my ($that,%args) = @_; 
   return $that->SUPER::new(donorm=>0,dolog=>0,log_eps=>0,%args);
-  return $self;
 }
 
 ##======================================================================
@@ -40,7 +41,7 @@ sub new {
 ## $pdl3d = $lr->finishPdl($pdl3d);
 ##   + $pdl3d : (2, $nbds, $ntgs)
 sub finishPdl {
-  my ($lr,$pdl) = @_;
+  my ($lr,$pdl,%args) = @_;
   @$lr{keys %args} = values %args;   ##-- args: clobber
 
   ##-- get common data: frequencies
@@ -57,7 +58,7 @@ sub finishPdl {
     my $zpdl = $pdl->slice("($z)");             ##-- [b,w] -> f(b,w) [--> PROFILE(w,b)]
 
     my $hbw = -log2(($zpdl+$eps)/$N);           ##-- [b,w] -> h(b,w)
-    $zpdl  .= $hw + $hb - $hwb;
+    $zpdl  .= ($hw + $hb - $hbw) / $hbw;
   }
   $pdl->inplace->setnantobad->inplace->setbadtoval(0);
 
