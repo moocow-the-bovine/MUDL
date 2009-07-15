@@ -17,11 +17,19 @@ our %EXPORT_TAGS =
   (
    'binomial' => [ 'factorial', 'binomial', 'lnfactorial', 'lnbinomial', ],
    'log'      => [ 'log2','logz','log2z','log10z', ],
-   'misc'     => [ 'mean','variance','stddev','stdz' ],
+   'misc'     => [ 'mean','variance','stddev','stdz','sgn' ],
    'covar'    => [ 'covariance', 'covarianceMatrix' ],
   );
 our @EXPORT_OK = map {@$_} values(%EXPORT_TAGS);
 $EXPORT_TAGS{all} = \@EXPORT_OK;
+
+##======================================================================
+## misc
+
+## $sgn = $pdl->sgn()
+sub sgn {
+  return ($_[0]/$_[0]->abs)->rint;
+}
 
 
 ##======================================================================
