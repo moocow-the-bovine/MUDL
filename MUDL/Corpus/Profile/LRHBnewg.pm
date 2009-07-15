@@ -66,8 +66,7 @@ sub finishPdl {
     ##-- get negated probabilities: p(¬b|t) = 1 - p(b|t)
     $P_nbg  = 1.0-$P_bg;
     #$P_nbg *= 0.5; ##-- ... but DON'T halve the negated probabilities!
-                    ##   + justification (attempt): half of the events we've observed
-                    ##     have been in THE OTHER DIRECTION!
+                    ##   + see comments in LRHBnew::finishPdlProfile()
 
     ##-- get Bernoulli entropy estimates
     # H(b|t) = -p(b|t)*log(p(b|t)) - p(¬b|t)*log(p(¬b|t))

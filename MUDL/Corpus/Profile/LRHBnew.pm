@@ -68,6 +68,17 @@ sub finishPdl {
     #$P_nbg *= 0.5; ##-- ... but DON'T halve the negated probabilities!
                     ##   + justification (attempt): half of the events we've observed
                     ##     have been in THE OTHER DIRECTION!
+                    ##   + the above looks like nonsense: we don't get a "real" entropy
+                    ##     [H(B(1;p))=p*h(p)+(1-p)*h(1-p)] out of halving negated half-positives,
+                    ##     as this commented-out line would have us do:
+                    ##              !=(p/2)*h(p/2) + 1-((p/2)/2)*h(1-(p/2)/2)
+                    ##     since p/2 + 1-(p/2)/2 != 1,
+                    ##     but
+                    ##           p/2 + 1-p/2 == 1, [as we're actually using]
+                    ##     which is a real distribution, and just forces the Bernoulli-"positives"
+                    ##     (aka "true"-events aka "1"-events) to have the dominant h() value,
+                    ##     thus also the dominant p*h value:
+                    ##           (p/2 * h(p/2)) >= 1-p/2 * h(1-p/2)      ##-- empirically at least
 
     ##-- get Bernoulli entropy estimates
     # H(b|t) = -p(b|t)*log(p(b|t)) - p(¬b|t)*log(p(¬b|t))
