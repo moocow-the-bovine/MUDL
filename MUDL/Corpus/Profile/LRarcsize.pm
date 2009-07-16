@@ -175,8 +175,9 @@ sub finishPdl {
     my $hwb_ff_vals = -log2z($fwb_ff_vals/$fwb_fcz->sumover);
 
     ##-- promiscuity (nnz)
-    my $nnzw = $fwb->xchg(0,1)->nnz->decode; ##-- [w] -> |{ b : f(w,b)>0 }| ~ f_nz(W=w)
-    my $nnzb = $fwb->nnz->decode;            ##-- [b] -> |{ w : f(w,b)>0 }| ~ f_nz(B=b)
+    my $nnzw = $fwb->xchg(0,1)->nnz->decode; ##-- [w] -> |{ b   : f(w,b)>0 }| ~ f_nz(W=w)
+    my $nnzb = $fwb->nnz->decode;            ##-- [b] -> |{ w   : f(w,b)>0 }| ~ f_nz(B=b)
+    my $Nnz  = $lr->{Nnz};                   ##   []  -> |{(w,b): f(w,b)>0 }|
 
     ##-- nnz-freqs
     my ($nnzw_v,$nnzw_vc) = $nnzw->valcounts;
@@ -200,6 +201,17 @@ sub finishPdl {
     #my $nnzb_hf_nzvals = $nnzb_hf->index($fwb_bi);    ##-- [nzi] -> h( f_fnz(B=b_nzi)/NNZF )
 
     if (1) {
+      ##-- new (Thu, 16 Jul 2009 13:56:13 +0200): try nnz stuff again ...
+      ##  + use log(f+1) to estimate encoded frequency size
+      my $zt    = $zpdl->xchg(0,1);
+      $nnzw  = $lr->{'nnzt'.($z==0 ? '2' : '1')}->double;  ##-- [t]   -> (z==0 ? E(nnz(*,t)) : E(nnz(t,*)))
+      $nnzb  = $lr->{'nnzb'.($z==0 ? '1' : '2')}->double;  ##-- [b]   -> (z==0 ? E(nnz(b,*)) : E(nnz(*,b)))
+
+      $zt .= log2($zt+1);
+      $zt += (-log2($nnzw/$Nnz));
+      $zt += (-log2($nnzb/$Nnz))->slice("*1,");
+    }
+    elsif (0) {
       ##-- profile by internal-promiscuity-weighted h : >90% at stage=0 (>logf=89%), then craps out to 4% at stage=1
       ##  + maybe saving "real" (word-based) nnz values would help here?
       my $zt    = $zpdl->xchg(0,1);

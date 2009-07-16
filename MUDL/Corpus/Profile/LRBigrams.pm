@@ -36,6 +36,7 @@ our @ISA = qw(MUDL::Corpus::Profile::LR MUDL::Corpus::Profile::PdlProfile); #)
 ##       donorm=>$bool,              ## whether to normalize pdls into range [0..1] (default=1)
 ##       norm_independent=>$bool,    ## whether to normalize left and right subvectors independently (default=1)
 ##       smooth_add=>$val,           ## additive constant: applied before smooth,finish,log,norm. (default=undef (0))
+##       up_expect=>$bool            ## use p(old|new) to update profiles instead of p(new|old)? (default=0)
 ##
 ##   + data acquired [NEW: PDL-ized]
 ##       pleft =>$left_bigrams,      ## MUDL::PdlDist::SparseNd: ($target_id, $left_bound_id) => $freq  (~ $pdl3d->xvals==0), bound-is-left
@@ -389,7 +390,7 @@ sub boundUgPdl {
 ##
 ## Common arguments:
 ##  + $xlateMatrix :
-##    - a PDL::CCS::Nd matrix probabilistically mapping old items to new items
+##    - a PDL::CCS::Nd matrix probabilistically mapping old items to new items using p($new|$old)
 ##    - dims : ($nOldItems,$nNewItems)
 ##    - vals : [$oldId,$newId] --> p($newId|$oldId)
 ##    - can be generated from $xlateMap
@@ -398,7 +399,11 @@ sub boundUgPdl {
 ##    - dims : ($nOldItems)
 ##    - vals : [$oldId] --> $newId
 ##    - can be generated from $xlateMatrix, via maximum_ind()
-
+##  + $xlateMatrixInv
+##    - a PDL::CCS::Nd matrix probabilistically mapping old items to new items using p($old|$new)
+##    - dims : ($nOldItems,$nNewItems)
+##    - vals : [$oldId,$newId] --> p($oldId|$newId)
+##    - can be generated from $xlateMatrix and a priori probabilities of $oldId
 
 ## $xlateMatrix = $lr->xlateMap2Matrix($xlateMap)
 ##  + see "Common Arguments", above
@@ -420,6 +425,15 @@ sub xlateMatrix2Map {
   return $xmatrix->xchg(0,1)->maximum_ind->todense;
 }
 
+## $xlateMatrixInv = $lr->xlateMatrixInvert($xlateMatrix, $oldProbs)
+##  + see "Common Arguments", above
+sub xlateMatrixInvert {
+  my ($lr,$xmatrix,$oldp) = @_;
+  my $jointp = $xmatrix * $oldp;
+  my $colp   = $jointp->sumover->dummy(0,1);
+  return ($jointp / $colp)->_missing(0);
+}
+
 ## $lr = $lr->updateBounds($xlateBoundsMatrix, $newBoundsEnum)
 ##  + $xlateBoundsMatrix :
 ##    - a PDL::CCS::Nd matrix probabilistically mapping old to new bounds
@@ -436,6 +450,10 @@ sub updateBounds {
 
   ##-- sanity check
   croak(ref($lr)."::updateBounds(): no \$xlateBoundsMatrix specified!") if (!defined($xmatrix));
+
+  ##-- translation matrix: invert if requested
+  my $xm0  = $xmatrix; ##-- debug
+  $xmatrix = $lr->xlateMatrixInvert($xmatrix, $lr->{pbugs}{pdl}->double) if ($lr->{up_expect});
 
   ##-- translation hook: pre
   $lr->updateBoundsPreHook($xmatrix,$xenum) if ($lr->can('updateBoundsPreHook'));
@@ -485,6 +503,10 @@ sub updateTargets {
 
   ##-- sanity check
   croak(ref($lr)."::updateTargets(): neither \$xlateTargetsMatrix specified!") if (!defined($xmatrix));
+
+  ##-- translation matrix: invert if requested
+  my $xm0  = $xmatrix; ##-- debug
+  $xmatrix = $lr->xlateMatrixInvert($xmatrix, $lr->{ptugs}{pdl}->double) if ($lr->{up_expect});
 
   ##-- translation hook: pre
   $lr->updateTargetsPreHook($xmatrix,$xenum) if ($lr->can('updateTargetsPreHook'));

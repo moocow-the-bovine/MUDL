@@ -65,6 +65,16 @@ sub ccs_nd_valcounts {
   return ($v,$vc);
 }
 
+## ($values,$valprobs) = $pdl->valprobs()  ##-- array context, suitable for PDL::Primitive::interpol(ate)
+##  + as for valcounts(), but returns value-probabilities
+BEGIN { *PDL::valprobs = *PDL::CCS::Nd::valprobs = \&valprobs; }
+sub valprobs {
+  my ($pdl,%opts) = @_;
+  my ($v,$vc) = $pdl->valcounts(%opts);
+  $vc = $vc->double;
+  return ($v, $vc/$vc->sumover->dummy(0,1));
+}
+
 ##======================================================================
 ## Value Smearing (GT-style)
 

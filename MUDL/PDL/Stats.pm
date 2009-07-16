@@ -7,6 +7,7 @@
 ##======================================================================
 
 package MUDL::PDL::Stats;
+use MUDL::PDL::Smooth;
 use PDL;
 use Exporter;
 use strict;
@@ -159,6 +160,54 @@ sub log10z {
   $lp->inplace->setnantobad->inplace->setbadtoval(defined($_[1]) ? $_[1] : 0);
   return $lp;
 }
+
+##======================================================================
+## Entropy
+
+## $H = $pdl->entropy()
+## $H = $pdl->entropy($base=2)
+##  + gets entropy over the first dimension
+##  + $pdl's dim(0) should be probability distributions, e.g. (all($p->sumover==1))
+BEGIN { *PDL::entropy = *PDL::CCS::Nd::entropy = \&entropy; }
+sub entropy {
+  my ($p,$base) = @_;
+  return (-$p * pentropy($p,$base))->sumover;
+}
+
+## $h = $pdl->pentropy()
+## $h = $pdl->pentropy($base=2)
+##  + gets pointwise-entropies
+##  + $pdl should contain probability values
+BEGIN { *PDL::pentropy = *PDL::CCS::Nd::pentropy = \&pentropy; }
+sub pentropy {
+  my ($p,$base) = @_;
+  $base = 2 if (!defined($base));
+  return -log($p)/log($base);
+}
+
+
+## $vh = $pdl->vpentropy()
+## $vh = $pdl->vpentropy($base=2)
+##  + gets global pointwise value entropies (e.g. model sizes)
+##  + returned pdl $vh is indexed as for $pdl
+BEGIN { *PDL::vpentropy = *PDL::CCS::Nd::vpentropy = \&vpentropy; }
+sub vpentropy {
+  my ($p,$base) = @_;
+  my ($v,$vp) = $p->valprobs;  ##-- see MUDL::PDL::Smooth
+  my $vph = pentropy($vp,$base);
+  return $p->interpol($v,$vph);
+}
+
+## $vH = $pdl->ventropy()
+## $vH = $pdl->ventropy($base=2)
+##  + gets global value-entropy
+BEGIN { *PDL::ventropy = *PDL::CCS::Nd::ventropy = \&ventropy; }
+sub ventropy {
+  my ($p,$base) = @_;
+  my ($v,$vp) = $p->valprobs;  ##-- see MUDL::PDL::Smooth
+  return entropy($vp,$base)
+}
+
 
 ##======================================================================
 ## Factorials & Binomial distribution
