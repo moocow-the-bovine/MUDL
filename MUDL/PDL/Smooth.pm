@@ -19,7 +19,11 @@ our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
    'vals'  => ['valcounts','smearvals','intervals'],
-   'fit'   => ['zipf_fit','mooLinfit','loglinfit'],
+   'fit'   => ['zipf_fit',
+	       'zipf_fit_lm1', 'zipf_fit_lm2',
+	       'mooLinfit','loglinfit',
+	       'expfit',
+	      ],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
 	       'gausspdf', 'gausscdf', 'gausspeak',
@@ -110,14 +114,19 @@ sub smearvals {
 ##======================================================================
 ## Zipf fit
 
-## ($zipf_constant,$freq_fit) = zipf_fit($freq_pdl)   ##-- array context
-## $zipf_constant             = zipf_fit($freq_pdl)   ##-- scalar context
+## ($zipf_constant,$freq_fit) = zipf_fit($freq_pdl)             ##-- array context
+## ($zipf_constant,$freq_fit) = zipf_fit($freq_pdl,$rank_pdl)
+## $zipf_constant             = zipf_fit($freq_pdl)             ##-- scalar context
+## $zipf_constant             = zipf_fit($freq_pdl,$rank_pdl)
 ## + fits $freq_pdl to best Zipfian distribution (linear)
 ##     $freq = $zipf_constant / $rank_desc
+## + $rank_pdl is optional; if specified it should be a descending-order rank-sort of $freq_pdl, as
+##     $ranks = $freq_pdl->ranks(order=>'desc')+1;
+## + this looks ok for unigrams, craps out for bigrams
 BEGIN { *PDL::zipf_fit = \&zipf_fit; }
 sub zipf_fit {
-  my $freq    = shift;
-  my $f_ranks = $freq->ranks(order=>'desc')+1;
+  my ($freq,$f_ranks) = @_;
+  $f_ranks    = $freq->ranks(order=>'desc')+1 if (!defined($f_ranks) || $f_ranks->isempty);
   my $total   = ($freq*$f_ranks)->sumover;
   my $nitems  = pdl(double,$freq->nelem);
   my $zipf_c  = $total / $nitems;
@@ -125,6 +134,80 @@ sub zipf_fit {
   my $freq_fit = $zipf_c / $f_ranks;
   return ($zipf_c,$freq_fit);
 }
+
+## ($zipf_constant,$freq_fit) = zipf_fit_lm1($freq_pdl,%opts)         ##-- array context
+## $zipf_constant             = zipf_fit_lm1($freq_pdl,%opts)         ##-- scalar context
+##  + uses PDL::Fit::LM to fit a 1-parameter Zipf distribution from $rank_pdl to $freq_pdl
+##     $freq = $zipf_constant / $rank_desc
+##  + %opts:
+##     ranks => $rank_pdl,     ##-- default = $freq_pdl->ranks1_dsc()
+##     weight => $weight_pdl,  ##-- default: uniform (for LM algorithm)
+##     $lmOpt => $lmVal,       ##-- passed to PDL::Fit::LM
+use PDL::Fit::LM;
+BEGIN { *PDL::zipf_fit_lm1 = *PDL::zipf_fit_lm = *zipf_fit_lm = \&zipf_fit_lm1; }
+sub zipf_fit_lm1 {
+  my ($freq,%opts) = @_;
+
+  ##-- get ranks
+  my $ranks = $opts{ranks};
+  $ranks = $freq->ranks(order=>'desc')+1 if (!defined($ranks) || $ranks->isempty);
+  delete($opts{ranks});
+
+  ##-- get weights
+  my $weight = $opts{weight};
+  $weight = 1.0 if (!defined($weight) || $weight->isempty);
+  delete($opts{weight});
+
+  ##-- fit
+  my ($lmfit,$lmpar,@lmrest) = lmfit($ranks,$freq, $weight, \&_zipf_fit_lm1_sub, pdl(10.0), Maxiter=>1000,Eps=>1e-5,%opts);
+  return wantarray ? ($lmpar,$lmfit) : $lmpar;
+}
+
+## _zipf_fit_lm1_sub($ranks,$zipf_k,$freq_est,$dyda)
+##  + low-level fitting sub for 1-parameter Zipf fitting
+sub _zipf_fit_lm1_sub {
+    my ($x,$par,$ym,$dyda) = @_;
+
+    ##-- get fit parameter(s)
+    my $k = $par->slice("(0)");
+
+    ##-- compute function value for these parameters
+    my $xi = $x->pow(-1.0);
+    $ym .= $k * $xi;
+
+    ##-- get partial derivative output pdls
+    my (@dy) = map {$dyda -> slice(",($_)") } (0..0);
+
+    ##-- compute partial derivatives
+    $dy[0] .= $xi;
+}
+
+## ($zipf_pars,$freq_fit) = zipf_fit_lm2($freq_pdl,%opts)         ##-- array context
+## $zipf_pars             = zipf_fit_lm2($freq_pdl,%opts)         ##-- scalar context
+##  + uses PDL::Fit::LM to fit a 2-parameter pseudo-Zipf distribution from $rank_pdl to $freq_pdl
+##     $freq      = $a * $rank_desc**$b + $c
+##     $zipf_pars = pdl [$a,$b,$c];
+##  + analagous to:
+##     ($freq_fit,$zipf_pars) = $freq_pdl->loglinfit($ranks)
+##    ... but uses direct nonlinear fitting rather than log-linear,
+##    which may reduce error rates for large values in $freq_pdl
+##  + %opts:
+##     ranks => $rank_pdl,   ##-- default = $freq_pdl->ranks1_dsc()
+##     weight => $weight_pd, ##-- relative weights for LM fitting algorithm (default=uniform)
+##     $lmOpt => $lmVal,    ##-- passed to PDL::Fit::LM
+BEGIN { *PDL::zipf_fit_lm2 = \&zipf_fit_lm2; }
+sub zipf_fit_lm2 {
+  my ($freq,%opts) = @_;
+
+  ##-- get ranks
+  my $ranks = $opts{ranks};
+  $ranks = $freq->ranks(order=>'desc')+1 if (!defined($ranks) || $ranks->isempty);
+  delete($opts{ranks});
+
+  my @fit = expfit($freq,$ranks,%opts); ## ($fit,$par,$covar,$iters)=@fit;
+  return wantarray ? @fit[1,0] : $fit[1];
+}
+
 
 ##======================================================================
 ## Linear fit
@@ -175,6 +258,110 @@ sub loglinfit {
   $coeffs->slice("(0)")->inplace->exp;
   return ($cfit,$coeffs);
 }
+
+##======================================================================
+## Native exponential fit
+
+## ($fit,$coeffs,$covar,$iters) = $vals->expfit_ab()
+## ($fit,$coeffs,$covar,$iters) = $vals->expfit_ab($keys, %opts)
+## $coeffs = $vals->expfit(...)
+##  + $keys defaults to $vals->xvals()+1
+##  + $fit are log-linear fitted values $vals as values for $keys
+##  + $coeffs are [$a,$b] such that
+##     $yfit = $a * $x**$b
+##  + %opts are passed to PDL::Fit::LM::lmfit(), except for:
+##     initp => $initial_param_pdl,
+##     weight => $weight_pdl
+##  + return values are as for loglinfit(), but uses LM fitting internally
+BEGIN { *PDL::expfit_ab = *PDL::expfit = *expfit = \&expfit_ab; }
+use PDL::Fit::LM;
+sub expfit_ab {
+  my ($y,$x,%opts) = @_;
+  $x = $y->xvals+1 if (!defined($x) || $x->isempty);
+
+  ##-- initial parameters
+  my $initp = defined($opts{initp}) ? $opts{initp} : pdl(10,-1);
+  delete($opts{initp});
+
+  ##-- weights
+  my $weight = $opts{weight};
+  $weight = 1.0 if (!defined($weight) || $weight->isempty);
+  delete($opts{weight});
+
+  my @fit = lmfit($x,$y, $weight, \&_expfit_ab_lm_sub, $initp, {Maxiter=>1000,Eps=>1e-5,%opts});
+  #my ($lmfit,$lmpar,$lmcovar,$lmiters) = @fit;
+  return wantarray ? @fit : $fit[1];
+}
+
+## _expfit_ab_lm_sub($x,$par,$y,$dyda)
+##  + low-level fitting sub for exponential fitting
+sub _expfit_ab_lm_sub {
+    my ($x,$par,$ym,$dyda) = @_;
+    my $maxpar = 1;
+
+    ##-- get fit parameter(s)
+    my ($a,$b) = map {$par->slice("($_)")} (0..$maxpar);
+
+    ##-- compute function value for these parameters
+    my $xb = $x**$b;
+    $ym .= $a * $xb;
+
+    ##-- get partial derivative output pdls
+    my (@dy) = map {$dyda -> slice(",($_)") } (0..$maxpar);
+
+    ##-- compute partial derivatives
+    $dy[0] .= $xb;
+    $dy[1] .= $a*$xb*log($x);
+}
+
+
+## ($fit,$coeffs,$covar,$iters) = $vals->expfit_abc()
+## ($fit,$coeffs,$covar,$iters) = $vals->expfit_abc($keys, %opts)
+## $coeffs = $vals->expfit_abc(...)
+##  + as for expfit_ab(), but fits $coeffs = [$a,$b,$c] as:
+##     $yfit = $a * $x**$b + $c;
+BEGIN { *PDL::expfit_abc = \&expfit_abc; }
+sub expfit_abc {
+  my ($y,$x,%opts) = @_;
+  $x = $y->xvals+1 if (!defined($x) || $x->isempty);
+
+  ##-- initial params
+  my $initp = defined($opts{initp}) ? $opts{initp} : pdl(10,-1,0);
+  delete($opts{initp});
+
+  ##-- weights
+  my $weight = $opts{weight};
+  $weight = 1.0 if (!defined($weight) || $weight->isempty);
+  delete($opts{weight});
+
+  ##-- fit
+  my @fit = lmfit($x,$y, 1.0, \&_expfit_abc_lm_sub, $initp, {Maxiter=>1000,Eps=>1e-5,%opts});
+  #my ($lmfit,$lmpar,$lmcovar,$lmiters) = @fit;
+  return wantarray ? @fit : $fit[1];
+}
+
+## _expfit_abc_lm_sub($x,$par,$y,$dyda)
+##  + low-level fitting sub for exponential fitting
+sub _expfit_abc_lm_sub {
+    my ($x,$par,$ym,$dyda) = @_;
+    my $maxpar = 2;
+
+    ##-- get fit parameter(s)
+    my ($a,$b,$c) = map {$par->slice("($_)")} (0..$maxpar);
+
+    ##-- compute function value for these parameters
+    my $xb = $x**$b;
+    $ym .= $a * $xb + $c;
+
+    ##-- get partial derivative output pdls
+    my (@dy) = map {$dyda -> slice(",($_)") } (0..$maxpar);
+
+    ##-- compute partial derivatives
+    $dy[0] .= $xb;
+    $dy[1] .= $a*$xb*log($x);
+    $dy[2] .= 1;
+}
+
 
 ##======================================================================
 ## Good-Turing smoothing
