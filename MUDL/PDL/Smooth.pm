@@ -230,10 +230,13 @@ sub mooLinfit {
 ## Log-linear fit
 
 ## ($fit,$coeffs) = $vals->loglinfit()
-## ($fit,$coeffs) = $vals->loglinfit($keys)
+## ($fit,$coeffs) = $vals->loglinfit($keys,%opts)
 ##  + $keys defaults to $vals->xvals()+1
 ##  + $fit are log-linear fitted values $vals as values for $keys
 ##  + $coeffs are [$a,$e] such that all($yfit == $a*($keys**$e))
+##  + %opts:
+##     nologx => $bool,  ##-- if true, $keys are not implicitly log()d
+##     nology => $bool,  ##-- if true, $vals are not implicitly log()d
 ##  + example:
 ##     use MUDL::PDL::Smooth;
 ##     $f1 = corpus_unigram_frequencies();
@@ -251,12 +254,14 @@ sub mooLinfit {
 BEGIN { *PDL::loglinfit = \&loglinfit; }
 use PDL::Fit::Linfit;
 sub loglinfit {
-  my ($Zc,$v) = @_;
-  $v = ($Zc->xvals+1)->double if (!defined($v));
-  my ($cfit,$coeffs) = $Zc->log->linfit1d($Zc->ones->cat($v->log->setnantobad->setbadtoval(0)));
-  $cfit->inplace->exp;
+  my ($y,$x,%opts) = @_;
+  $x = ($y->xvals+1)->double if (!defined($x));
+  $x = $x->log if (!$opts{nologx});
+  $y = $y->log if (!$opts{nology});
+  my ($yfit,$coeffs) = $y->linfit1d($y->ones->cat($x->setnantobad->setbadtoval(0)));
+  $yfit->inplace->exp if (!$opts{nology});
   $coeffs->slice("(0)")->inplace->exp;
-  return ($cfit,$coeffs);
+  return ($yfit,$coeffs);
 }
 
 ##======================================================================
