@@ -134,7 +134,6 @@ sub avgranks1 { avgranks(@_)+1; }
 sub avgranks1_asc { avgranks(@_,order=>'asc')+1; }
 sub avgranks1_dsc { avgranks(@_,order=>'dsc')+1; }
 
-
 1;
 
 ##======================================================================
