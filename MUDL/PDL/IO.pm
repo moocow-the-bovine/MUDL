@@ -38,6 +38,38 @@ sub saveCSV {
   return $rc;
 }
 
+##======================================================================
+## I/O: import: text: flat: 1d
+
+## $rc = $pdl->loadCSV(%opts)
+##  + uses PDL::IO::Misc::rcols
+##  + %opts:
+##     file   => $file_or_fh,
+##     cols   => \@col_index_array
+##     header => \$str,           ##-- read from 1st line of file if present
+##     ... other opts are passed to PDL::IO::Misc::rcols
+BEGIN { *PDL::loadCSV = *PDL::loadDat = *loadDat = \&loadCSV; }
+sub loadCSV {
+  my ($pdl,%opts) = @_;
+  my $file = $opts{file};
+  $file    = \*STDIN if (!defined($file));
+  my $fh   = ref($file) ? $file : IO::File->new("<$file");
+  delete($opts{file});
+
+  my @dog  = ($pdl->ndims > 1 ? ($pdl->dog) : ($pdl));
+  my @cols = defined($opts{cols}) ? @{$opts{cols}} : (0..$#dog);
+  if (defined($opts{header})) {
+    my $tmp = '';
+    my $hdr_ref = ref($opts{header}) ? $opts{header} : \$tmp;
+    $$hdr_ref = <$fh>;
+  }
+  my @pdls = rcols($fh, @cols, \%opts);
+  $dog[$_] .= $pdls[$_] foreach (0..$#dog);
+
+  $fh->close() if (!ref($file));
+  return 1;
+}
+
 
 
 1;

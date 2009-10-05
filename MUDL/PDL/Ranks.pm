@@ -106,7 +106,7 @@ sub avgranks {
 
   my $v_runlen_dbl  = $v_runlen->double;
   my $v_runlen_cumu = $v_runlen_dbl->cumusumover;
-  my $v_runlen_beg  = $v_runlen_cumu->slice("0:-2")->append(0)->rotate(1);
+  my $v_runlen_beg  = $v_runlen_cumu->dim(0) > 1 ? $v_runlen_cumu->slice("0:-2")->append(0)->rotate(1) : pdl(double,0);
 
   my $v_rankvals    = $v_runlen_beg + ($v_runlen-1)/2.0;
 
