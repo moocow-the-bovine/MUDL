@@ -21,11 +21,30 @@ our %EXPORT_TAGS =
 		'avgranks', 'avgranks_asc', 'avgranks_dsc',
 		'avgranks1', 'avgranks1_asc', 'avgranks1_dsc',
 	       ],
+   'sort'  => [
+	       'uniqi', 'qsortr', 'qsortri',
+	      ],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
 our @EXPORT      = @EXPORT_OK;
 
+##======================================================================
+## Sorting
+
+## $rsorted = $pdl->qsortr()
+##  + reverse sort
+BEGIN { *PDL::qsortr = \&qsortr; }
+sub qsortr { return $_[0]->qsort->slice("-1:0"); }
+
+## $rsortedi = $pdl->qsortri()
+##  + reverse index sort
+BEGIN { *PDL::qsortri = \&qsortri; }
+sub qsortri { return $_[0]->qsorti->slice("-1:0"); }
+
+## $uniqi = $pdl->uniqi()
+##  + returns (first) unique indices of $pdl
+BEGIN { *PDL::uniqi = *uniqi = \&PDL::uniqind; }
 
 ##======================================================================
 ## Ranks
