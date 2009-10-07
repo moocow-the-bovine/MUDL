@@ -12,6 +12,7 @@ use MUDL::Limits;
 use PDL;
 use PDL::Math;
 use PDL::CCS;
+use PDL::VectorValued;
 
 use strict;
 
@@ -21,7 +22,7 @@ our %EXPORT_TAGS =
    'vals'  => ['valcounts','smearvals','intervals'],
    'fit'   => ['zipf_fit',
 	       'zipf_fit_lm1', 'zipf_fit_lm2',
-	       'mooLinfit','loglinfit',
+	       'mooLinfit', 'loglinfit',
 	       'expfit',
 	      ],
    #'gt'    => ['smoothGTLogLin'],
@@ -214,16 +215,27 @@ sub zipf_fit_lm2 {
 
 ## ($fit,$coeffs) = $vals->mooLinfit()
 ## ($fit,$coeffs) = $vals->mooLinfit($keys)
+## ($fit,$coeffs) = $vals->mooLinfit($keys, %opts)
 ##  + $keys defaults to $vals->xvals()+1
 ##  + $fit are linear-fitted values $vals as values for $keys
 ##  + $coeffs are [$a,$b] such that all($yfit == $a*$keys + $b)
+##  + %opts:
+##     unique => $bool, ##-- if true, only unique points are fitted
 BEGIN { *PDL::mooLinfit = \&mooLinfit; }
 use PDL::Fit::Linfit;
 sub mooLinfit {
-  my ($Zc,$v) = @_;
-  $v = ($Zc->xvals+1)->double if (!defined($v));
-  my ($cfit,$coeffs) = $Zc->linfit1d($Zc->ones->cat($v->setnantobad->setbadtoval(0)));
-  return ($cfit,$coeffs->slice("-1:0"));
+  my ($y,$x,%opts) = @_;
+  $x = ($y->xvals+1)->double if (!defined($x));
+  if (!$opts{unique}) {
+    my ($yfit,$coeffs) = $y->linfit1d($y->ones->cat($x->setnantobad->setbadtoval(0)));
+    return ($yfit,$coeffs->slice("-1:0"));
+  }
+  ##-- unique values
+  my ($xu,$yu) = $x->cat($y)->xchg(0,1)->vv_uniqvec->xchg(0,1)->dog;
+  my ($yufit,$coeffs) = mooLinfit($yu,$xu,%opts,unique=>0);
+  my $yfit = $coeffs->slice("(0)")*$x + $coeffs->slice("(1)");
+  #my $yfit = $x->interpol( $xu, $yufit ); ##-- causes error: "identical abscissas at /usr/lib/perl5/PDL/Primitive.pm line 1740."
+  return ($yfit,$coeffs);
 }
 
 ##======================================================================
@@ -237,6 +249,7 @@ sub mooLinfit {
 ##  + %opts:
 ##     nologx => $bool,  ##-- if true, $keys are not implicitly log()d
 ##     nology => $bool,  ##-- if true, $vals are not implicitly log()d
+##     unique => $bool,  ##-- if true, only unique points are used for fitting
 ##  + example:
 ##     use MUDL::PDL::Smooth;
 ##     $f1 = corpus_unigram_frequencies();
@@ -258,8 +271,9 @@ sub loglinfit {
   $x = ($y->xvals+1)->double if (!defined($x));
   $x = $x->log if (!$opts{nologx});
   $y = $y->log if (!$opts{nology});
-  my ($yfit,$coeffs) = $y->linfit1d($y->ones->cat($x->setnantobad->setbadtoval(0)));
+  my ($yfit,$coeffs) = mooLinfit($y,$x,%opts); #$y->linfit1d($y->ones->cat($x->setnantobad->setbadtoval(0)));
   $yfit->inplace->exp if (!$opts{nology});
+  $coeffs = $coeffs->slice("-1:0");
   $coeffs->slice("(0)")->inplace->exp;
   return ($yfit,$coeffs);
 }
