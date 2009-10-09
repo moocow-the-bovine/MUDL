@@ -33,17 +33,18 @@ our @EXPORT      = @EXPORT_OK;
 ## Sorting
 
 ## $rsorted = $pdl->qsortr()
-##  + reverse sort
+##  + reverse sort, see PDL::Ufunc::qsort()
 BEGIN { *PDL::qsortr = \&qsortr; }
 sub qsortr { return $_[0]->qsort->slice("-1:0"); }
 
 ## $rsortedi = $pdl->qsortri()
-##  + reverse index sort
+##  + reverse index sort, see PDL::Ufunc::qsorti()
 BEGIN { *PDL::qsortri = \&qsortri; }
 sub qsortri { return $_[0]->qsorti->slice("-1:0"); }
 
 ## $uniqi = $pdl->uniqi()
 ##  + returns (first) unique indices of $pdl
+##  + see PDL::Primitive::uniqind()
 BEGIN { *PDL::uniqi = *uniqi = \&PDL::uniqind; }
 
 ##======================================================================

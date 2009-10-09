@@ -583,7 +583,7 @@ sub test_totalsize {
 
   print "$0: test_totalsize() done: what now?\n";
 }
-test_totalsize();
+#test_totalsize();
 
 ##-- util: tuple creation
 ## $tuples = tuples($x,$y,$z,...)
@@ -689,6 +689,67 @@ sub test_dilambdas {
   print STDERR "$0: test_dilambdas() done: what now?\n";
 }
 #test_dilambdas();
+
+##----------------------------------------------------------------------
+## test: PDL::CCS::Nd::qsorti
+sub test_nd_qsorti {
+  #my $a  = 10*(sequence(5,4)%3);
+  #my $a  = 10*(sequence(5,4)%3+1);
+  #my $a  = 10*(sequence(5,4)+1);
+  my $a  = 10*(sequence(5,4)%3);
+  my $ai = $a->qsorti;
+
+  ##-- basic version, missing values aren't considered
+  my $ac = $a->toccs;
+  my ($ac_yp,$ac_ypi) = $ac->ptr(1);
+  my $ac_w  = $ac->_whichND->dice_axis(1,$ac_ypi);
+  my $ac_x  = $ac_w->slice("(0),");
+  my $ac_yy = $ac_w->slice("1:-1,");
+  my $ac_z  = $ac->_nzvals->index($ac_ypi);
+  my $ac_yyz  = $ac_yy->double->glue(0,$ac_z->slice("*1,"));
+  my $ac_yyzi = $ac_yyz->qsortveci;
+  my $ac_xoff = $ac_yp->index($ac_yy->slice("(0),"));
+  my $ac_xi   = $ac_yyzi-$ac_xoff;
+  my $aci_w = $ac_xi->slice("*1,")->glue(0,$ac_yy);
+  my $aci_z = $ac_x;
+  my $aci   = $ac->shadow(which=>$aci_w, vals=>$aci_z->flat->append(-1));
+  my ($ok);
+  $ok = all($aci->decode==$ai);
+  print STDERR "test_nd_qsorti(): no-missing-values: ", ($ok ? '' : 'NOT '), "ok\n";
+
+  ##-- more complex version: insert missing values
+  my $ac_yy_nnz  = $ac->ispresent->nnz;
+  my $ac_yy_nz   = $ac->dim(0)-$ac_yy_nnz;
+  my $ac_yy_u    = $ac_yy->uniqvec;
+  #my $ac_yy_uz   = $ac_yy_u->glue(0,$ac->missing);
+  #my $acz_w      = $ac_w->glue(1,$ac_yy_uz);
+  my $ac_xub     = pdl($ac->dim(0));
+  my $ac_xyy_u   = $ac_xub->slice("*1,")->glue(0,$ac_yy_u);
+  my $acz_w0     = $ac_w->glue(1, $ac_xyy_u);
+  my ($acz_yp,$acz_ypi) = PDL::CCS::Utils::ccs_encode_pointers($acz_w0->slice("(1),"), $ac->dim(1));
+  my $acz_w   = $acz_w0->dice_axis(1,$acz_ypi);
+  my $acz_x   = $acz_w->slice("(0)");
+  my $acz_yy  = $acz_w->slice("1:-1,");
+  my $acz_z   = $ac_z->append($ac->missing->slice("*".($ac_yy_u->nelem))->flat)->index($acz_ypi);
+
+  ##-- bugs working in missing vlaues... argh!
+
+  my $acz_yyz  = $acz_yy->double->glue(0,$acz_z->slice("*1,"));
+  my $acz_yyzi = $acz_yyz->qsortveci;
+  my $acz_xoff = $acz_yp->index($acz_yy->slice("(0),")); #->index($acz_yyzi);
+  my $acz_xi   = $acz_yyzi-$acz_xoff;
+  my ($acz_which_present,$acz_which_missing) = which_both( ($acz_x < $ac_xub)->index($acz_yyzi) );
+  my $acz_missing_z_mini = $acz_xi->index($acz_which_missing);
+  my $acz_missing_z_maxi = $acz_missing_z_mini + $ac_yy_nz->indexND($acz_yy)->index($acz_which_missing);
+  my $aczi_w   = $acz_xi->index($acz_which_present)->slice("*1,")->glue(0,$acz_yy->dice_axis(1,$acz_yyzi)->dice_axis(1,$acz_which_present));
+  my $aczi_z   = $acz_x->index($acz_yyzi)->index($acz_which_present);
+  my $aczi     = $ac->shadow(which=>$aczi_w, vals=>$aczi_z->flat->append(-1));
+
+  $ok = all($aczi->decode==$ai);
+  print STDERR "test_nd_qsorti(): with-missing-values: ", ($ok ? '' : 'NOT '), "ok\n";
+}
+test_nd_qsorti();
+
 
 ##----------------------------------------------------------------------
 ## Dummy
