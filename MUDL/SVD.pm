@@ -30,12 +30,18 @@ our @ISA = qw(MUDL::Object);
 ##    endr     => $end_r,     ##-- left interval endpoint for unwanted eigenvalues ( 1e-30)
 ##
 ##    ##-- input matrix
-##    #$pdl = $matrix3d       ##-- pdl: $d-by-$n
+##    #$pdl = $matrix2d       ##-- pdl: $d-by-$n
 ##
 ##    ##-- output values
 ##    u        => $u,         ##-- pdl: $r-by-$n  ##-- $r==$ndims==$lr->{r}
 ##    sigma    => $sigma,     ##-- pdl: $r (diagonal of an $r-by-$r matrix, created with stretcher($sigma))
 ##    v        => $v,         ##-- pdl: $r-by-$d
+##    ##
+##    ##-- such that:
+##    ## + $inputMatrixApprox = ($u x stretcher($sigma) x $v->xchg(0,1))
+##    ## + $a_reduced = $svd->apply($a) = $a x $v
+##    ## + $a_approx  = $svd->unapply($a_reduced) = $a_reduced x $v->xchg(0,1)
+##    ## + see also built-in 'svd()' in PDL::MatrixOps
 sub new {
   my $that = shift;
   return $that->SUPER::new(
@@ -63,6 +69,20 @@ sub clear {
 ##======================================================================
 ## SVD: Computation
 ##======================================================================
+
+## $svd = $svd->computeccs_nd($ccs_nd)
+## $svd = $svd->computeccs_nd($ccs_nd, $d_dimnum=0)
+##  + $ccs_nd is a PDL::CCS::Nd object
+sub computeccs_nd {
+  my ($svd,$ccs,$d_dim) = @_;
+  $d_dim    = 0 if (!defined($d_dim));
+  my $n_dim = abs(1-$d_dim);
+  my ($ptr,$pi2nzi) = $ccs->ptr($d_dim);
+  my $rowids = $ccs->_whichND->slice("($n_dim),")->index($pi2nzi);
+  my $nzvals = $ccs->_nzvals->index($pi2nzi);
+  my ($d,$n) = ($ccs->dims)[$d_dim,$n_dim];
+  return $svd->computeccs($ptr->slice("0:-2"),$rowids,$nzvals,$n);
+}
 
 ## $svd = $svd->computeccs($ptr,$rowids,$nzvals);
 ## $svd = $svd->computeccs($ptr,$rowids,$nzvals,$n);
@@ -194,53 +214,21 @@ sub apply {
   return $ar;
 }
 
+## $a_approx = $svd->unapply($a_reduced)
+##  + un-applies svd by row to $a, a pdl of dims $r,$na
+##  + just returns $a_reduced unless $svd->{r} is set to a true value
+sub unapply {
+  my ($svd,$ar) = @_;
+  return $ar if ($svd->{r}==0 || $svd->{rdims} != $ar->dim(0)); ##-- sanity check
+
+  ##-- sanity check(s)
+  confess(ref($svd), "::unapply(): bad input pdl!")
+    if ($ar->dim(0) != $svd->{v}->dim(0));
+
+  ##-- un-apply svd
+  my $a = $ar x $svd->{v}->xchg(0,1);
+
+  return $a;
+}
+
 1;
-
-##======================================================================
-## Docs
-=pod
-
-=head1 NAME
-
-MUDL::SVD - MUDL Singular Value Decomposition
-
-=head1 SYNOPSIS
-
- use MUDL;
-
-=cut
-
-##======================================================================
-## Description
-=pod
-
-=head1 DESCRIPTION
-
-...
-
-=cut
-
-##======================================================================
-## Footer
-=pod
-
-=head1 ACKNOWLEDGEMENTS
-
-perl by Larry Wall.
-
-=head1 AUTHOR
-
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
-
-=head1 COPYRIGHT
-
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
-
-This package is free software.  You may redistribute it
-and/or modify it under the same terms as Perl itself.
-
-=head1 SEE ALSO
-
-perl(1)
-
-=cut
