@@ -408,6 +408,17 @@ sub compare {
 ##      [o]$mat12(m,n1+n2)
 sub matrixCat {
   shift if (UNIVERSAL::isa($_[0], __PACKAGE__));
+  if (UNIVERSAL::isa($_[0],'PDL::CCS::Nd')) {
+    my ($a,$b) = @_;
+    my $aw = $a->whichND;
+    my $bw = $b->whichND;
+    $bw->slice("(1),") += $a->dim(1);
+    my $abw = $aw->glue(1,$bw);
+    my $abv = $a->whichVals->append($b->whichVals);
+    my $abdims = pdl(long,$a->dim(0),$a->dim(1)+$b->dim(1));
+    return PDL::CCS::Nd->newFromWhich($abw,$abv,missing=>$a->missing,dims=>$abdims);
+  }
+  ##-- dense case
   return $_[0]->glue(1,$_[1]);
 }
 

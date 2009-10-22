@@ -50,7 +50,7 @@ sub compare {
   } else {
     $mu = $data->average;
   }
-  my $sigma = ($data - $mu->slice("*1"))->inplace->pow(2)->average->inplace->sqrt;
+  my $sigma = ($data - $mu->dummy(0,1))->inplace->pow(2)->average->inplace->sqrt;
   my $sigma_zmask = ($sigma<=0);
 
   my $mu1    = $mu->index($rows1);
@@ -69,8 +69,8 @@ sub compare {
   #$cmpvec = (($dr1-$mu1r)/$sigma1r*($dr2-$mu2r)/$sigma2r)->sumover;
   #$cmpvec->inplace->divide($d,0)->minus(1,$cmpvec,1); ##-- $cmpvec .= 1-($cmpvec/$d)
 
-  $cmpvec = (($dr1-$mu1->slice("*1"))
-	     ->inplace->mult($dr2-$mu2->slice("*1"),0)
+  $cmpvec = (($dr1-$mu1->dummy(0,1))
+	     ->inplace->mult($dr2-$mu2->dummy(0,1),0)
 	     ->sumover
 	     ->inplace->divide($sigma1,0)
 	     ->inplace->divide($sigma2,0)
