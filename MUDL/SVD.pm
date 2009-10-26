@@ -187,6 +187,35 @@ sub compute {
   return $svd;
 }
 
+##======================================================================
+## SVD: Shrinking
+##======================================================================
+
+## $svd = $svd->shrink()
+## $svd = $svd->shrink($r)
+##  + shrinks to reductive dimension $r
+##  + $r defaults to index of last (least signifcant) singular value in $svd->{sigma}
+sub shrink {
+  my ($svd,$r) = @_;
+  return $svd if (defined($r) && $svd->{r}==$r);
+
+  confess(ref($svd)."::shrink(): no SVD computed yet!")
+    if (grep { !defined($_) } @$svd{qw(u sigma v)});
+
+  confess(ref($svd)."::shrink(): cannot increate size!")
+    if (defined($r) && $r > $svd->{r});
+
+  ##-- shrink SVD pdls (leave at least 1 zero if possible)
+  $r = $svd->{sigma}->nnz->sclr if (!defined($r));
+  $r++ if ($r < $svd->{r});
+  $svd->{u}     = $svd->{u}->slice("0:".($r-1).",:");
+  $svd->{sigma} = $svd->{sigma}->slice("0:".($r-1));
+  $svd->{v}     = $svd->{v}->slice("0:".($r-1).",:");
+  $svd->{r}     = $r;
+
+  return $svd;
+}
+
 
 ##======================================================================
 ## SVD: Application
