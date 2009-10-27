@@ -205,9 +205,12 @@ sub shrink {
   confess(ref($svd)."::shrink(): cannot increate size!")
     if (defined($r) && $r > $svd->{r});
 
-  ##-- shrink SVD pdls (leave at least 1 zero if possible)
-  $r = $svd->{sigma}->nnz->sclr if (!defined($r));
-  $r++ if ($r < $svd->{r});
+  ##-- shrink SVD pdls
+  if (!defined($r)) {
+    ##-- auto-compute $r (leave at least 1 zero if possible)
+    $r = $svd->{sigma}->nnz->sclr ;
+    $r++ if ($r < $svd->{r});
+  }
   $svd->{u}     = $svd->{u}->slice("0:".($r-1).",:");
   $svd->{sigma} = $svd->{sigma}->slice("0:".($r-1));
   $svd->{v}     = $svd->{v}->slice("0:".($r-1).",:");
