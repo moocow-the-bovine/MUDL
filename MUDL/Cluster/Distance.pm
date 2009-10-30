@@ -7,6 +7,7 @@
 
 package MUDL::Cluster::Distance;
 use PDL;
+use PDL::Bad;
 #use PDL::CCS;
 use MUDL::Object;
 use MUDL::CmdUtils qw();
@@ -277,6 +278,15 @@ sub cdm_check {
 }
 
 ##--------------------------------------------------------------
+## $mask = defaultMask($data)
+##  + checkd $PDL::Bad::Status
+sub defaultMask {
+  my $data = shift;
+  return ones(long,$data->dims) if (!$PDL::Bad::Status);
+  return $data->isgood->long;
+}
+
+##--------------------------------------------------------------
 ## \%args = $cd->cdm_defaults(\%args)
 ##  + sets defaults in %args for clusterDistanceMatrix()
 ##  + "defaults" include setting up "Grand Unified Data Matrix"
@@ -297,7 +307,7 @@ sub cdm_defaults {
   my $cdata = defined($args->{cdata}) ? $args->{cdata} : $data;
 
   ##-- common data: mask, weight
-  $args->{mask}   = $data->isgood()               if (!defined($args->{mask}));
+  $args->{mask}   = defaultMask($data)            if (!defined($args->{mask}));
   $args->{weight} = ones(double,$data->dim(0))    if (!defined($args->{weight}));
 
   ##-- common data: $cids: cdata cluster-ids by cdata row-id
@@ -311,7 +321,7 @@ sub cdm_defaults {
     $args->{gudata} = $cd->matrixCat($cdata,$data);
 
     ##-- concatenated GU-matrix: mask
-    $args->{cmask} = $cdata->isgood() if (!defined($args->{cmask}));
+    $args->{cmask} = defaultMask($cdata) if (!defined($args->{cmask}));
     $args->{gumask} = $cd->matrixCat(@$args{qw(cmask mask)});
 
     ##-- concatenated GU-matrix: ids
@@ -497,7 +507,7 @@ sub compare_check {
 ##  + assumes that \%args is 'sane', e.g. $cd->compare_check(\%args) returned true
 sub compare_defaults {
   my ($cd,$args) = @_;
-  $args->{mask}   = $args->{data}->isgood->long if (!defined($args->{mask}));
+  $args->{mask}   = defaultMask($args->{data}) if (!defined($args->{mask}));
   $args->{weight} = ones(double,$args->{data}->dim(0)) if (!defined($args->{weight}));
   return;
 }
