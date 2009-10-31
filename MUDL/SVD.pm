@@ -240,7 +240,12 @@ sub apply {
     if ($d != $svd->{v}->dim(1));
 
   ##-- apply svd
-  my $ar  = $a x $svd->{v};
+  my ($ar);
+  if ($a->isa('PDL::CCS::Nd')) {
+    $ar = $a->matmult2d_sdd($svd->{v});  ##-- CCS::Nd matmult() calls inner(), produces huge temporary
+  } else {
+    $ar = $a x $svd->{v};
+  }
   #$ar x= stretcher($svd->{sigma})->inv; ##-- this is probably NOT a wise idea: check the definitions...
 
   return $ar;
