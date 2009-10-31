@@ -242,7 +242,12 @@ sub apply {
   ##-- apply svd
   my ($ar);
   if ($a->isa('PDL::CCS::Nd')) {
-    $ar = $a->matmult2d_sdd($svd->{v});  ##-- CCS::Nd matmult() calls inner(), produces huge temporary
+    ##-- CCS::Nd matmult() calls inner(), produces huge temporary
+    if ($a->missing==0) {
+      $ar = $a->matmult2d_zdd($svd->{v}); ##-- missing is zero (whew!)
+    } else {
+      $ar = $a->matmult2d_sdd($svd->{v}); ##-- buggy!
+    }
   } else {
     $ar = $a x $svd->{v};
   }
