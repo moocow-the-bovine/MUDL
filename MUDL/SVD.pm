@@ -19,7 +19,7 @@ our @ISA = qw(MUDL::Object);
 ## $svd = $class_or_obj->new(%args)
 ##  + %args
 ##    ##-- configuration
-##    r        => $r,         ##-- number of target dimensions (0 for no svd)
+##    r        => $r,         ##-- number of target dimensions (0 for no svd); 1 <= $r <= min2($d,$n)
 ##                            ##   + if ( 1 <= $r <= $d ) : number of reduced dimensions
 ##                            ##   + if ( 0 <= $r <   1 ) : coefficient: r' = ceil($r*$d)
 ##                            ##   + if (-1 <  $r <   0 ) : log-coeff  : r' = ceil(exp($r*log($d)))
@@ -39,8 +39,20 @@ our @ISA = qw(MUDL::Object);
 ##    ##
 ##    ##-- such that:
 ##    ## + $inputMatrixApprox = ($u x stretcher($sigma) x $v->xchg(0,1))
-##    ## + $a_reduced = $svd->apply($a) = $a x $v
-##    ## + $a_approx  = $svd->unapply($a_reduced) = $a_reduced x $v->xchg(0,1)
+##    ## + $a_reduced_d2r : $r-by-$n = $u
+##    ##                             = $svd->apply0($a)
+##    ##                             = (inv(stretcher($sigma)) x $v->xchg(0,1) x $a->xchg(0,1))->xchg(0,1)
+##    ##
+##    ## + $a_approx_d2r  : $d-by-$n = $svd->unapply0($a_reduced_d2r)
+##    ##                             = $a_reduced_d2r x stretcher($sigma) x $v->xchg(0,1)
+##    ##
+##    ## + $a_reduced_n2r : $d-by-$r = $v->xchg(0,1)
+##    ##                             = $svd->apply1($a)
+##    ##                             = (inv(stretcher($sigma)) x $u->xchg(0,1) x $a)
+##    ##
+##    ## + $a_approx_n2r  : $d-by-$n = $svd->unapply1($a_reduced_n2r)
+##    ##                             = $u x stretcher($sigma) x $a_reduced_n2r
+##    ##
 ##    ## + see also built-in 'svd()' in PDL::MatrixOps
 sub new {
   my $that = shift;
@@ -224,11 +236,33 @@ sub shrink {
 ## SVD: Application
 ##======================================================================
 
-## $a_reduced = $svd->apply($a)
-##  + applies svd by row to $a, a pdl of dims $d,$na
+## $sigma_diagonal_matrix = $svd->sigma()
+##  + returns diagonal matrix stretcher($svd->{sigma}), checking or populating cache $svd->{sigmaM}
+sub sigma {
+  my $svd = shift;
+  return $svd->{sigmaM} if (defined($svd->{sigmaM}));
+  confess("no {sigma} key defined for SVD!") if (!defined($svd->{sigma}));
+  return $svd->{sigmaM} = stretcher($svd->{sigma});
+}
+
+## $inverse_sigma_diagonal_matrix = $svd->isigma()
+##  + returns diagonal matrix inv(stretcher($svd->{sigma})), checking or populating cache $svd->{isigmaM}
+sub isigma {
+  my $svd = shift;
+  return $svd->{isigmaM} if (defined($svd->{isigmaM}));
+  confess("no {sigma} key defined for SVD!") if (!defined($svd->{sigma}));
+  my $isigma = $svd->{sigma}->pdl;
+  $isigma->where($svd->{sigma}) **= -1;
+  return $svd->{isigmaM} = stretcher( $isigma );
+}
+
+## $a_reduced_d2r = $svd->apply0($a)
+##  + alias: apply()
+##  + applies svd on 0th dim ($d) to $a, a pdl of dims $d,$na
 ##  + computes svd for $a if no data is already stored
 ##  + just returns $a unless $svd->{r} is set to a true value
-sub apply {
+BEGIN { *apply = \&apply0; }
+sub apply0 {
   my ($svd,$a) = @_;
   return $a if ($svd->{r}==0 || $svd->{rdims} >= $a->dim(0)); ##-- sanity check
 
@@ -236,12 +270,15 @@ sub apply {
   my ($d,$na) = $a->dims;
   $svd->compute($a)
     if (grep { !defined($_) } @$svd{qw(u sigma v)});
-  confess(ref($svd), "::apply(): bad input pdl!")
+  confess(ref($svd), "::apply0(): bad input pdl!")
     if ($d != $svd->{v}->dim(1));
 
   ##-- apply svd
   my ($ar);
   if ($a->isa('PDL::CCS::Nd')) {
+    confess("cannot handle PDL::CCS::Nd arguments!");
+
+    ##~~~ OLD, WRONG
     ##-- CCS::Nd matmult() calls inner(), produces huge temporary
     if ($a->missing==0) {
       $ar = $a->matmult2d_zdd($svd->{v}); ##-- missing is zero (whew!)
@@ -249,17 +286,49 @@ sub apply {
       $ar = $a->matmult2d_sdd($svd->{v}); ##-- buggy!
     }
   } else {
-    $ar = $a x $svd->{v};
+    #$ar = $a x $svd->{v}; ##-- OLD
+    $ar = ($svd->isigma x $svd->{v}->xchg(0,1) x $a->xchg(0,1))->xchg(0,1);
   }
-  #$ar x= stretcher($svd->{sigma})->inv; ##-- this is probably NOT a wise idea: check the definitions...
 
   return $ar;
 }
 
-## $a_approx = $svd->unapply($a_reduced)
-##  + un-applies svd by row to $a, a pdl of dims $r,$na
-##  + just returns $a_reduced unless $svd->{r} is set to a true value
-sub unapply {
+## $a_reduced_n2r = $svd->apply1($a)
+##  + applies svd on 1st dim ($n) to $a, a pdl of dims $da,$n
+##  + computes svd for $a if no data is already stored
+##  + just returns $a unless $svd->{r} is set to a true value
+sub apply1 {
+  my ($svd,$a) = @_;
+  return $a if ($svd->{r}==0 || $svd->{rdims} >= $a->dim(1)); ##-- sanity check
+
+  ##-- sanity check(s)
+  my ($da,$n) = $a->dims;
+  $svd->compute($a)
+    if (grep { !defined($_) } @$svd{qw(u sigma v)});
+  confess(ref($svd), "::apply0(): bad input pdl!")
+    if ($n != $svd->{u}->dim(1));
+
+  ##-- apply svd
+  my ($ar);
+  if ($a->isa('PDL::CCS::Nd')) {
+    confess("cannot handle PDL::CCS::Nd arguments!");
+  } else {
+    $ar = ($svd->isigma x $svd->{u}->xchg(0,1) x $a);
+  }
+
+  return $ar;
+}
+
+##======================================================================
+## SVD: Unapplication
+##======================================================================
+
+## $a_approx = $svd->unapply0($a_reduced_d2r)
+##  + alias: unapply()
+##  + un-applies svd over 0th dim ($r~$d) of $a_reduced_d2r, a pdl of dims $r,$na
+##  + just returns $a_reduced_d2r unless $svd->{r} is set to a true value
+BEGIN { *unapply = \&unapply0; }
+sub unapply0 {
   my ($svd,$ar) = @_;
   return $ar if ($svd->{r}==0 || $svd->{rdims} != $ar->dim(0)); ##-- sanity check
 
@@ -267,8 +336,27 @@ sub unapply {
   confess(ref($svd), "::unapply(): bad input pdl!")
     if ($ar->dim(0) != $svd->{v}->dim(0));
 
-  ##-- un-apply svd
-  my $a = $ar x $svd->{v}->xchg(0,1);
+  ##-- un-apply svd, by dim=0
+  #my $a = $ar x $svd->{v}->xchg(0,1); ##-- OLD, WRONG
+  my $a = $ar x $svd->sigma x $svd->{v}->xchg(0,1);
+
+  return $a;
+}
+
+## $a_approx = $svd->unapply1($a_reduced_n2r)
+##  + alias: unapply()
+##  + un-applies svd over 1st dim ($r~$n) of $a_reduced_n2r, a pdl of dims $da,$r
+##  + just returns $a_reduced_n2r unless $svd->{r} is set to a true value
+sub unapply1 {
+  my ($svd,$ar) = @_;
+  return $ar if ($svd->{r}==0 || $svd->{rdims} != $ar->dim(1)); ##-- sanity check
+
+  ##-- sanity check(s)
+  confess(ref($svd), "::unapply1(): bad input pdl!")
+    if ($ar->dim(1) != $svd->{u}->dim(0));
+
+  ##-- un-apply svd, by dim=1
+  my $a = $svd->{u} x $svd->sigma x $ar;
 
   return $a;
 }
