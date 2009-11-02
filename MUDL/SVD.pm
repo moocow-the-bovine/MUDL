@@ -226,7 +226,7 @@ sub shrink {
   $svd->{u}     = $svd->{u}->slice("0:".($r-1).",:");
   $svd->{sigma} = $svd->{sigma}->slice("0:".($r-1));
   $svd->{v}     = $svd->{v}->slice("0:".($r-1).",:");
-  $svd->{r}     = $r;
+  $svd->{r}     = $svd->{rdims} = $r;
 
   return $svd;
 }
@@ -237,23 +237,41 @@ sub shrink {
 ##======================================================================
 
 ## $sigma_diagonal_matrix = $svd->sigma()
-##  + returns diagonal matrix stretcher($svd->{sigma}), checking or populating cache $svd->{sigmaM}
+##  + returns diagonal matrix stretcher($svd->{sigma}), checking or populating cache $svd->{sigma_}
 sub sigma {
   my $svd = shift;
-  return $svd->{sigmaM} if (defined($svd->{sigmaM}));
+  return $svd->{sigma_} if (defined($svd->{sigma_}));
   confess("no {sigma} key defined for SVD!") if (!defined($svd->{sigma}));
-  return $svd->{sigmaM} = stretcher($svd->{sigma});
+  return $svd->{sigma_} = stretcher($svd->{sigma});
 }
 
 ## $inverse_sigma_diagonal_matrix = $svd->isigma()
-##  + returns diagonal matrix inv(stretcher($svd->{sigma})), checking or populating cache $svd->{isigmaM}
+##  + returns diagonal matrix inv(stretcher($svd->{sigma})), checking or populating cache $svd->{isigma_}
 sub isigma {
   my $svd = shift;
-  return $svd->{isigmaM} if (defined($svd->{isigmaM}));
+  return $svd->{isigma_} if (defined($svd->{isigma_}));
   confess("no {sigma} key defined for SVD!") if (!defined($svd->{sigma}));
   my $isigma = $svd->{sigma}->pdl;
   $isigma->where($svd->{sigma}) **= -1;
-  return $svd->{isigmaM} = stretcher( $isigma );
+  return $svd->{isigma_} = stretcher( $isigma );
+}
+
+## $isigma_x_vt = $svd->isigmaVt()
+##  + cached $svd->{isigmaVt_} = inv(stretcher($svd->{sigma})) x $svd->{v}->xchg(0,1)
+sub isigmaVt {
+  my $svd = shift;
+  return $svd->{isigmaVt_} if (defined($svd->{isigmaVt_}));
+  confess("no {v} key defined for SVD!") if (!defined($svd->{v}));
+  return $svd->{isigmaVt_} = $svd->isigma x $svd->{v}->xchg(0,1);
+}
+
+## $isigma_x_ut = $svd->isigmaUt()
+##  + cached $svd->{isigmaUt_} = inv(stretcher($svd->{sigma})) x $svd->{u}->xchg(0,1)
+sub isigmaUt {
+  my $svd = shift;
+  return $svd->{isigmaUt_} if (defined($svd->{isigmaUt_}));
+  confess("no {u} key defined for SVD!") if (!defined($svd->{u}));
+  return $svd->{isigmaUt_} = $svd->isigma x $svd->{u}->xchg(0,1);
 }
 
 ## $a_reduced_d2r = $svd->apply0($a)
@@ -287,7 +305,8 @@ sub apply0 {
     }
   } else {
     #$ar = $a x $svd->{v}; ##-- OLD
-    $ar = ($svd->isigma x $svd->{v}->xchg(0,1) x $a->xchg(0,1))->xchg(0,1);
+    #$ar = ($svd->isigma x $svd->{v}->xchg(0,1) x $a->xchg(0,1))->xchg(0,1);
+    $ar = ($svd->isigmaVt x $a->xchg(0,1))->xchg(0,1);
   }
 
   return $ar;
@@ -313,7 +332,8 @@ sub apply1 {
   if ($a->isa('PDL::CCS::Nd')) {
     confess("cannot handle PDL::CCS::Nd arguments!");
   } else {
-    $ar = ($svd->isigma x $svd->{u}->xchg(0,1) x $a);
+    #$ar = ($svd->isigma x $svd->{u}->xchg(0,1) x $a);
+    $ar = ($svd->isigmaUt x $a);
   }
 
   return $ar;
