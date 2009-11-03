@@ -295,19 +295,20 @@ sub saveNativeFile {
   return $e;
 }
 
-# $e = $e->loadATT($file_or_fh)
+# $e = $e->loadNative($file_or_fh)
 *loadATT = *loadNative = *loadNativeFh = \&loadNativeFile;
 sub loadNativeFile {
-  my ($e,$file) = @_;
+  my ($e,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new("<$file");
-  croak( __PACKAGE__ , "::loadATT(): open failed for '$file': $!") if (!$fh);
+  croak( __PACKAGE__ , "::loadNative(): open failed for '$file': $!") if (!$fh);
+  $fh->binmode($_) foreach ($fh->can('binmode') && $opts{iolayers} ? @{$opts{iolayers}} : qw());
 
   my ($lab,$sym,$line);
   while (defined($line=<$fh>)) {
     chomp $line;
     next if ($line eq '');
     if ($line !~ /^(.*\S)\s+(\d+)$/) {
-      warn( __PACKAGE__ , "::loadATT(): parse error in file '$file' at line ", $fh->input_line_number);
+      warn( __PACKAGE__ , "::loadNativeFile(): parse error in file '$file' at line ", $fh->input_line_number);
       next;
     }
     ($sym,$lab) = ($1,$2);
