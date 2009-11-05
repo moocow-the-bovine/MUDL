@@ -29,6 +29,7 @@ our %EXPORT_TAGS =
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
 	       'gausspdf', 'gausscdf', 'gausspeak',
 	       'gaussquantiles', 'gaussqvals', 'gausscdfi', ##-- all aliases for one another
+	       'gausswidth',
 	       'uosm',
 	      ],
    'di' => ['diLambdas2',
@@ -501,6 +502,21 @@ sub gaussquantiles {
 }
 
 ##--------------------------------------------------------------
+## $width = gausswidth($confidence, $mu,$sigma);                  ##-- scalar context
+## ($mu-$width,$mu+$width) = gausswidth($confidence, $mu,$sigma); ##-- array context
+##  + In scalar context, returns width around mean corresponding to confidence level $confidence
+##  + In array context, returns interval around mean for level $confidence.
+BEGIN { *PDL::gausswidth = \&gausswidth; }
+sub gausswidth {
+  my ($conf,$mu,$sigma) = @_;
+  $sigma = 1 if (!defined($sigma));
+  $mu    = 0 if (!defined($mu));
+  my $w  = erfi($conf) * sqrt(2) * $sigma;
+  return wantarray ? ($mu-$w,$mu+$w) : $w;
+}
+
+
+##--------------------------------------------------------------
 ## $centers       = intervals($min,$max,$n) ##-- scalar context
 ## ($ctr,$lo,$hi) = intervals($min,$max,$n) ##-- list context
 ##  + returns $n equally-spaced values between $min and $max
@@ -553,7 +569,7 @@ sub gausspoints {
 ## $probit = $pvals->probit($probit)
 ##  + gets probit() function values for probability points $pvals
 ##  + Signature: $pvals(n), $probit(n)
-##  + 0 < {$pvals,$probit} < 1
+##  + 0 < $pvals < 1
 ##  + probit(p) = sqrt(2)*erfi(2*p-1)
 BEGIN { *PDL::probit = \&probit; }
 sub probit {
