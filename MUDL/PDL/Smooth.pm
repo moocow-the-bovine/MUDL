@@ -511,7 +511,7 @@ sub gausswidth {
   my ($conf,$mu,$sigma) = @_;
   $sigma = 1 if (!defined($sigma));
   $mu    = 0 if (!defined($mu));
-  my $w  = erfi($conf) * sqrt(2) * $sigma;
+  my $w  = abs(erfi($conf) * sqrt(2) * $sigma);
   return wantarray ? ($mu-$w,$mu+$w) : $w;
 }
 
