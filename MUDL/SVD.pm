@@ -24,7 +24,7 @@ our @ISA = qw(MUDL::Object);
 ##                            ##   + if ( 0 <= $r <   1 ) : coefficient: r' = ceil($r*$d)
 ##                            ##   + if (-1 <  $r <   0 ) : log-coeff  : r' = ceil(exp($r*log($d)))
 ##    rdims    => $ndims,     ##-- expanded number of dimensions corresponding to $r
-##    maxiters => $maxiters,  ##-- max Lanczos iterations (default = 2*$r)
+##    maxiters => $maxiters,  ##-- max Lanczos iterations (default = 2*$r; 0=no max)
 ##    kappa    => $kappa,     ##-- tolerance (default=1e-6)
 ##    endl     => $end_l,     ##-- left interval endpoint for unwanted eigenvalues (-1e-30)
 ##    endr     => $end_r,     ##-- left interval endpoint for unwanted eigenvalues ( 1e-30)
@@ -130,7 +130,7 @@ sub computeccs {
 
   ##-- defaults
   my $maxiters = $svd->{maxiters};
-  $maxiters ||= 2*$r;
+  $maxiters = 2*$r if (!defined($maxiters));
 
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
@@ -182,7 +182,7 @@ sub compute {
   $svd->{rdims} = $r;   ##-- ... set dims
 
   my $maxiters = $svd->{maxiters};
-  $maxiters   ||= 2*$r;
+  $maxiters    = 2*$r if (!defined($maxiters));
 
   my $ut = zeroes(double, $n, $r);
   my $s  = zeroes(double, $r);
