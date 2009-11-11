@@ -274,7 +274,6 @@ sub mooLinfit {
 ##     line($v, $coeffs->index(0)*($v**$coeffs->index(1)), {%plot,color=>'blue'});
 ##     release;
 BEGIN { *PDL::loglinfit = \&loglinfit; }
-use PDL::Fit::Linfit;
 sub loglinfit {
   my ($y,$x,%opts) = @_;
   $x = ($y->xvals+1)->double if (!defined($x));
