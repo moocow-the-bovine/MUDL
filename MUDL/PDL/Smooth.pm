@@ -226,9 +226,14 @@ sub zipf_fit_lm2 {
 ##  + %opts:
 ##     unique => $bool, ##-- if true, only unique points are fitted
 BEGIN { *PDL::mooLinfit = \&mooLinfit; }
-use PDL::Fit::Linfit;
 sub mooLinfit {
   my ($y,$x,%opts) = @_;
+
+  ##-- MakeMaker tests choke on PDL::Fit::Linfit:
+  ## Can't load '/usr/lib/perl5/auto/PDL/Slatec/Slatec.so' for module PDL::Slatec: /usr/lib/perl5/auto/PDL/Slatec/Slatec.so: undefined symbol: _gfortran_concat_string at /usr/lib/perl/5.10/DynaLoader.pm line 196.
+  require PDL::Fit::Linfit;
+  PDL::Fit::Linfit->import();
+
   $x = ($y->xvals+1)->double if (!defined($x));
   if (!$opts{unique}) {
     my ($yfit,$coeffs) = $y->linfit1d($y->ones->cat($x->setnantobad->setbadtoval(0)));
