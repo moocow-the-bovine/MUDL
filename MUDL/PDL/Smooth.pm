@@ -145,10 +145,13 @@ sub zipf_fit {
 ##     ranks => $rank_pdl,     ##-- default = $freq_pdl->ranks1_dsc()
 ##     weight => $weight_pdl,  ##-- default: uniform (for LM algorithm)
 ##     $lmOpt => $lmVal,       ##-- passed to PDL::Fit::LM
-use PDL::Fit::LM;
 BEGIN { *PDL::zipf_fit_lm1 = *PDL::zipf_fit_lm = *zipf_fit_lm = \&zipf_fit_lm1; }
 sub zipf_fit_lm1 {
   my ($freq,%opts) = @_;
+
+  ##-- MakeMaker tests choke on external 'use PDL::Fit::LM'
+  require PDL::Fit::LM;
+  PDL::Fit::LM->import();
 
   ##-- get ranks
   my $ranks = $opts{ranks};
