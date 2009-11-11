@@ -301,9 +301,14 @@ sub loglinfit {
 ##     weight => $weight_pdl
 ##  + return values are as for loglinfit(), but uses LM fitting internally
 BEGIN { *PDL::expfit_ab = *PDL::expfit = *expfit = \&expfit_ab; }
-use PDL::Fit::LM;
 sub expfit_ab {
   my ($y,$x,%opts) = @_;
+
+  ##-- MakeMaker builds choke on PDL::Fit::LM:
+  ## Can't load '/usr/lib/perl5/auto/PDL/Slatec/Slatec.so' for module PDL::Slatec: /usr/lib/perl5/auto/PDL/Slatec/Slatec.so: undefined symbol: _gfortran_concat_string at /usr/lib/perl/5.10/DynaLoader.pm line 196.
+  use PDL::Fit::LM;
+  PDL::Fit::LM->import();
+
   $x = $y->xvals+1 if (!defined($x) || $x->isempty);
 
   ##-- initial parameters
