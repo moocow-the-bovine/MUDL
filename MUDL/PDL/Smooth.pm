@@ -502,16 +502,6 @@ sub gausscdf {
   return 0.5*(1 + erf( ($x-$mu) / ($sigma*sqrt(2)) ));
 }
 
-##--------------------------------------------------------------
-## $qvals = gaussquantiles($pvals, $mu,$sigma);
-##  + quantile function for Gaussian distribution, aka cdf^{-1}
-BEGIN { *PDL::gaussquantiles = *PDL::gaussqvals = *gaussqvals = *gausscdfi = \&gaussquantiles; }
-sub gaussquantiles {
-  my ($p,$mu,$sigma) = @_;
-  $sigma = 1 if (!defined($sigma));
-  $mu    = 0 if (!defined($mu));
-  return $mu + $sigma * sqrt(2) * erfi(2*$p-1);
-}
 
 ##--------------------------------------------------------------
 ## $width = gausswidth($confidence, $mu,$sigma);                  ##-- scalar context
@@ -523,8 +513,21 @@ sub gausswidth {
   my ($conf,$mu,$sigma) = @_;
   $sigma = 1 if (!defined($sigma));
   $mu    = 0 if (!defined($mu));
-  my $w  = abs(erfi($conf) * sqrt(2) * $sigma);
+  #my $w  = abs(erfi($conf) * sqrt(2) * $sigma);
+  my $w  = erfi($conf) * sqrt(2) * $sigma;
   return wantarray ? ($mu-$w,$mu+$w) : $w;
+}
+
+
+##--------------------------------------------------------------
+## $qvals = gaussquantiles($pvals, $mu,$sigma);
+##  + quantile function for Gaussian distribution, aka cdf^{-1}
+BEGIN { *PDL::gaussquantiles = *PDL::gaussqvals = *gaussqvals = *gausscdfi = \&gaussquantiles; }
+sub gaussquantiles {
+  my ($p,$mu,$sigma) = @_;
+  $sigma = 1 if (!defined($sigma));
+  $mu    = 0 if (!defined($mu));
+  return $mu + $sigma * sqrt(2) * erfi(2*$p-1);
 }
 
 
