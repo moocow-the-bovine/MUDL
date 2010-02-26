@@ -294,14 +294,11 @@ sub apply0 {
   ##-- apply svd
   my ($ar);
   if ($a->isa('PDL::CCS::Nd')) {
-    confess("cannot handle PDL::CCS::Nd arguments!");
-
-    ##~~~ OLD, WRONG
-    ##-- CCS::Nd matmult() calls inner(), produces huge temporary
+    ##-- CCS::Nd matmult() calls inner(), produces huge temporary, so we hack things here
     if ($a->missing==0) {
-      $ar = $a->matmult2d_zdd($svd->{v}); ##-- missing is zero (whew!)
+      $ar = $a->matmult2d_zdd($svd->isigmaVt->xchg(0,1)); ##-- missing is zero: whew!
     } else {
-      $ar = $a->matmult2d_sdd($svd->{v}); ##-- buggy!
+      $ar = $a->matmult2d_sdd($svd->isigmaVt->xchg(0,1)); ##-- missing is nonzero: whoops!
     }
   } else {
     #$ar = $a x $svd->{v}; ##-- OLD
@@ -330,7 +327,11 @@ sub apply1 {
   ##-- apply svd
   my ($ar);
   if ($a->isa('PDL::CCS::Nd')) {
-    confess("cannot handle PDL::CCS::Nd arguments!");
+    if ($a->missing==0) {
+      $ar = $a->xchg(0,1)->matmult2d_zdd($svd->isigmaUt->xchg(0,1))->xchg(0,1);
+    } else {
+      $ar = $a->xchg(0,1)->matmult2d_sdd($svd->isigmaUt->xchg(0,1))->xchg(0,1);
+    }
   } else {
     #$ar = ($svd->isigma x $svd->{u}->xchg(0,1) x $a);
     $ar = ($svd->isigmaUt x $a);
