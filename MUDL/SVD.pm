@@ -275,13 +275,19 @@ sub isigmaUt {
 }
 
 ## $a_reduced_d2r = $svd->apply0($a)
+## $a_reduced_d2r = $svd->apply0($a, $abnil)
 ##  + alias: apply()
 ##  + applies svd on 0th dim ($d) to $a, a pdl of dims $d,$na
 ##  + computes svd for $a if no data is already stored
 ##  + just returns $a unless $svd->{r} is set to a true value
+##  + $abnil may be pre-cached & passed in to speed up repeated
+##    calls to apply() when $a is passed as a PDL::CCS::Nd object,
+##    in which case $abnil should have been computed as:
+##      $abnil = $svd->apply1( $a->missing->squeeze->slice("*$d,*1") )->flat;
+##    - $abnil will only help (and only be used) if $a->missing != 0
 BEGIN { *apply = \&apply0; }
 sub apply0 {
-  my ($svd,$a) = @_;
+  my ($svd,$a,$abnil) = @_;
   return $a if ($svd->{r}==0 || $svd->{rdims} >= $a->dim(0)); ##-- sanity check
 
   ##-- sanity check(s)
@@ -296,9 +302,9 @@ sub apply0 {
   if ($a->isa('PDL::CCS::Nd')) {
     ##-- CCS::Nd matmult() calls inner(), produces huge temporary, so we hack things here
     if ($a->missing==0) {
-      $ar = $a->matmult2d_zdd($svd->isigmaVt->xchg(0,1)); ##-- missing is zero: whew!
+      $ar = $a->matmult2d_zdd($svd->isigmaVt->xchg(0,1));              ##-- missing is zero: whew!
     } else {
-      $ar = $a->matmult2d_sdd($svd->isigmaVt->xchg(0,1)); ##-- missing is nonzero: whoops!
+      $ar = $a->matmult2d_sdd($svd->isigmaVt->xchg(0,1),undef,$abnil); ##-- missing is nonzero: whoops!
     }
   } else {
     #$ar = $a x $svd->{v}; ##-- OLD
@@ -310,11 +316,17 @@ sub apply0 {
 }
 
 ## $a_reduced_n2r = $svd->apply1($a)
+## $a_reduced_n2r = $svd->apply1($a, $abnil)
 ##  + applies svd on 1st dim ($n) to $a, a pdl of dims $da,$n
 ##  + computes svd for $a if no data is already stored
 ##  + just returns $a unless $svd->{r} is set to a true value
+##  + $abnil may be pre-cached & passed in to speed up repeated
+##    calls to apply() when $a is passed as a PDL::CCS::Nd object,
+##    in which case $abnil should have been computed as:
+##      $abnil = $svd->apply1( $a->missing->squeeze->slice("*1,*$n") )->flat;
+##    - $abnil will only help (and only be used) if $a->missing != 0
 sub apply1 {
-  my ($svd,$a) = @_;
+  my ($svd,$a,$abnil) = @_;
   return $a if ($svd->{r}==0 || $svd->{rdims} >= $a->dim(1)); ##-- sanity check
 
   ##-- sanity check(s)
@@ -330,7 +342,7 @@ sub apply1 {
     if ($a->missing==0) {
       $ar = $a->xchg(0,1)->matmult2d_zdd($svd->isigmaUt->xchg(0,1))->xchg(0,1);
     } else {
-      $ar = $a->xchg(0,1)->matmult2d_sdd($svd->isigmaUt->xchg(0,1))->xchg(0,1);
+      $ar = $a->xchg(0,1)->matmult2d_sdd($svd->isigmaUt->xchg(0,1),undef,$abnil)->xchg(0,1);
     }
   } else {
     #$ar = ($svd->isigma x $svd->{u}->xchg(0,1) x $a);
