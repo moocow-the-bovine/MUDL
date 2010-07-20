@@ -157,11 +157,11 @@ sub compile {
   my $configs = $plot->{configs};
   my $mfields = $plot->{mfields};
   $mfields->configs($configs);
-  $mfields->fields(@$plot{qw(x y)}, 'plotKeyDefault');
+  $mfields->fields(@$plot{qw(x y z)}, 'plotKeyDefault');
   my $xfields    = $mfields->xfields();
 
   ##-- get auto-fields
-  my @autofields   = sort {$a->{name} cmp $b->{name}} @$xfields[2..$#$xfields];
+  my @autofields   = sort {$a->{name} cmp $b->{name}} @$xfields[3..$#$xfields];
   my @autonames    = map {$_->{name}} @autofields;
 
   ##-- Get field-data hashes
@@ -193,6 +193,7 @@ sub compile {
       ##-- sort this field-hash into the dataset for its title
       $plots->{$ptitle} = MUDL::Make::PlotData->new(
 						    ndims=>3,
+						    scatter3d=>1,
 						    title=>$ptitle,
 						    using=>$plot->{using},
 						    notitle=>$plot->{notitle},

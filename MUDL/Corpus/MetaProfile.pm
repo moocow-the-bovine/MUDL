@@ -238,9 +238,10 @@ sub toMap {
 ##======================================================================
 
 ## $hmm = $mp->toHMM($bigrams_pdldist_sparsend,%args)
-##   + %args are passed to MUDL::HMM->New(),
+##   + %args are passed to MUDL::HMM->new(),
 ##     execpt for:
-##      arcmode => $mode, ##-- either 'uniform' (default) or 'estimate'
+##      arcmode => $mode,   ##-- either 'uniform' (default) or 'estimate'
+##      autolabel => $bool, ##-- auto-label clusters? (default=no)
 ##   + returns a new HMM with uniform arc transition probabilities,
 ##     and observation probabilities initialized by Bayesian inversion
 ##     of $mp->{phat}
@@ -432,20 +433,22 @@ sub toHMM {
 
   ##----------------------------
   ## name classes
-  $mp->vmsg($vl_info, "toHMM(): cluster names\n");
-  my $cemask = $mp->{cm}->clusterElementMask();
-  my $q2o    = zeroes(long,2,$N);
-  ($bf->dice_axis(1,$o2o) * $cemask->dice($q2c,$o2t))->xchg(0,1)->maximum_n_ind($q2o);
-  my ($cstr,$cid);
-  foreach $cid (0..($N-1)) {
-    #($cstr=$qenum->symbol($cid)) ~= tr/0-9/A-J/;
-    #$cstr .= join('_', map { $oenum->symbol($_) } $q2o->slice(",($cid)")->list);
-    ##--
-    $cstr = join('_',
-		 $qenum->{id2sym}[$cid],
-		 map { $oenum->{id2sym}[$_] } $o2o->index($q2o->slice(",($cid)"))->list
-		);
-    $qenum->addIndexedSymbol($cstr, $cid);
+  if ($args{autolabel}) {
+    $mp->vmsg($vl_info, "toHMM(): automatic cluster labels\n");
+    my $cemask = $mp->{cm}->clusterElementMask();
+    my $q2o    = zeroes(long,2,$N);
+    ($bf->dice_axis(1,$o2o) * $cemask->dice($q2c,$o2t))->xchg(0,1)->maximum_n_ind($q2o);
+    my ($cstr,$cid);
+    foreach $cid (0..($N-1)) {
+      #($cstr=$qenum->symbol($cid)) ~= tr/0-9/A-J/;
+      #$cstr .= join('_', map { $oenum->symbol($_) } $q2o->slice(",($cid)")->list);
+      ##--
+      $cstr = join('_',
+		   $qenum->{id2sym}[$cid],
+		   map { $oenum->{id2sym}[$_] } $o2o->index($q2o->slice(",($cid)"))->list
+		  );
+      $qenum->addIndexedSymbol($cstr, $cid);
+    }
   }
 
   ##----------------------------

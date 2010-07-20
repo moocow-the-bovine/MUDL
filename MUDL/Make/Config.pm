@@ -225,6 +225,26 @@ sub make {
   return $rc;
 }
 
+## $bool = $cfg->makefile(%args)
+##  + like make() but just writes user makefile(s)
+sub makefile {
+  my ($cfg,%args) = @_;
+
+  ##-- change to make-directory
+  $cfg->pushd($args{dir});
+
+  ##-- Get targets, makefiles
+  my $targets   = $args{targets}   ? $args{targets}      : $cfg->{targets};
+  my @makefiles = $args{makefiles} ? @{$args{makefiles}} : glob('[Mm]akefile');
+
+  ##-- Write user-config file
+  my $userfile  = $cfg->writeUserMakefile($args{userfile});
+
+  ##-- pop & return
+  $cfg->popd();
+  return 1;
+}
+
 
 ##======================================================================
 ## Make: Acquire Data

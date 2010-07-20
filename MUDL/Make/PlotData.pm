@@ -30,6 +30,8 @@ sub new {
 				 'notitle'=>0,    ##-- if true, no actual title will be printed
 				 'points'=>[],    ##-- data points (MUDL::Make::FieldData objects)
 				                  ##    + contain array-ref '__point__'=>[$x,$y,...]
+				 'scatter3d'=>undef,  ##-- if true, blank lines will be inserted on x change
+				                      ##  + default: ($ndims>=3)
 
 				 ##-- I/O options
 				 'datafile'=>undef,   ##-- datafile name (default: auto-generate)
@@ -114,9 +116,19 @@ sub sortPoints {
 ## @data_lines = $pdata->dataLines()
 ##  + in scalar context, returns data string
 ##  + *NO* newline character is appended to data lines
+##  + if $pdata->{scatter3d} is set, blank lines will be inserted where appropriate
 sub dataLines {
   my $pdata = shift;
   my @lines = map { join("\t", @{$_->{__point__}}) } @{$pdata->{points}};
+  if ($pdata->{scatter3d} || (!defined($pdata->{scatter3d}) && $pdata->{ndims}>=3)) {
+    my ($i,@blanks);
+    foreach $i (1..$#{$pdata->{points}}) {
+      if (($pdata->{points}[$i]{__point__}[0]||'inf') != ($pdata->{points}[$i-1]{__point__}[0]||'inf')) {
+	push(@blanks,$i);
+      }
+    }
+    splice(@lines,$_,0,'') foreach (reverse(@blanks));
+  }
   return wantarray ? @lines : (join("\n", @lines)."\n");
 }
 

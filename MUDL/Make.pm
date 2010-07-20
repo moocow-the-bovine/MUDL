@@ -790,6 +790,33 @@ sub latexify {
 }
 
 ##---------------------------------------------------------------
+## Actions: user makefile
+
+$ACTIONS{usermak} = $ACTIONS{makefile} =
+  {
+   syntax=>'makefile',
+   help=>'write user makefile(s) for selected configuration(s)',
+   code=>\&actMakefile,
+  };
+sub actMakefile {
+  my $mak = shift;
+  return 0 if (!$mak->ensureLoaded);
+  my $rc = 1;
+  my ($cfg);
+  foreach $cfg ($mak->sortSelection()) {
+    $rc &&= $cfg->make( dir=>$mak->{dir}, userfile=>$mak->{userfile}, makefiles=>$mak->{makefiles}, dummy=>$mak->{dummy} );
+    if (!$rc) {
+      warn(ref($mak),"::actMake() failed -- bailing out");
+      exit(1);
+    }
+    if (!$mak->{dummy}) {
+      $mak->syncCollection() if ($mak->{paranoid});
+    }
+  }
+  return $rc;
+}
+
+##---------------------------------------------------------------
 ## Actions: make (safe)
 
 $ACTIONS{make} = $ACTIONS{acquire} =
