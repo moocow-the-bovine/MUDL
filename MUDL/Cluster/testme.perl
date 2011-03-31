@@ -24,7 +24,7 @@ BEGIN { $, = ' '; }
 ## $ucmp = ucmp($cwhich,$cmpvec1,$cmpvec2,...)
 sub ucmp {
   my $cw   = shift;
-  my $cwi  = $cw->qsortveci;
+  my $cwi  = $cw->vv_qsortveci;
   my $ucmp = $cw->dice_axis(1,$cwi)->glue(0,pdl(-1))->convert(double);
   foreach my $cv (@_) {
     $ucmp = $ucmp->glue(0,$cv->index($cwi)->slice("*1"));

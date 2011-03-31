@@ -707,7 +707,7 @@ sub test_nd_qsorti {
   my $ac_yy = $ac_w->slice("1:-1,");
   my $ac_z  = $ac->_nzvals->index($ac_ypi);
   my $ac_yyz  = $ac_yy->double->glue(0,$ac_z->slice("*1,"));
-  my $ac_yyzi = $ac_yyz->qsortveci;
+  my $ac_yyzi = $ac_yyz->vv_qsortveci;
   my $ac_xoff = $ac_yp->index($ac_yy->slice("(0),"));
   my $ac_xi   = $ac_yyzi-$ac_xoff;
   my $aci_w = $ac_xi->slice("*1,")->glue(0,$ac_yy);
@@ -735,7 +735,7 @@ sub test_nd_qsorti {
   ##-- bugs working in missing vlaues... argh!
 
   my $acz_yyz  = $acz_yy->double->glue(0,$acz_z->slice("*1,"));
-  my $acz_yyzi = $acz_yyz->qsortveci;
+  my $acz_yyzi = $acz_yyz->vv_qsortveci;
   my $acz_xoff = $acz_yp->index($acz_yy->slice("(0),")); #->index($acz_yyzi);
   my $acz_xi   = $acz_yyzi-$acz_xoff;
   my ($acz_which_present,$acz_which_missing) = which_both( ($acz_x < $ac_xub)->index($acz_yyzi) );

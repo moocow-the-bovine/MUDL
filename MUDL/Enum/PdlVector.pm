@@ -85,7 +85,7 @@ sub vecs2qvi {
 sub update {
   my $pve = shift;
   my $qvecs = $pve->{qvecs};
-  my $qvecs_qsi = $qvecs->qsortveci;               ##-- $new_qvi => $old_qvi
+  my $qvecs_qsi = $qvecs->vv_qsortveci;               ##-- $new_qvi => $old_qvi
   $pve->{qvecs} = $qvecs->dice_axis(1,$qvecs_qsi);
   $pve->{qvi2i} = $pve->{qvi2i}->index($qvecs_qsi);
   $pve->{i2qvi}->index($pve->{qvi2i}) .= $pve->{i2qvi}->sequence;
