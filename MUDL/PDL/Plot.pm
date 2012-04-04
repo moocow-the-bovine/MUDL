@@ -23,11 +23,13 @@ our %EXPORT_TAGS =
 	      'qqplot','qqplotx', ##-- pgplot
 	      'gqqplot','gqqplotx', ##-- gnuplot
 	     ],
+   'gunplot' => ['glogscale', 'glogscale_parse', 'gwith', '%GWITH_OPTS'],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
 our @EXPORT      = @EXPORT_OK;
 
+our (%GWITH_OPTS); ##-- for gnuplot
 
 ##======================================================================
 ## histograms & binning
@@ -172,7 +174,7 @@ sub qqfit {
   }
 
   ##-- line() plot (fit $xdata->$ydata)
-  my ($yfit,$coeffs) = $ydata->mooLinfit($xdata,$opts);
+  my ($yfit,$coeffs) = $ydata->mooLinfit($xdata,%{$opts||{}});
   return ($xdata,$yfit,$coeffs);
 }
 
@@ -217,6 +219,15 @@ sub qqplotx {
 ##     noline  => $bool,  ##-- if true, no line is drawn
 ##     unique  => $bool,  ##-- if true, line is fit to unique values only
 ##     noplot  => $bool,  ##-- if true, plot() is not actually called
+##     logfit => $bool,   ##-- fit log values
+##  + additional %globalOpts,%pointOpts:
+##     pt => $point_type,
+##     ps => $point_type,
+##     pc => $point_color
+##  + additional %globalOpts,%lineOpts:
+##     lt => $line_type,
+##     lw => $line_type,
+##     lc => $line_color
 BEGIN { *PDL::gqqplotx = \&gqqplotx; }
 sub gqqplotx {
   my ($xdata,$ydata,$gopts,$popts,$lopts) = @_;
@@ -229,22 +240,34 @@ sub gqqplotx {
   my %gopts = %{$gopts||{}};
   my %popts = %{$popts||{}};
   my %lopts = %{$lopts||{}};
-  my $noline  = $gopts{noline} || ($lopts && $lopts{hide});
-  delete(@gopts{'noline','unique','noplot'});
-  delete($lopts{'hide'});
+  my $noline  = $gopts{noline} || $lopts{hide};
+  my @nokeys = (qw(noline unique noplot),keys(%GWITH_OPTS));
+  delete @gopts{@nokeys};
+  delete @popts{@nokeys};
+  delete @lopts{@nokeys};
 
-  my @plot = (\%gopts, {with=>'p',%popts}, $xdata,$ydata);
+  ##--points
+  my %gp = (%{$gopts||{}},%{$popts||{}});
+  $gp{lc} = $gp{pc} if ($gp{pc});
+  my @plot = ({with=>gwith('p',%gp), %popts}, $xdata,$ydata);
 
   ##-- line() plot (fit $xdata->$ydata)
   if (!$noline) {
-    my ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
-    push(@plot, {with=>'l',%lopts}, $xfit,$yfit);
+    my ($xfit,$yfit,$coeffs);
+    if ($gopts && $gopts->{logfit}) {
+      ($xfit,$yfit,$coeffs) = ($xdata,$ydata->loglinfit($xdata,%{$gopts||{}},%{$lopts||{}}));
+      $coeffs = $coeffs->slice("-1:0");
+    } else {
+      ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
+    }
+    my %gl = (%{$gopts||{}},%{$lopts||{}});
+    push(@plot, {with=>gwith('l',%gl),%lopts}, $xfit,$yfit);
   }
 
   ##-- actual plot
   if ( !($gopts && $gopts->{noplot}) ) {
     require PDL::Graphics::Gnuplot;
-    PDL::Graphics::Gnuplot::plot(@plot);
+    PDL::Graphics::Gnuplot::plot(%gopts, @plot);
   }
   return @plot;
 }
@@ -292,6 +315,77 @@ sub gqqplot {
   my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
 
   return gqqplotx($qvals, ($data-$mu/$sigma), \%gopts,$popts,$lopts);
+}
+
+##======================================================================
+## gnuplot: logscale parsing
+
+## $with = gwith($style,%opts)
+##  + parses 'with' option hash for gnuplot
+##  + e.g. plot({with=>gwith('p',linetype=>2,lw=>4,nohidden3d=>1,nosurface=>1)}, $x,$y)
+%GWITH_OPTS = (map {($_=>undef)}
+	       qw(linestyle ls), qw(linetype lt), qw(linewidth lw), qw(linecolor lc),
+	       qw(pointtype pt), qw(pointsize ps),
+	       qw(fill fs),
+	       qw(nohidden3d nocontours nosurface),
+	       qw(palette));
+sub gwith {
+  my ($style,%opts) = @_;
+  return join(' ',
+	      $style,
+	      map {"$_ $opts{$_}"}
+	      grep {exists($GWITH_OPTS{$_}) && defined($opts{$_})}
+	      sort keys %opts);
+}
+
+## \%logscale = glogscale_parse( \%which, \@which, $which, $default, ...)
+##  + parses a list of logscale specs $which
+##  + $which elements can be an ARRAY, HASH-ref or SCALAR
+##    - HASH  : (strictest) map of the form $SCALAR=>$base_or_0
+##    - ARRAY : (less strict) elements of $SCALAR
+##    - SCALAR: matches regex ($axes,$base)=/((x|y|cb)*(=\d+)?)*/ or ($default)=/^\d+$/
+##  + in returns a strict HASH of the form ($axis=>$base, ...)
+sub glogscale_parse {
+  my $scale = {};
+  my $base_default = 10;
+  foreach my $which (@_) {
+    if (!defined($which)) {
+      next;
+    } elsif (UNIVERSAL::isa($which,'HASH')) {
+      foreach (keys %$which) {
+	my $keyscale = glogscale_parse($_);
+	@$scale{keys %$keyscale} = map {$which->{$_}} keys %$keyscale;
+      }
+    } elsif (UNIVERSAL::isa($which,'ARRAY')) {
+      foreach (@$which) {
+	my $keyscale = glogscale_parse($_);
+	@$scale{keys %$keyscale} = values %$keyscale;
+      }
+    } elsif ($which =~ /^[\d\.]+$/) {
+      $base_default = $which;
+    } else {
+      foreach my $spec (split(/[\s,]+/,$which)) {
+	my ($axes,$base) = split(/=/,$spec);
+	$base = $base_default if (!defined($base) || $base eq '');
+	while ($axes =~ /((?:cb)|(?:x2)|(?:y2)|[xyz])/g) {
+	  $scale->{$1} = $base;
+	}
+      }
+    }
+  }
+  foreach (values %$scale) {
+    $_ = 0 if (!$_);
+  }
+  return $scale;
+}
+
+## @commands = glogscale( $which, ... )
+## $commands = glogscale( $which, ... )
+##  + wrapper for gnuplot logscale commands
+sub glogscale {
+  my $scale = glogscale_parse(@_);
+  my @cmds  = map {$scale->{$_} ? "set logscale $_ $scale->{$_};" : "unset logscale $_;"} keys %$scale;
+  return wantarray ? @cmds : join(" ",@cmds);
 }
 
 ##======================================================================
