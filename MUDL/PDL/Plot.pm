@@ -19,7 +19,10 @@ our %EXPORT_TAGS =
    'hist' => ['hist1','loghist','errbin','errbin_gfit',
 	      'logbins', 'makebins','makebins_exp','findbins',
 	     ],
-   'qq'   => ['qqplot','qqplotx'],
+   'qq'   => ['qqfit', ##-- generic
+	      'qqplot','qqplotx', ##-- pgplot
+	      'gqqplot','gqqplotx', ##-- gnuplot
+	     ],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -152,14 +155,34 @@ sub errbin {
 ##======================================================================
 ## distribution comparison test: quantile-quantile plot (generic)
 
+## ($xline,$yline,$ycoeffs) = qqfit($xraw,$yraw,$opts)
+##  + see: http://www.nist.gov/stat.handbook
+##  + returned values are independently sorted
+##  + %$opts:
+##     nosort => $bool,  ##-- if true, data is assumed already flat and independently sorted
+##     unique => $bool,  ##-- if true, line is fit to unique values only
+BEGIN { *PDL::qqfit = \&qqfit; }
+sub qqfit {
+  my ($xdata,$ydata,$opts) = @_;
+
+  ##-- require (independently) sorted data
+  if ( !($opts && $opts->{nosort}) ) {
+    $xdata = $xdata->flat->qsort;
+    $ydata = $ydata->flat->qsort;
+  }
+
+  ##-- line() plot (fit $xdata->$ydata)
+  my ($yfit,$coeffs) = $ydata->mooLinfit($xdata,$opts);
+  return ($xdata,$yfit,$coeffs);
+}
 
 ## undef = qqplotx($xdata,$ydata)
 ## undef = qqplotx($xdata,$ydata,\%commonOpts)
 ## undef = qqplotx($xdata,$ydata,\%pointOpts,\%lineOpts)
 ##  + see: http://www.nist.gov/stat.handbook
 ##  + additional %commonOpts, %pointOpts:
-##     noline   => $bool,  ##-- if true, no line is drawn
-##     uniqline => $bool,  ##-- if true, line is fit to unique values only
+##     noline => $bool,  ##-- if true, no line is drawn
+##     unique => $bool,  ##-- if true, line is fit to unique values only
 ##  + additional \%lineOpts
 ##     hide => $bool,    ##-- draw no line
 BEGIN { *PDL::qqplotx = \&qqplotx; }
@@ -171,21 +194,59 @@ sub qqplotx {
   $ydata = $ydata->flat->qsort;
 
   ##-- points() plot
-  $popts  = {} if (!defined($popts));
-  my $noline   = $popts->{noline} || (defined($lopts) && $lopts->{hide});
-  #my $uniqline = $popts->{noline} || (defined($lopts) && $lopts->{uniq});
-  delete(@$popts{'noline','uniqline'});
-  delete(@$lopts{'hide','uniq'}) if (defined($lopts));
+  my %popts = %{$popts||{}};
+  my %lopts = %{$lopts||\%popts};
+  my $noline   = $popts{noline} || (defined($lopts) && $lopts{hide});
+  delete(@popts{'noline','uniqline'});
+  delete(@lopts{'hide','uniq'});
   points( $xdata, $ydata, $popts );
 
   ##-- line() plot (fit $xdata->$ydata)
   if (!$noline) {
-    my ($yfit,$coeffs) = $ydata->mooLinfit($xdata);
-    $lopts = $popts if (!defined($lopts));
+    my ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
     hold;
-    line( $xdata, $coeffs->slice("(0)")*$xdata+$coeffs->slice("(1)"), $lopts );
+    line( $xdata, $coeffs->slice("(0)")*$xdata+$coeffs->slice("(1)"), \%lopts );
     release;
   }
+}
+
+## @gnuplot = gqqplotx($xdata,$ydata,\%globalOpts,\%pointOpts,\%lineOpts)
+##  + generic q-q plot using PDL::Graphics::Gnuplot
+##  + see: http://www.nist.gov/stat.handbook
+##  + additional %globalOpts:
+##     noline  => $bool,  ##-- if true, no line is drawn
+##     unique  => $bool,  ##-- if true, line is fit to unique values only
+##     noplot  => $bool,  ##-- if true, plot() is not actually called
+BEGIN { *PDL::gqqplotx = \&gqqplotx; }
+sub gqqplotx {
+  my ($xdata,$ydata,$gopts,$popts,$lopts) = @_;
+
+  ##-- require sorted data
+  $xdata = $xdata->flat->qsort;
+  $ydata = $ydata->flat->qsort;
+
+  ##-- points() plot
+  my %gopts = %{$gopts||{}};
+  my %popts = %{$popts||{}};
+  my %lopts = %{$lopts||{}};
+  my $noline  = $gopts{noline} || ($lopts && $lopts{hide});
+  delete(@gopts{'noline','unique','noplot'});
+  delete($lopts{'hide'});
+
+  my @plot = (\%gopts, {with=>'p',%popts}, $xdata,$ydata);
+
+  ##-- line() plot (fit $xdata->$ydata)
+  if (!$noline) {
+    my ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
+    push(@plot, {with=>'l',%lopts}, $xfit,$yfit);
+  }
+
+  ##-- actual plot
+  if ( !($gopts && $gopts->{noplot}) ) {
+    require PDL::Graphics::Gnuplot;
+    PDL::Graphics::Gnuplot::plot(@plot);
+  }
+  return @plot;
 }
 
 ## undef = qqplot($data)
@@ -208,6 +269,29 @@ sub qqplot {
   my $sigma = $data->flat->double->stddev;
   my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
   return qqplotx($qvals, ($data-$mu/$sigma), $popts,$lopts);
+}
+
+## undef = gqqplot($data,\%globalOpts,\%pointOpts,\%lineOpts)
+##  + PDL::Graphics::Gnuplot version
+##  + compares vs. standard normal distribution
+##  + see: http://en.wikipedia.org/wiki/Q-Q_plot,
+##         http://www.nist.gov/stat.handbook
+BEGIN { *PDL::gqqplot = \&gqqplot; }
+sub gqqplot {
+  my ($data,$gopts,$popts,$lopts) = @_;
+
+  ##-- options
+  my %gopts = %{$gopts||{}};
+  $gopts{xlabel} = 'Normal Theoretical Quantiles' if (!defined($gopts{xtitle}));
+  $gopts{ylabel} = 'Sample Quantiles' if (!defined($gopts{ytitle}));
+  $gopts{title}  = 'Q-Q Plot' if (!defined($gopts{title}));
+
+  my $uosm  = $data->flat->sequence->double->uosm();  ##-- uniform order statistic medians
+  my $mu    = $data->flat->double->mean;
+  my $sigma = $data->flat->double->stddev;
+  my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
+
+  return gqqplotx($qvals, ($data-$mu/$sigma), \%gopts,$popts,$lopts);
 }
 
 ##======================================================================
