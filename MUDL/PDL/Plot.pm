@@ -8,7 +8,7 @@
 
 package MUDL::PDL::Plot;
 use PDL;
-use PDL::Graphics::PGPLOT;
+#use PDL::Graphics::PGPLOT;
 use MUDL::PDL::Smooth ':all';
 use MUDL::PDL::Stats;
 use strict;
@@ -191,6 +191,10 @@ BEGIN { *PDL::qqplotx = \&qqplotx; }
 sub qqplotx {
   my ($xdata,$ydata,$popts,$lopts) = @_;
 
+  require PDL::Graphics::PGPLOT;
+  PDL::Graphics::PGPLOT->import();
+  no strict 'subs';
+
   ##-- require sorted data
   $xdata = $xdata->flat->qsort;
   $ydata = $ydata->flat->qsort;
@@ -206,9 +210,9 @@ sub qqplotx {
   ##-- line() plot (fit $xdata->$ydata)
   if (!$noline) {
     my ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
-    hold;
+    hold();
     line( $xdata, $coeffs->slice("(0)")*$xdata+$coeffs->slice("(1)"), \%lopts );
-    release;
+    release();
   }
 }
 
@@ -281,6 +285,10 @@ sub gqqplotx {
 BEGIN { *PDL::qqplot = \&qqplot; }
 sub qqplot {
   my ($data,$popts,$lopts) = @_;
+
+  require PDL::Graphics::PGPLOT;
+  PDL::Graphics::PGPLOT->import();
+  no strict 'subs';
 
   ##-- options
   $popts  = {} if (!defined($popts));
@@ -402,6 +410,11 @@ sub glogscale {
 BEGIN { *PDL::errbin_gfit = \&errbin_gfit; }
 sub errbin_gfit {
   my ($x,$y,$ebopts,$gfopts) = @_;
+
+  require PDL::Graphics::PGPLOT;
+  PDL::Graphics::PGPLOT->import();
+  no strict 'subs';
+
   $ebopts = {} if (!defined($ebopts));
   $gfopts = { color=>'red',%$ebopts } if (!defined($gfopts));
   my %opts  = (%$ebopts,%$gfopts);
@@ -433,9 +446,9 @@ sub errbin_gfit {
   my $yr = [0,$y_adj->append($gy)->max];
 
   errbin($x,$y_adj,{xrange=>$xr,yrange=>$yr,%$ebopts});
-  hold;
+  hold();
   line($gx,$gy,{xrange=>$xr,yrange=>$yr,%$gfopts});
-  release;
+  release();
 }
 
 
