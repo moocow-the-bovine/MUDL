@@ -17,7 +17,7 @@ our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
    'hist' => ['hist1','loghist','errbin','errbin_gfit',
-	      'logbins', 'makebins','makebins_exp','findbins',
+	      #'logbins', 'makebins','makebins_exp','findbins', ##-- now in MUDL::PDL::Smooth
 	     ],
    'qq'   => ['qqfit', ##-- generic
 	      'qqplot','qqplotx', ##-- pgplot
@@ -62,63 +62,6 @@ sub loghist {
 		      );
   $hist += $eps;
   return wantarray ? ($x->exp-$eps,$hist) : $hist;
-}
-
-## ($binids,$binub,$binfit) = logbins($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- list context
-## $binids                  = logbins($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- scalar context
-##   + wrapper for loghist() which maps input data to bin indices:
-##      $binub = loghist($
-##      all( $binids == $data->vsearch($binub) )
-##      all( $binfit == $binub->index($binids) )
-BEGIN { *PDL::logbins = \&logbins; }
-sub logbins {
-  my $data = shift;
-  my ($binub,$binhist) = loghist($data,@_);
-  my $binids = $data->vsearch($binub);
-  return wantarray ? ($binids,$binub,$binub->index($binids)) : $binids;
-}
-
-## $binubs = makebins($data,%opts)
-##  + %opts:
-##     min => minimum bin ub (default=$data->min)
-##     max => maximum bin ub (default=$data->max)
-##     n   => n bins (default=100)
-BEGIN { *PDL::makebins = \&makebins; }
-sub makebins {
-  my ($data,%opts) = @_;
-  my $min = defined($opts{min}) ? $opts{min} : $data->minimum;
-  my $max = defined($opts{max}) ? $opts{max} : $data->maximum;
-  my $n   = defined($opts{n})   ? $opts{n}   : pdl(double,100.0);
-  my $binsize = ($max-$min)/$n;
-  return (ones($n)*$binsize)->cumusumover + $min;
-}
-
-## $binubs = makebins_exp($data,%opts)
-##  + like makebins(), but produces exponentially sized bins
-##  + %opts:
-##     min => minimum bin ub (default=$data->min)
-##     max => maximum bin ub (default=$data->max)
-##     eps => small value added to ($max,$min) before computing bin sizes (default=0)
-##     n   => n bins (default=100)
-BEGIN { *PDL::makebins_exp = \&makebins_exp; }
-sub makebins_exp {
-  my ($data,%opts) = @_;
-  $data = null if (!defined($data));
-  my $eps = defined($opts{eps}) ? $opts{eps} : pdl(double,0);
-  my $min = defined($opts{min}) ? $opts{min} : $data->min+$eps;
-  my $max = defined($opts{max}) ? $opts{max} : $data->max+$eps;
-  my $n   = defined($opts{n})   ? $opts{n}   : pdl(double,100.0);
-  my $lbinsize = (log($max)-log($min))/$n;
-  return ((ones($n)*$lbinsize)->cumusumover + log($min))->exp;
-}
-
-## $binids = findbins($data, $binubs)
-##  + maps $data to bin-ids
-##  + really just a wrapper for $data->vsearch($binubs)
-BEGIN { *PDL::findbins = \&findbins; }
-sub findbins {
-  my ($data,$binubs) = @_;
-  return $data->vsearch($binubs);
 }
 
 

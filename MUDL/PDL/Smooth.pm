@@ -1,4 +1,4 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::PDL::Smooth.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -20,10 +20,14 @@ our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
    'vals'  => ['valcounts','smearvals','intervals'],
+   'bins'  => ['logbins', 'makebins','makebins_exp','findbins',
+	       'binavg', 'binsd',
+	      ],
    'fit'   => ['zipf_fit',
 	       'zipf_fit_lm1', 'zipf_fit_lm2',
 	       'mooLinfit', 'loglinfit',
 	       'expfit',
+	       'linfit',
 	      ],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
@@ -80,6 +84,106 @@ sub valprobs {
   $vc = $vc->double;
   return ($v, $vc/$vc->sumover->dummy(0,1));
 }
+
+##======================================================================
+## bin-sorting
+
+## ($binids,$binub,$binfit) = logbins($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- list context
+## $binids                  = logbins($data,$eps=1,$min=undef,$max=undef,$step=undef)   ##-- scalar context
+##   + wrapper for loghist() which maps input data to bin indices:
+##      $binub = loghist($
+##      all( $binids == $data->vsearch($binub) )
+##      all( $binfit == $binub->index($binids) )
+BEGIN { *PDL::logbins = \&logbins; }
+sub logbins {
+  my $data = shift;
+  my ($binub,$binhist) = loghist($data,@_);
+  my $binids = $data->vsearch($binub);
+  return wantarray ? ($binids,$binub,$binub->index($binids)) : $binids;
+}
+
+## $binubs = makebins($data,%opts)
+##  + %opts:
+##     min => minimum bin ub (default=$data->min)
+##     max => maximum bin ub (default=$data->max)
+##     n   => n bins (default=100)
+BEGIN { *PDL::makebins = \&makebins; }
+sub makebins {
+  my ($data,%opts) = @_;
+  my $min = defined($opts{min}) ? $opts{min} : $data->minimum;
+  my $max = defined($opts{max}) ? $opts{max} : $data->maximum;
+  my $n   = defined($opts{n})   ? $opts{n}   : pdl(double,100.0);
+  my $binsize = ($max-$min)/$n;
+  return (ones($n)*$binsize)->cumusumover + $min;
+}
+
+## $binubs = makebins_exp($data,%opts)
+##  + like makebins(), but produces exponentially sized bins
+##  + %opts:
+##     min => minimum bin ub (default=$data->min)
+##     max => maximum bin ub (default=$data->max)
+##     eps => small value added to ($max,$min) before computing bin sizes (default=0)
+##     n   => n bins (default=100)
+BEGIN { *PDL::makebins_exp = \&makebins_exp; }
+sub makebins_exp {
+  my ($data,%opts) = @_;
+  $data = null if (!defined($data));
+  my $eps = defined($opts{eps}) ? $opts{eps} : pdl(double,0);
+  my $min = defined($opts{min}) ? $opts{min} : $data->min+$eps;
+  my $max = defined($opts{max}) ? $opts{max} : $data->max+$eps;
+  my $n   = defined($opts{n})   ? $opts{n}   : pdl(double,100.0);
+  my $lbinsize = (log($max)-log($min))/$n;
+  return ((ones($n)*$lbinsize)->cumusumover + log($min))->exp;
+}
+
+## $binids = findbins($data, $binubs)
+##  + maps $data to bin-ids
+##  + really just a wrapper for $data->vsearch($binubs)
+BEGIN { *PDL::findbins = \&findbins; }
+sub findbins {
+  my ($data,$binubs) = @_;
+  return $data->vsearch($binubs);
+}
+
+## $avg        = binavg($data,$binids,\%opts)
+## ($avg,$fit) = binavg($data,$binids,\%opts)
+##  + %opts:
+##     missing=>$val : set missing values to $val (default=0)
+sub binavg {
+  my ($data,$binids,$opts) = @_;
+  my $missing = defined($opts->{missing}) ? $opts->{missing} : 0;
+  my $uids = $binids->flat->qsort->uniq;
+  my $avg = zeroes($binids->max+1);
+  $avg   .= $missing;
+  foreach my $id ($uids->list) {
+    my $data_i = $data->where($binids==$id);
+    next if ($data_i->nelem == 0);
+    my $avg_i  = $data_i->flat->average;
+    (my $tmp=$avg->slice("($id)")) .= $avg_i;
+  }
+  return wantarray ? ($avg,$avg->index($binids)) : $avg;
+}
+
+## $sd        = binsd($data,$binids,\%opts)
+## ($sd,$fit) = binsd($data,$binids,\%opts)
+##  + %opts:
+##     missing=>$val  : set missing values to $val (default=0)
+##     amissing=>$val : set missing average values to $val (default=0)
+sub binsd {
+  my ($data,$binids,$opts) = @_;
+  my $missing  = defined($opts->{missing}) ? $opts->{missing} : 0;
+  my $uids = $binids->flat->qsort->uniq;
+  my $avg = binavg($data,$binids,{%$opts,missing=>$opts->{amissing}});
+  my $sd  = $avg->zeroes + $missing;
+  foreach my $id ($uids->list) {
+    my $data_i = $data->where($binids==$id);
+    next if ($data_i->nelem == 0);
+    my $sd_i   = (($data_i->flat-$avg->slice("($id)"))**2)->average->sqrt;
+    (my $tmp=$sd->slice("($id)")) .= $sd_i;
+  }
+  return wantarray ? ($sd,$sd->index($binids)) : $sd;
+}
+
 
 ##======================================================================
 ## Value Smearing (GT-style)
@@ -213,9 +317,144 @@ sub zipf_fit_lm2 {
   return wantarray ? @fit[1,0] : $fit[1];
 }
 
+##======================================================================
+## Linear fitting, generic
+
+## $yfit = $y->linfit($x=cat($fit->xvals+1,$fit->ones), %opts)  ##-- scalar context
+## %fit  = $y->linfit($x=cat($fit->xvals+1,$fit->ones), %opts)  ##-- list context
+##  + Signature: (y(n); x(n,nx); [o]fit(n); [o]coeffs(nx))
+##  + $x can also be specified as an ARRAY: ($x0,$x1,...,$xn) to set $x=cat($x0,$x1,...,$xn)
+##  + $yfit(i) is fitted value for $y(i) as a linear function of $x(i,)
+##  + in hash mode, outputs %opts plus:
+##     yfit => $yfit,      ##-- $yfit(n)   : as scalar return value
+##     coeffs => $coeffs,  ##-- $coeffs(nx): s.t. all($yfit == $coeffs(0)*$x(,(0)) + $coeffs(1)*$x(,(1)) + ... + $coeffs(nx-1)*$x(,(nx-1))
+##  + %opts:
+##     uniq   => $bool,  ##-- if true, only vector-unique points are fitted
+##     logy   => $bool,  ##-- if true, $y will be log-transformed before fit
+##     logx   => $mask,  ##-- $mask(nx) of x-indices to be log-transformed before fit
+##     epsy   => $eps,   ##-- scalar added to $y() before fit (e.g. for logy=>1)
+##     epsx   => $eps,   ##-- $epsx(nx) of eps-values to add to $x() (e.g. for logx)
+##     nbins  => $n,     ##-- number of y-bins with which to quantize fit (default=0: use all values)
+BEGIN { *PDL::linfit = \&linfit; }
+sub linfit {
+  my ($y0,$x0,%opts) = @_;
+
+  ##-- MakeMaker tests choke on PDL::Fit::Linfit:
+  ## Can't load '/usr/lib/perl5/auto/PDL/Slatec/Slatec.so' for module PDL::Slatec: /usr/lib/perl5/auto/PDL/Slatec/Slatec.so: undefined symbol: _gfortran_concat_string at /usr/lib/perl/5.10/DynaLoader.pm line 196.
+  require PDL::Fit::Linfit;
+  PDL::Fit::Linfit->import();
+
+  ##-- get x values
+  my ($x);
+  if (!defined($x0)) {
+    $x = cat(($y0->xvals+1)->double,$y0->ones);
+  } elsif (!UNIVERSAL::isa($x0,'PDL') && UNIVERSAL::isa($x0,'ARRAY')) {
+    $x = cat(@$x0)->double;
+  } else {
+    $x = pdl($x0)->double; ##-- copy
+  }
+
+  ##-- epsy
+  my ($y,$epsy,$logy);
+  $y  = pdl($y0)->double; ##-- copy
+  $y += $opts{epsy} if (defined($epsy=$opts{epsy}));
+
+  ##-- logy
+  $y->inplace->log if ($logy=$opts{logy});
+
+  ##-- epsx
+  my $epsx = defined($opts{epsx}) ? pdl($opts{epsx}) : zeroes(long,$x->dim($x->dim(1)));
+  $x += $epsx->slice("*1,");
+  $x->inplace->setnantobad->inplace->setbadtoval(0);
+
+  ##-- logx
+  my ($logx);
+  if (defined($opts{logx})) {
+    $logx = UNIVERSAL::isa($opts{logx},'PDL') || UNIVERSAL::isa($opts{logx},'ARRAY') ? pdl($opts{logx}) : ones(long,$x->dim(1));
+    $x->dice_axis(1,$logx->which)->inplace->log() if ($logx->any);
+  }
+
+  ##-- bins
+  my $nbins = $opts{nbins} || 0;
+  my ($ybb,$ybi,$yba,$xba);
+  if ($nbins) {
+    $ybb = makebins($y,n=>$opts{biny});
+    $ybi = findbins($y,$ybb);
+    $yba = binavg($y,$ybi);
+    $xba = binavg($x,$ybi->slice(",*1"));
+  } else {
+    ($xba,$yba) = ($x,$y);
+  }
+
+  ##-- fit temporaries
+  my ($yfit,$coeffs);
+
+  ##-- uniq
+  my $uniq = $opts{uniq} || $opts{unique};
+  if ($uniq) {
+    my $xyv  = $xba->glue(1,$yba)->xchg(0,1);
+    my $xyvi  = $xyv->vv_qsortveci;
+    my $xyvs  = $xyv->dice_axis(1,$xyvi);
+    my ($xyvc,$xyvv) = $xyvs->rleND;
+    my $xyui = $xyvv->dice_axis(1,which($xyvc>0))->vsearchvec($xyvs);
+    my $xu   = $opts{xu} = $xyv->dice_axis(1,$xyui)->xchg(0,1)->slice(",0:-2");
+    my $yu   = $opts{yu} = $xyv->dice_axis(1,$xyui)->xchg(0,1)->slice(",(-1)");
+
+    ##-- fit: unique
+    my ($ufit,$ucoeffs) = @opts{qw(ufit ucoeffs)} = $yu->linfit1d($xu);
+    $coeffs = $ucoeffs;
+
+    ##-- back-translate: unique -> full
+    $yfit = $yba->zeroes;
+    (my $tmp=$yfit->index($xyvi)) .= $ufit->index($xyvs->vsearchvec($xyvv->dice_axis(1,$xyui)));
+  }
+  else {
+    ##-- fit: non-unique
+    ($yfit,$coeffs) = $yba->linfit1d($xba);
+  }
+
+  ##-- back-translate: bins
+  if ($nbins) {
+    my $yfitb = $opts{yfitb} = $yfit;
+    $yfit     = $y0->zeroes;
+    $yfit->index($ybi) .= $yfitb;
+  }
+
+  ##-- back-translate: logx,epsx
+  if (defined($logx) && $logx->any) {
+    $x->dice_axis(1,$logx->which)->inplace->exp();
+  }
+  if (defined($epsx) && any($epsx)) {
+    $x -= $epsx->slice("*1,");
+  }
+
+  ##-- back-translate: logy,epsy
+  if ($logy) {
+    $yfit->inplace->exp;
+    $y->inplace->exp;
+  }
+  if ($epsy) {
+    $yfit -= $epsy;
+    $y    -= $epsy;
+  }
+
+  ##-- return: scalar
+  return $yfit if (!wantarray);
+
+  ##-- return: hash
+  @opts{qw(logy epsy logx epsx)} = ($logy,$epsy,$logx,$epsx);
+  @opts{qw(uniq)} = ($uniq);
+  @opts{qw(x y x0 y0 yfit coeffs)} = ($x,$y,$x0,$y0,$yfit,$coeffs);
+  $opts{nbins} = $nbins;
+  if ($nbins) {
+    @opts{qw(ybb ybi yba xba)} = ($ybb,$ybi,$yba,$xba);
+  }
+  return %opts;
+}
+
 
 ##======================================================================
-## Linear fit
+## Linear fitting
 
 ## ($fit,$coeffs) = $vals->mooLinfit()
 ## ($fit,$coeffs) = $vals->mooLinfit($keys)
