@@ -21,13 +21,13 @@ our %EXPORT_TAGS =
   (
    'vals'  => ['valcounts','smearvals','intervals'],
    'bins'  => ['logbins', 'makebins','makebins_exp','findbins',
-	       'binavg', 'binsd',
+	       'binavg', 'binsd', 'bin2d',
 	      ],
    'fit'   => ['zipf_fit',
 	       'zipf_fit_lm1', 'zipf_fit_lm2',
 	       'mooLinfit', 'loglinfit',
 	       'expfit',
-	       'linfit', 'fit3d',
+	       'linfit',
 	      ],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
@@ -145,13 +145,13 @@ sub findbins {
   return $data->vsearch($binubs);
 }
 
-## $avg        = binavg($data,$binids,\%opts)
-## ($avg,$fit) = binavg($data,$binids,\%opts)
+## $avg        = binavg($data,$binids,%opts)
+## ($avg,$fit) = binavg($data,$binids,%opts)
 ##  + %opts:
 ##     missing=>$val : set missing values to $val (default=0)
 sub binavg {
-  my ($data,$binids,$opts) = @_;
-  my $missing = defined($opts->{missing}) ? $opts->{missing} : 0;
+  my ($data,$binids,%opts) = @_;
+  my $missing = defined($opts{missing}) ? $opts{missing} : 0;
   my $uids = $binids->flat->qsort->uniq;
   my $avg = zeroes($binids->max+1);
   $avg   .= $missing;
@@ -164,16 +164,16 @@ sub binavg {
   return wantarray ? ($avg,$avg->index($binids)) : $avg;
 }
 
-## $sd        = binsd($data,$binids,\%opts)
-## ($sd,$fit) = binsd($data,$binids,\%opts)
+## $sd        = binsd($data,$binids,%opts)
+## ($sd,$fit) = binsd($data,$binids,%opts)
 ##  + %opts:
 ##     missing=>$val  : set missing values to $val (default=0)
 ##     amissing=>$val : set missing average values to $val (default=0)
 sub binsd {
-  my ($data,$binids,$opts) = @_;
-  my $missing  = defined($opts->{missing}) ? $opts->{missing} : 0;
+  my ($data,$binids,%opts) = @_;
+  my $missing  = defined($opts{missing}) ? $opts{missing} : 0;
   my $uids = $binids->flat->qsort->uniq;
-  my $avg = binavg($data,$binids,{%$opts,missing=>$opts->{amissing}});
+  my $avg = binavg($data,$binids, %opts,missing=>$opts{amissing});
   my $sd  = $avg->zeroes + $missing;
   foreach my $id ($uids->list) {
     my $data_i = $data->where($binids==$id);
@@ -322,7 +322,7 @@ sub zipf_fit_lm2 {
 
 ## $yfit = $y->linfit($x=cat($fit->xvals+1,$fit->ones), %opts)  ##-- scalar context
 ## %fit  = $y->linfit($x=cat($fit->xvals+1,$fit->ones), %opts)  ##-- list context
-##  + Signature: (y(n); x(n,nx); [o]fit(n); [o]coeffs(nx))
+##  + pseudo-signature: (y(n); x(n,nx); [o]fit(n); [o]coeffs(nx); %opts)
 ##  + $x can also be specified as an ARRAY: ($x0,$x1,...,$xn) to set $x=cat($x0,$x1,...,$xn)
 ##  + $yfit(i) is fitted value for $y(i) as a linear function of $x(i,)
 ##  + in hash mode, outputs %opts plus:
@@ -455,55 +455,55 @@ sub linfit {
 ##======================================================================
 ## 3d fitting
 
-## %fit3d = $z->fit3d($x,$y,%opts); ##-- list context
-## $image = $z->fit3d($x,$y,%opts); ##-- scalar context
-##  + signature:
-##     ( z(n); x(n); y(n); [o]image(nx,ny) )
+## %bin2d = $z->bin2d($x,$y,%opts); ##-- list context
+## $image = $z->bin2d($x,$y,%opts); ##-- scalar context
+##  + pseudo-signature:
+##     ( z(n); x(n); y(n); [o]image(nx,ny); %opts )
+##
 ##  + %opts
-##     nx => $nx,     ##-- number of x-bins (default=$x->uniq->nelem)
-##     ny => $ny,     ##-- number of y-bins (default=$y->uniq->nelem)
-##     logx => $bool, ##-- bin x-values exponentially?
-##     epsx => $bool, ##-- add to $x before logging?
-##     logy => $bool, ##-- bin y-values exponentially?
-##     epsx => $bool, ##-- add to $y before logging?
-##     logz => $bool, ##-- implicitly log $z?
-##  + output %fit3d: %opts plus:
-##     image => $imag,	##-- $imag(nx,ny): ($x,$y)=>$z
-##     #...		##-- ... more
-BEGIN { *PDL::fit3d = \&fit3d; }
-sub fit3d {
+##     nx => $nx,	 ##-- number of x-bins (default=$x->uniq->nelem)
+##     logx => $bool,	 ##-- bin x-values exponentially?
+##     epsx => $eps,	 ##-- add to $x before exp-binning?
+##     missingx => $val, ##-- missing value for x averaging (default=0)
+##
+##     ny => $ny,	 ##-- number of y-bins (default=$y->uniq->nelem)
+##     logy => $bool,	 ##-- bin y-values exponentially?
+##     epsy => $eps,	 ##-- add to $y before exp-binning?
+##     missingy => $val, ##-- missing value for x averaging (default=0)
+##
+##     missingz => $val, ##-- missing value for z averaging (default=0)
+##
+##  + output %bin2d: %opts plus:
+##     image => $imag,	##-- $imag(nx,ny): ($xi,$yi)=>$z
+##
+##     x0  => $x0,	##-- $x0(n)   : input pdl $x(n)
+##     xbi => $xbi,	##-- $xbi(n)  : bin indices for arg $x(n) (0<=$xbi()<=nx)
+##     xbb => $xbb,	##-- $xbb(nx) : bin upper-bounds
+##     xba => $xba,     ##-- $xba(nx) : bin-wise averages for $x(n)
+##     x   => $x,       ##-- $x(nx)   : alias for $xba
+##
+##     y0  => $y0,	##-- $y0(n)   : input pdl $y(n)
+##     ybi => $ybi,	##-- $ybi(n)  : bin indices for arg $y(n) (0<=$ybi()<=ny)
+##     ybb => $ybb,	##-- $ybb(ny) : bin upper-bounds
+##     yba => $yba,     ##-- $yba(ny) : bin-wise averages for $y(n)
+##     y   => $y,       ##-- $y(ny)   : alias for $yba
+##
+##     zwhich => $zwhich, ##-- $zwhich(nnz,2): whichND-style pdl for non-missing (x-bin,y-bin) index pairs
+##     zvals  => $zvals,  ##-- $zvals(nnz)   : non-missing z values a la PDL::CCS::Nd
+##     znnz   => $znnz,   ##-- $znnz(nx,ny)  : number of non-missing values per bin
+##
+BEGIN { *PDL::bin2d = \&bin2d; }
+sub bin2d {
   my ($z0,$x0,$y0,%opts) = @_;
-  @opts{qw(x0 y0 z0)} = ($x0,$y0,$z0);
-
-  ##-- get x values
-  my $x = $x0;
-  if ($opts{logx}) {
-    $x = pdl($x0);
-    $x += $opts{epsx} if ($opts{epsx});
-    $x->inplace->log  if ($opts{logx});
-  }
-
-  ##-- get y values
-  my $y = $y0;
-  if ($opts{logy} || $opts{epsy}) {
-    $y = pdl($y0);
-    $y += $opts{epsy} if ($opts{epsy});
-    $y->inplace->log if ($opts{logy});
-  }
-
-  ##-- get z values
-  my $z = $z0;
-  if ($opts{logz} || $opts{epsz}) {
-    $z = pdl($z0);
-    $z += $opts{epsy} if ($opts{epsz});
-    $z->inplace->log if ($opts{logz});
-  }
+  my ($x,$y,$z) = @opts{qw(x0 y0 z0)} = ($x0,$y0,$z0);
 
   ##-- bins: x
   if ($opts{nx}) {
-    $opts{xbb} = makebins($x,n=>$opts{nx});	##-- xbb(nx): bin upper-bounds
-    $opts{xbi} = findbins($x,$opts{xbb});	##-- xbi(n) : bin indices for passed values
-    $opts{xba} = binavg($x,$opts{xbi});		##-- xba(nx): bin averages
+    $opts{xbb} = ($opts{logx}
+		  ? makebins_exp($x,eps=>$opts{epsx},n=>$opts{nx})
+		  : makebins($x,n=>$opts{nx}));
+    $opts{xbi} = findbins($x,$opts{xbb});
+    $opts{xba} = binavg($x,$opts{xbi},missing=>$opts{missingx});
   } else {
     $opts{xbb} = $x->uniq->qsort;
     $opts{xbi} = findbins($x,$opts{xbb});
@@ -513,33 +513,40 @@ sub fit3d {
 
   ##-- bins: y
   if ($opts{ny}) {
-    $opts{ybb} = makebins($y,n=>$opts{ny});	##-- ybb(ny): bin upper-bounds
-    $opts{ybi} = findbins($y,$opts{ybb});	##-- ybi(n) : bin indices for passed values
-    $opts{yba} = binavg($y,$opts{ybi});		##-- yba(ny): bin averages
+    $opts{ybb} = ($opts{logy}
+		  ? makebins_exp($y,eps=>$opts{epsy},n=>$opts{ny})
+		  : makebins($y,n=>$opts{ny}));
+    $opts{ybi} = findbins($y,$opts{ybb});
+    $opts{yba} = binavg($y,$opts{ybi},missing=>$opts{missingy});
   } else {
     $opts{ybb} = $y->uniq->qsort;
     $opts{ybi} = findbins($y,$opts{ybb});
     $opts{yba} = $opts{ybb};
-    $opts{ny} = $opts{ybb}->nelem;
+    $opts{ny}  = $opts{ybb}->nelem;
   }
 
   ##-- bin-vectors
-  $opts{missing} = 0 if (!defined($opts{missing}));
-  $opts{missing} = $opts{missing}->sclr if (UNIVERSAL::isa($opts{missing},'PDL'));
+  my $missingz = $opts{missingz};
+  $missingz = 0 if (!defined($missingz));
+  $missingz = $missingz->sclr if (UNIVERSAL::isa($missingz,'PDL'));
   my $xybi  = cat(@opts{qw(xbi ybi)})->xchg(0,1);
   my $xybii = $xybi->vv_qsortveci;
   my $xybis = $xybi->dice_axis(1,$xybii);
   my $zs    = $z->index($xybii);
-  my ($zwhich,$zsum) = ccs_accum_dsum($xybis,$zs, $opts{missing}, 0);
-  my ($nzwhich,$nnz) = ccs_accum_nnz($xybis, $zs, $opts{missing}, 0);
-  $zsum /= $nnz->double;
-  $zsum->inplace->setnantobad->inplace->setbadtoval($opts{missing});
-  my $image = ccs_decode($zwhich,$zsum,$opts{missing},[@opts{qw(nx ny)}]);
+  my ($zwhich,$zavg) = ccs_accum_dsum($xybis,$zs, $missingz, 0);
+  my ($nzwhich,$nnz) = ccs_accum_nnz($xybis, $zs, $missingz, 0);
+  $zavg /= $nnz->double;
+  $zavg->inplace->setnantobad->inplace->setbadtoval($missingz) if (defined($opts{missingz}));
+  my $image = ccs_decode($zwhich,$zavg,$missingz,[@opts{qw(nx ny)}]);
+  return $image if (!wantarray);
 
-  ##-- output
-  @opts{qw(x y z image)} = ($x,$y,$z,$image);
+  ##-- output full hash
+  @opts{qw(x y)} = @opts{qw(xba yba)};
+  $opts{image} = $image;
+  $opts{zwhich} = $zwhich;
+  $opts{znnz}   = ccs_decode($zwhich,$nnz,0,[@opts{qw(nx ny)}]);
 
-  return wantarray ? %opts : $image;
+  return %opts;
 }
 
 
@@ -913,7 +920,7 @@ sub gausspoints {
 ## $probit = $pvals->probit()
 ## $probit = $pvals->probit($probit)
 ##  + gets probit() function values for probability points $pvals
-##  + Signature: $pvals(n), $probit(n)
+##  + signature: $pvals(n), $probit(n)
 ##  + 0 < $pvals < 1
 ##  + probit(p) = sqrt(2)*erfi(2*p-1)
 BEGIN { *PDL::probit = \&probit; }
