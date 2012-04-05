@@ -27,7 +27,7 @@ our %EXPORT_TAGS =
 	       'zipf_fit_lm1', 'zipf_fit_lm2',
 	       'mooLinfit', 'loglinfit',
 	       'expfit',
-	       'linfit',
+	       'linfit', 'fit3d',
 	      ],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
@@ -452,9 +452,100 @@ sub linfit {
   return %opts;
 }
 
+##======================================================================
+## 3d fitting
+
+## %fit3d = $z->fit3d($x,$y,%opts); ##-- list context
+## $image = $z->fit3d($x,$y,%opts); ##-- scalar context
+##  + signature:
+##     ( z(n); x(n); y(n); [o]image(nx,ny) )
+##  + %opts
+##     nx => $nx,     ##-- number of x-bins (default=$x->uniq->nelem)
+##     ny => $ny,     ##-- number of y-bins (default=$y->uniq->nelem)
+##     logx => $bool, ##-- bin x-values exponentially?
+##     epsx => $bool, ##-- add to $x before logging?
+##     logy => $bool, ##-- bin y-values exponentially?
+##     epsx => $bool, ##-- add to $y before logging?
+##     logz => $bool, ##-- implicitly log $z?
+##  + output %fit3d: %opts plus:
+##     image => $imag,	##-- $imag(nx,ny): ($x,$y)=>$z
+##     #...		##-- ... more
+BEGIN { *PDL::fit3d = \&fit3d; }
+sub fit3d {
+  my ($z0,$x0,$y0,%opts) = @_;
+  @opts{qw(x0 y0 z0)} = ($x0,$y0,$z0);
+
+  ##-- get x values
+  my $x = $x0;
+  if ($opts{logx}) {
+    $x = pdl($x0);
+    $x += $opts{epsx} if ($opts{epsx});
+    $x->inplace->log  if ($opts{logx});
+  }
+
+  ##-- get y values
+  my $y = $y0;
+  if ($opts{logy} || $opts{epsy}) {
+    $y = pdl($y0);
+    $y += $opts{epsy} if ($opts{epsy});
+    $y->inplace->log if ($opts{logy});
+  }
+
+  ##-- get z values
+  my $z = $z0;
+  if ($opts{logz} || $opts{epsz}) {
+    $z = pdl($z0);
+    $z += $opts{epsy} if ($opts{epsz});
+    $z->inplace->log if ($opts{logz});
+  }
+
+  ##-- bins: x
+  if ($opts{nx}) {
+    $opts{xbb} = makebins($x,n=>$opts{nx});	##-- xbb(nx): bin upper-bounds
+    $opts{xbi} = findbins($x,$opts{xbb});	##-- xbi(n) : bin indices for passed values
+    $opts{xba} = binavg($x,$opts{xbi});		##-- xba(nx): bin averages
+  } else {
+    $opts{xbb} = $x->uniq->qsort;
+    $opts{xbi} = findbins($x,$opts{xbb});
+    $opts{xba} = $opts{xbb};
+    $opts{nx} = $opts{xbb}->nelem;
+  }
+
+  ##-- bins: y
+  if ($opts{ny}) {
+    $opts{ybb} = makebins($y,n=>$opts{ny});	##-- ybb(ny): bin upper-bounds
+    $opts{ybi} = findbins($y,$opts{ybb});	##-- ybi(n) : bin indices for passed values
+    $opts{yba} = binavg($y,$opts{ybi});		##-- yba(ny): bin averages
+  } else {
+    $opts{ybb} = $y->uniq->qsort;
+    $opts{ybi} = findbins($y,$opts{ybb});
+    $opts{yba} = $opts{ybb};
+    $opts{ny} = $opts{ybb}->nelem;
+  }
+
+  ##-- bin-vectors
+  $opts{missing} = 0 if (!defined($opts{missing}));
+  $opts{missing} = $opts{missing}->sclr if (UNIVERSAL::isa($opts{missing},'PDL'));
+  my $xybi  = cat(@opts{qw(xbi ybi)})->xchg(0,1);
+  my $xybii = $xybi->vv_qsortveci;
+  my $xybis = $xybi->dice_axis(1,$xybii);
+  my $zs    = $z->index($xybii);
+  my ($zwhich,$zsum) = ccs_accum_dsum($xybis,$zs, $opts{missing}, 0);
+  my ($nzwhich,$nnz) = ccs_accum_nnz($xybis, $zs, $opts{missing}, 0);
+  $zsum /= $nnz->double;
+  $zsum->inplace->setnantobad->inplace->setbadtoval($opts{missing});
+  my $image = ccs_decode($zwhich,$zsum,$opts{missing},[@opts{qw(nx ny)}]);
+
+  ##-- output
+  @opts{qw(x y z image)} = ($x,$y,$z,$image);
+
+  return wantarray ? %opts : $image;
+}
+
+
 
 ##======================================================================
-## Linear fitting
+## Linear fitting, old
 
 ## ($fit,$coeffs) = $vals->mooLinfit()
 ## ($fit,$coeffs) = $vals->mooLinfit($keys)
@@ -487,7 +578,7 @@ sub mooLinfit {
 }
 
 ##======================================================================
-## Log-linear fit
+## Log-linear fit, old
 
 ## ($fit,$coeffs) = $vals->loglinfit()
 ## ($fit,$coeffs) = $vals->loglinfit($keys,%opts)
