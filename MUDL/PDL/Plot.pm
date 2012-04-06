@@ -19,11 +19,7 @@ our %EXPORT_TAGS =
    'hist' => ['hist1','loghist','errbin','errbin_gfit',
 	      #'logbins', 'makebins','makebins_exp','findbins', ##-- now in MUDL::PDL::Smooth
 	     ],
-   'qq'   => ['qqfit', ##-- generic
-	      'qqplot','qqplotx', ##-- pgplot
-	      'gqqplot','gqqplotx', ##-- gnuplot
-	     ],
-   'gunplot' => ['glogscale', 'glogscale_parse', 'gwith', '%GWITH_OPTS'],
+   'qq'   => ['qqplot','qqplotx'],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -100,26 +96,6 @@ sub errbin {
 ##======================================================================
 ## distribution comparison test: quantile-quantile plot (generic)
 
-## ($xline,$yline,$ycoeffs) = qqfit($xraw,$yraw,$opts)
-##  + see: http://www.nist.gov/stat.handbook
-##  + returned values are independently sorted
-##  + %$opts:
-##     nosort => $bool,  ##-- if true, data is assumed already flat and independently sorted
-##     unique => $bool,  ##-- if true, line is fit to unique values only
-BEGIN { *PDL::qqfit = \&qqfit; }
-sub qqfit {
-  my ($xdata,$ydata,$opts) = @_;
-
-  ##-- require (independently) sorted data
-  if ( !($opts && $opts->{nosort}) ) {
-    $xdata = $xdata->flat->qsort;
-    $ydata = $ydata->flat->qsort;
-  }
-
-  ##-- line() plot (fit $xdata->$ydata)
-  my ($yfit,$coeffs) = $ydata->mooLinfit($xdata,%{$opts||{}});
-  return ($xdata,$yfit,$coeffs);
-}
 
 ## undef = qqplotx($xdata,$ydata)
 ## undef = qqplotx($xdata,$ydata,\%commonOpts)
@@ -159,66 +135,6 @@ sub qqplotx {
   }
 }
 
-## @gnuplot = gqqplotx($xdata,$ydata,\%globalOpts,\%pointOpts,\%lineOpts)
-##  + generic q-q plot using PDL::Graphics::Gnuplot
-##  + see: http://www.nist.gov/stat.handbook
-##  + additional %globalOpts:
-##     noline  => $bool,  ##-- if true, no line is drawn
-##     unique  => $bool,  ##-- if true, line is fit to unique values only
-##     noplot  => $bool,  ##-- if true, plot() is not actually called
-##     logfit => $bool,   ##-- fit log values
-##  + additional %globalOpts,%pointOpts:
-##     pt => $point_type,
-##     ps => $point_type,
-##     pc => $point_color
-##  + additional %globalOpts,%lineOpts:
-##     lt => $line_type,
-##     lw => $line_type,
-##     lc => $line_color
-BEGIN { *PDL::gqqplotx = \&gqqplotx; }
-sub gqqplotx {
-  my ($xdata,$ydata,$gopts,$popts,$lopts) = @_;
-
-  ##-- require sorted data
-  $xdata = $xdata->flat->qsort;
-  $ydata = $ydata->flat->qsort;
-
-  ##-- points() plot
-  my %gopts = %{$gopts||{}};
-  my %popts = %{$popts||{}};
-  my %lopts = %{$lopts||{}};
-  my $noline  = $gopts{noline} || $lopts{hide};
-  my @nokeys = (qw(noline unique noplot),keys(%GWITH_OPTS));
-  delete @gopts{@nokeys};
-  delete @popts{@nokeys};
-  delete @lopts{@nokeys};
-
-  ##--points
-  my %gp = (%{$gopts||{}},%{$popts||{}});
-  $gp{lc} = $gp{pc} if ($gp{pc});
-  my @plot = ({with=>gwith('p',%gp), %popts}, $xdata,$ydata);
-
-  ##-- line() plot (fit $xdata->$ydata)
-  if (!$noline) {
-    my ($xfit,$yfit,$coeffs);
-    if ($gopts && $gopts->{logfit}) {
-      ($xfit,$yfit,$coeffs) = ($xdata,$ydata->loglinfit($xdata,%{$gopts||{}},%{$lopts||{}}));
-      $coeffs = $coeffs->slice("-1:0");
-    } else {
-      ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
-    }
-    my %gl = (%{$gopts||{}},%{$lopts||{}});
-    push(@plot, {with=>gwith('l',%gl),%lopts}, $xfit,$yfit);
-  }
-
-  ##-- actual plot
-  if ( !($gopts && $gopts->{noplot}) ) {
-    require PDL::Graphics::Gnuplot;
-    PDL::Graphics::Gnuplot::plot(%gopts, @plot);
-  }
-  return @plot;
-}
-
 ## undef = qqplot($data)
 ## undef = qqplot($data,\%commonOpts)
 ## undef = qqplot($data,\%pointOpts,\%lineOpts)
@@ -243,100 +159,6 @@ sub qqplot {
   my $sigma = $data->flat->double->stddev;
   my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
   return qqplotx($qvals, ($data-$mu/$sigma), $popts,$lopts);
-}
-
-## undef = gqqplot($data,\%globalOpts,\%pointOpts,\%lineOpts)
-##  + PDL::Graphics::Gnuplot version
-##  + compares vs. standard normal distribution
-##  + see: http://en.wikipedia.org/wiki/Q-Q_plot,
-##         http://www.nist.gov/stat.handbook
-BEGIN { *PDL::gqqplot = \&gqqplot; }
-sub gqqplot {
-  my ($data,$gopts,$popts,$lopts) = @_;
-
-  ##-- options
-  my %gopts = %{$gopts||{}};
-  $gopts{xlabel} = 'Normal Theoretical Quantiles' if (!defined($gopts{xtitle}));
-  $gopts{ylabel} = 'Sample Quantiles' if (!defined($gopts{ytitle}));
-  $gopts{title}  = 'Q-Q Plot' if (!defined($gopts{title}));
-
-  my $uosm  = $data->flat->sequence->double->uosm();  ##-- uniform order statistic medians
-  my $mu    = $data->flat->double->mean;
-  my $sigma = $data->flat->double->stddev;
-  my $qvals = gaussqvals($uosm,0,1);                  ##-- (standard) normal theoretical values
-
-  return gqqplotx($qvals, ($data-$mu/$sigma), \%gopts,$popts,$lopts);
-}
-
-##======================================================================
-## gnuplot: logscale parsing
-
-## $with = gwith($style,%opts)
-##  + parses 'with' option hash for gnuplot
-##  + e.g. plot({with=>gwith('p',linetype=>2,lw=>4,nohidden3d=>1,nosurface=>1)}, $x,$y)
-%GWITH_OPTS = (map {($_=>undef)}
-	       qw(linestyle ls), qw(linetype lt), qw(linewidth lw), qw(linecolor lc),
-	       qw(pointtype pt), qw(pointsize ps),
-	       qw(fill fs),
-	       qw(nohidden3d nocontours nosurface),
-	       qw(palette));
-sub gwith {
-  my ($style,%opts) = @_;
-  return join(' ',
-	      $style,
-	      map {"$_ $opts{$_}"}
-	      grep {exists($GWITH_OPTS{$_}) && defined($opts{$_})}
-	      sort keys %opts);
-}
-
-## \%logscale = glogscale_parse( \%which, \@which, $which, $default, ...)
-##  + parses a list of logscale specs $which
-##  + $which elements can be an ARRAY, HASH-ref or SCALAR
-##    - HASH  : (strictest) map of the form $SCALAR=>$base_or_0
-##    - ARRAY : (less strict) elements of $SCALAR
-##    - SCALAR: matches regex ($axes,$base)=/((x|y|cb)*(=\d+)?)*/ or ($default)=/^\d+$/
-##  + in returns a strict HASH of the form ($axis=>$base, ...)
-sub glogscale_parse {
-  my $scale = {};
-  my $base_default = 10;
-  foreach my $which (@_) {
-    if (!defined($which)) {
-      next;
-    } elsif (UNIVERSAL::isa($which,'HASH')) {
-      foreach (keys %$which) {
-	my $keyscale = glogscale_parse($_);
-	@$scale{keys %$keyscale} = map {$which->{$_}} keys %$keyscale;
-      }
-    } elsif (UNIVERSAL::isa($which,'ARRAY')) {
-      foreach (@$which) {
-	my $keyscale = glogscale_parse($_);
-	@$scale{keys %$keyscale} = values %$keyscale;
-      }
-    } elsif ($which =~ /^[\d\.]+$/) {
-      $base_default = $which;
-    } else {
-      foreach my $spec (split(/[\s,]+/,$which)) {
-	my ($axes,$base) = split(/=/,$spec);
-	$base = $base_default if (!defined($base) || $base eq '');
-	while ($axes =~ /((?:cb)|(?:x2)|(?:y2)|[xyz])/g) {
-	  $scale->{$1} = $base;
-	}
-      }
-    }
-  }
-  foreach (values %$scale) {
-    $_ = 0 if (!$_);
-  }
-  return $scale;
-}
-
-## @commands = glogscale( $which, ... )
-## $commands = glogscale( $which, ... )
-##  + wrapper for gnuplot logscale commands
-sub glogscale {
-  my $scale = glogscale_parse(@_);
-  my @cmds  = map {$scale->{$_} ? "set logscale $_ $scale->{$_};" : "unset logscale $_;"} keys %$scale;
-  return wantarray ? @cmds : join(" ",@cmds);
 }
 
 ##======================================================================

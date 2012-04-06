@@ -28,6 +28,7 @@ our %EXPORT_TAGS =
 	       'mooLinfit', 'loglinfit',
 	       'expfit',
 	       'linfit',
+	       'qqfit'
 	      ],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
@@ -949,6 +950,27 @@ sub uosm {
   ($tmp=$m->slice("(".($n-1).")")) .= 0.5**(1/$n);
   ($tmp=$m->slice("(0)")) .= 1 - $m->slice("(".($n-1).")");
   return $m;
+}
+
+## ($xline,$yline,$ycoeffs) = qqfit($xraw,$yraw,$opts)
+##  + see: http://www.nist.gov/stat.handbook
+##  + returned values are independently sorted
+##  + %$opts:
+##     nosort => $bool,  ##-- if true, data is assumed already flat and independently sorted
+##     unique => $bool,  ##-- if true, line is fit to unique values only
+BEGIN { *PDL::qqfit = \&qqfit; }
+sub qqfit {
+  my ($xdata,$ydata,$opts) = @_;
+
+  ##-- require (independently) sorted data
+  if ( !($opts && $opts->{nosort}) ) {
+    $xdata = $xdata->flat->qsort;
+    $ydata = $ydata->flat->qsort;
+  }
+
+  ##-- line() plot (fit $xdata->$ydata)
+  my ($yfit,$coeffs) = $ydata->mooLinfit($xdata,%{$opts||{}});
+  return ($xdata,$yfit,$coeffs);
 }
 
 ##======================================================================
