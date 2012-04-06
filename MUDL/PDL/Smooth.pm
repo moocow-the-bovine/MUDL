@@ -28,7 +28,7 @@ our %EXPORT_TAGS =
 	       'mooLinfit', 'loglinfit',
 	       'expfit',
 	       'linfit',
-	       'qqfit'
+	       'qqfit',
 	      ],
    #'gt'    => ['smoothGTLogLin'],
    'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
