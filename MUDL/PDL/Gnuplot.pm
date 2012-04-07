@@ -16,7 +16,7 @@ use strict;
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS =
   (
-   'plot'  => ['gplot'],
+   'plot'  => ['gplot', 'gplot3d'],
    'qq'    => ['gqqplot','gqqplotx'],
    'utils' => ['gp_logscale', 'gp_logscale_parse', 'gp_with', '%GP_WITH_OPTS'],
   );
@@ -79,7 +79,7 @@ sub gplot {
   delete($go{hidden3d});
 
   ##-- option: view
-  unshift(@$cmds, ($go{view} ? '' : 'un')."set view;") if (defined($go{view}));
+  unshift(@$cmds, ($go{view} ? '' : 'un')."set view ".($go{view}||'').";") if (defined($go{view}));
   delete($go{view});
 
   ##-- option: [xyz](format|tics)
@@ -97,6 +97,11 @@ sub gplot {
     PDL::Graphics::Gnuplot::plot(%go,@curves);
   }
   return (\%go,@curves);
+}
+
+## @gplot = gplot3d(@args)
+sub gplot3d {
+  gplot('3d'=>1, @_);
 }
 
 ##======================================================================
