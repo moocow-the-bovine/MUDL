@@ -18,7 +18,7 @@ our %EXPORT_TAGS =
   (
    'plot'  => ['gplot', 'gplot3d'],
    'qq'    => ['gqqplot','gqqplotx'],
-   'utils' => ['gp_logscale', 'gp_logscale_parse', 'gp_with', '%GP_WITH_OPTS'],
+   'utils' => ['gp_logscale', 'gp_logscale_parse', 'gp_with', '%GP_WITH_OPTS', 'gp_range'],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -41,7 +41,8 @@ our (%GP_WITH_OPTS); ##-- for gp_with()
 ##     xformat  => $format,     ##-- -> "set format x \"$format\";"
 ##     yformat  => $format,     ##-- -> "set format y \"$format\";"
 ##     zformat  => $format,     ##-- -> "set format z \"$format\";"
-##     [xyz]tics => $str,       ##-  -> "set [xyz]tics $str;"
+##     [xyz]tics => $range,     ##-- -> "set [xyz]tics ".gp_range($range).";"
+##     [xyz]range => $range,    ##-- -> "set [xyz]range ".gp_range($range).";"
 ##     noplot   => $bool,       ##-- if true, plot() isn't actually called
 sub gplot {
   ##-- parse arguments
@@ -82,12 +83,13 @@ sub gplot {
   unshift(@$cmds, ($go{view} ? '' : 'un')."set view ".($go{view}||'').";") if (defined($go{view}));
   delete($go{view});
 
-  ##-- option: [xyz](format|tics)
+  ##-- option: [xyz](format|tics|range)
   foreach my $axis (qw(x y z)) {
+    unshift(@$cmds, "set  ${axis}range ".gp_range($go{"${axis}range"}).";") if (defined($go{"${axis}range"}));
     unshift(@$cmds, "set format ${axis} \"".$go{"${axis}format"}."\";") if (defined($go{"${axis}format"}));
     unshift(@$cmds, "set  ${axis}xtics ".$go{"${axis}tics"}.";") if (defined($go{"${axis}tics"}));
     unshift(@$cmds, "set m${axis}xtics ".$go{"m${axis}tics"}.";") if (defined($go{"m${axis}tics"}));
-    delete(@go{"${axis}format","${axis}tics"});
+    delete(@go{"${axis}range", "${axis}format", "${axis}tics", "m${axis}tics"});
   }
 
   ##-- option: noplot
@@ -123,6 +125,19 @@ sub gp_options {
     $gopts{$opt}=shift;
   }
   return wantarray ? (\%gopts,@_) : \%gopts;
+}
+
+## $range_str = gp_range($str)
+## $range_str = gp_range([$min,$max])
+##  + parses range
+sub gp_range {
+  my $rng = shift;
+  return $rng if (!UNIVERSAL::isa($rng,'ARRAY'));
+  return ("["
+	  .(defined($rng->[0]) ? $rng->[0] : '*')
+	  .","
+	  .(defined($rng->[1]) ? $rng->[1] : '*')
+	  ."]");
 }
 
 ## $dgrid3d = gp_dgrid3d( $string )
@@ -169,6 +184,7 @@ sub gp_dgrid3d {
   }
   return $spec;
 }
+
 
 
 ## $with = gp_with($style,%opts)
