@@ -135,7 +135,7 @@ sub gp_range {
   return $rng if (!UNIVERSAL::isa($rng,'ARRAY'));
   return ("["
 	  .(defined($rng->[0]) ? $rng->[0] : '*')
-	  .","
+	  .":"
 	  .(defined($rng->[1]) ? $rng->[1] : '*')
 	  ."]");
 }
