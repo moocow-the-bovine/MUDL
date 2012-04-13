@@ -42,8 +42,8 @@ our (%GP_WITH_OPTS); ##-- for gp_with()
 ##     xformat  => $format,     ##-- -> "set format x \"$format\";"
 ##     yformat  => $format,     ##-- -> "set format y \"$format\";"
 ##     zformat  => $format,     ##-- -> "set format z \"$format\";"
-##     [xyz]tics => $range,     ##-- -> "set [xyz]tics ".gp_range($range).";"
-##     [xyz]range => $range,    ##-- -> "set [xyz]range ".gp_range($range).";"
+##     [xyzcb]tics => $range,     ##-- -> "set [xyz]tics ".gp_range($range).";"
+##     [xyzcb]range => $range,    ##-- -> "set [xyz]range ".gp_range($range).";"
 ##     noplot   => $bool,       ##-- if true, plot() isn't actually called
 sub gplot {
   ##-- parse arguments
@@ -85,7 +85,7 @@ sub gplot {
   delete($go{view});
 
   ##-- option: [xyz](format|tics|range)
-  foreach my $axis (qw(x y z)) {
+  foreach my $axis (qw(x y z cb x2 y2 z2)) {
     unshift(@$cmds, "set  ${axis}range ".gp_range($go{"${axis}range"}).";") if (defined($go{"${axis}range"}));
     unshift(@$cmds, "set format ${axis} \"".$go{"${axis}format"}."\";") if (defined($go{"${axis}format"}));
     unshift(@$cmds, "set  ${axis}xtics ".$go{"${axis}tics"}.";") if (defined($go{"${axis}tics"}));
