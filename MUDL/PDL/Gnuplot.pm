@@ -35,6 +35,7 @@ our (%GP_WITH_OPTS); ##-- for gp_with()
 ##     logscale => $logscale,	##-- see gp_logscale()
 ##     key      => $pos,        ##-- key position
 ##     dgrid3d  => $dgrid3d,	##-- see gp_dgrid3d()
+##     grid     => $grid,       ##-- -> "set grid $grid;"
 ##     border   => $border,	##-- -> "set border $border;"
 ##     hidden3d => $bool,	##-- -> "(un)set hidden3d;"
 ##     view     => $view,	##-- -> "(un)set view $view;"
