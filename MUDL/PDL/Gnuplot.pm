@@ -42,8 +42,9 @@ our (%GP_WITH_OPTS); ##-- for gp_with()
 ##     xformat  => $format,     ##-- -> "set format x \"$format\";"
 ##     yformat  => $format,     ##-- -> "set format y \"$format\";"
 ##     zformat  => $format,     ##-- -> "set format z \"$format\";"
-##     [xyzcb]tics => $range,     ##-- -> "set [xyz]tics ".gp_range($range).";"
-##     [xyzcb]range => $range,    ##-- -> "set [xyz]range ".gp_range($range).";"
+##     [xyzcb]tics => $tics,     ##-- -> "set [xyzcb]tics $tics";
+##     [xyzcb]range => $range,    ##-- -> "[xyzcb](min|max)" => gp_range($range),
+##     autoscale => $autoscale, ##-- --> "set autoscale $autoscale;"
 ##     noplot   => $bool,       ##-- if true, plot() isn't actually called
 sub gplot {
   ##-- parse arguments
@@ -84,9 +85,17 @@ sub gplot {
   unshift(@$cmds, ($go{view} ? '' : 'un')."set view ".($go{view}||'').";") if (defined($go{view}));
   delete($go{view});
 
-  ##-- option: [xyz](format|tics|range)
+  ##-- option: autoscale
+  unshift(@$cmds, ($go{autoscale} ? '' : 'un')."set autoscale ".($go{autoscale}||'').";") if (defined($go{autoscale}));
+  delete($go{autoscale});
+
+  ##-- option: ([xyz]|cb|x2|xy|z2)(format|tics|range)
   foreach my $axis (qw(x y z cb x2 y2 z2)) {
-    unshift(@$cmds, "set  ${axis}range ".gp_range($go{"${axis}range"}).";") if (defined($go{"${axis}range"}));
+    if (defined($go{"${axis}range"})) {
+      my $rng = gp_range($go{"${axis}range"});
+      $go{"${axis}min"} = $rng->[0] if ($rng->[0] ne '*');
+      $go{"${axis}max"} = $rng->[1] if ($rng->[1] ne '*');
+    }
     unshift(@$cmds, "set format ${axis} \"".$go{"${axis}format"}."\";") if (defined($go{"${axis}format"}));
     unshift(@$cmds, "set  ${axis}xtics ".$go{"${axis}tics"}.";") if (defined($go{"${axis}tics"}));
     unshift(@$cmds, "set m${axis}xtics ".$go{"m${axis}tics"}.";") if (defined($go{"m${axis}tics"}));
@@ -128,17 +137,23 @@ sub gp_options {
   return wantarray ? (\%gopts,@_) : \%gopts;
 }
 
-## $range_str = gp_range($str)
-## $range_str = gp_range([$min,$max])
+## \@minmax = gp_range($str)
+## \@minmax = gp_range([$min,$max])
 ##  + parses range
 sub gp_range {
   my $rng = shift;
-  return $rng if (!UNIVERSAL::isa($rng,'ARRAY'));
-  return ("["
-	  .(defined($rng->[0]) ? $rng->[0] : '*')
-	  .":"
-	  .(defined($rng->[1]) ? $rng->[1] : '*')
-	  ."]");
+
+  if (!ref($rng)) {
+    $rng =~ s/^\s*\[//;
+    $rng =~ s/^\s*\]//;
+    $rng = [split(/\s*\:\s*/,$rng,2)];
+  }
+  if (UNIVERSAL::isa($rng,'ARRAY')) {
+    $rng = [@$rng];
+  }
+  $rng->[0] = '*' if (!defined($rng->[0]) || $rng->[0] eq '');
+  $rng->[1] = '*' if (!defined($rng->[1]) || $rng->[0] eq '');
+  return $rng;
 }
 
 ## $dgrid3d = gp_dgrid3d( $string )
