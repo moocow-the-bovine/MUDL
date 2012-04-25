@@ -1,4 +1,4 @@
-#-*- Mode: CPerl -*-
+##-*- Mode: CPerl -*-
 
 ## File: MUDL::PDL::Gnuplot.pm
 ## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
@@ -46,6 +46,7 @@ our (%GP_WITH_OPTS); ##-- for gp_with()
 ##     [xyzcb]range => $range,    ##-- -> "[xyzcb](min|max)" => gp_range($range),
 ##     autoscale => $autoscale, ##-- --> "set autoscale $autoscale;"
 ##     noplot   => $bool,       ##-- if true, plot() isn't actually called
+##     hardcopy => $file,       ##-- recognizes "*.gp", "*.gnuplot"
 sub gplot {
   ##-- parse arguments
   my ($opts,@curves) = gp_options(@_);
@@ -102,12 +103,34 @@ sub gplot {
     delete(@go{"${axis}range", "${axis}format", "${axis}tics", "m${axis}tics"});
   }
 
-  ##-- option: noplot
+  ##-- option: hardcopy
+  my ($gpfile,$gpfh,$oldout);
+  if ($go{hardcopy} && $go{hardcopy} =~ /\.(?:gp|gnuplot)$/) {
+    $gpfile = $go{hardcopy};
+    delete($go{hardcopy});
+    $go{dump}=1;
+    $gpfh = IO::File->new(">$gpfile")
+      or die(__PACKAGE__ . "::gplot(): could not open file '$gpfile': $!");
+    open($oldout, ">&STDOUT")
+      or die(__PACKAGE__ . "::gplot(): could not save STDOUT: $!");
+    open(STDOUT,">$gpfile")
+      or die(__PACKAGE__ . "::gplot(): could not dup STDOUT to '$gpfile': $!");
+  }
+
+  ##-- actual plot
   delete($go{noplot});
   if (!$opts->{noplot}) {
     require PDL::Graphics::Gnuplot;
     PDL::Graphics::Gnuplot::plot(%go,@curves);
   }
+
+  ##-- restore old stdout, etc
+  if (defined($oldout)) {
+    open(STDOUT, '>&', $oldout)
+      or die(__PACKAGE__ . "::gplot(): could not restore STDOUT: $!");
+    $gpfh->close() if (defined($gpfh));
+  }
+
   return (\%go,@curves);
 }
 
