@@ -327,7 +327,7 @@ sub gqqplotx {
   my %popts = %{$popts||{}};
   my %lopts = %{$lopts||{}};
   my $noline  = $gopts{noline} || $lopts{hide};
-  my @nokeys = (qw(noline unique noplot),keys(%GP_WITH_OPTS));
+  my @nokeys = (qw(noline unique noplot logfit),keys(%GP_WITH_OPTS));
   delete @gopts{@nokeys};
   delete @popts{@nokeys};
   delete @lopts{@nokeys};
