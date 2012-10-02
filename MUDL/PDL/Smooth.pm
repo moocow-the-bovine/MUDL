@@ -31,7 +31,8 @@ our %EXPORT_TAGS =
 	       'qqfit',
 	      ],
    #'gt'    => ['smoothGTLogLin'],
-   'gauss' => ['smoothGaussian', 'gausspoints', 'gaussyvals', 'probit',
+   'gauss' => ['smoothGaussian', 'normfit', 'gaussfit',
+	       'gausspoints', 'gaussyvals', 'probit',
 	       'gausspdf', 'gausscdf', 'gausspeak',
 	       'gaussquantiles', 'gaussqvals', 'gausscdfi', ##-- all aliases for one another
 	       'gausswidth',
@@ -780,7 +781,7 @@ sub smoothGTLogLin {
 ##       c=$yfit_stddev
 ##    e.g.:
 ##       $yfit2 = $yfit_peak * exp( ($xvals-$yfit_mean)**2 / (2*$yfit_stddev**2) );
-BEGIN { *PDL::smoothGaussian = *PDL::smoothNormal = *smoothNormal = \&smoothGaussian; }
+BEGIN { *PDL::smoothGaussian = *PDL::smoothNormal = *smoothNormal = *PDL::normfit = *normfit = *PDL::gaussfit = *gaussfit = \&smoothGaussian; }
 sub smoothGaussian {
   my ($ydata,$xvals) = @_;
   require PDL::Fit::Gaussian;
