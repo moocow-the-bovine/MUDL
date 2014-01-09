@@ -252,7 +252,7 @@ sub isigma {
   return $svd->{isigma_} if (defined($svd->{isigma_}));
   confess("no {sigma} key defined for SVD!") if (!defined($svd->{sigma}));
   my $isigma = $svd->{sigma}->pdl;
-  $isigma->where($svd->{sigma}) **= -1;
+  (my $tmp = $isigma->where($svd->{sigma})) **= -1;
   return $svd->{isigma_} = stretcher( $isigma );
 }
 
