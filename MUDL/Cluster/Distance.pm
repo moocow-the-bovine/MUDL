@@ -132,10 +132,11 @@ sub distanceMatrix {
 
   ##-- roll $cmpvec into square distance matrix
   my $dmat = $args{dmat};
+  my ($tmp);
   $dmat = zeroes($cmpvec->type, $n,$n) if (!defined($dmat));
-  $dmat->index2d($rows1,$rows2) .= $cmpvec;
-  $dmat->index2d($rows2,$rows1) .= $cmpvec;
-  $dmat->diagonal(0,1)          .= 0;
+  ($tmp=$dmat->index2d($rows1,$rows2)) .= $cmpvec;
+  ($tmp=$dmat->index2d($rows2,$rows1)) .= $cmpvec;
+  ($tmp=$dmat->diagonal(0,1))          .= 0;
   return $dmat;
 }
 
@@ -162,7 +163,7 @@ sub clusterDistanceMatrix {
 
   ##-- get row-row distances
   my $cmp_which = $cd->crossproduct($args{cids}->nelem, $args{rids}->nelem);
-  $cmp_which->slice("(1),") .= $args{gurids_rows}->index($cmp_which->slice("(1),"));
+  (my $tmp=$cmp_which->slice("(1),")) .= $args{gurids_rows}->index($cmp_which->slice("(1),"));
   my $cmp_vals  = $cd->compare(%args,
 			       data=>$args{gudata},
 			       mask=>$args{gumask},
@@ -194,7 +195,7 @@ sub clusterDistanceMatrix {
     $cdmat = zeroes($link_cmps->type, $k,$nr);
     $cdmat .= 'inf'; ##-- default distance: infinite
   }
-  $cdmat->indexND($link_which) .= $link_cmps;
+  (my $tmp=$cdmat->indexND($link_which)) .= $link_cmps;
 
   return $cdmat;
 }
@@ -329,7 +330,7 @@ sub cdm_defaults {
     $args->{gurids_rows} = $args->{rids} + $cdata->dim(1);
     #$args->{gurids_cids} = zeroes(long, $args->{cids}->dim(0)+$args->{rids}->dim(0))-1;
     $args->{gurids_cids} = zeroes(long, $args->{gudata}->dim(1));
-    $args->{gurids_cids}->index($args->{gurids_rows}) .= $args->{rids}->sequence;
+    (my $tmp=$args->{gurids_cids}->index($args->{gurids_rows})) .= $args->{rids}->sequence;
   } else {
     ##-- shared GU-matrix
     $args->{gudata} = $data;
@@ -337,7 +338,7 @@ sub cdm_defaults {
     $args->{gucids} = $args->{cids};
     $args->{gurids_rows} = $args->{rids};
     $args->{gurids_cids} = zeroes(long,$data->dim(1))-1;
-    $args->{gurids_cids}->index($args->{gurids_rows}) .= $args->{rids}->sequence;
+    (my $tmp=$args->{gurids_cids}->index($args->{gurids_rows})) .= $args->{rids}->sequence;
   }
 
   return $args;
