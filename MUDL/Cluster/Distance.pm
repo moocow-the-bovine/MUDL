@@ -162,8 +162,9 @@ sub clusterDistanceMatrix {
   $cd->cdm_defaults(\%args);
 
   ##-- get row-row distances
+  my ($tmp);
   my $cmp_which = $cd->crossproduct($args{cids}->nelem, $args{rids}->nelem);
-  (my $tmp=$cmp_which->slice("(1),")) .= $args{gurids_rows}->index($cmp_which->slice("(1),"));
+  ($tmp=$cmp_which->slice("(1),")) .= $args{gurids_rows}->index($cmp_which->slice("(1),"));
   my $cmp_vals  = $cd->compare(%args,
 			       data=>$args{gudata},
 			       mask=>$args{gumask},
@@ -195,7 +196,7 @@ sub clusterDistanceMatrix {
     $cdmat = zeroes($link_cmps->type, $k,$nr);
     $cdmat .= 'inf'; ##-- default distance: infinite
   }
-  (my $tmp=$cdmat->indexND($link_which)) .= $link_cmps;
+  ($tmp=$cdmat->indexND($link_which)) .= $link_cmps;
 
   return $cdmat;
 }
@@ -423,7 +424,7 @@ sub matrixCat {
     my ($a,$b) = @_;
     my $aw = $a->whichND;
     my $bw = $b->whichND;
-    $bw->slice("(1),") += $a->dim(1);
+    (my $tmp=$bw->slice("(1),")) += $a->dim(1);
     my $abw = $aw->glue(1,$bw);
     my $abv = $a->whichVals->append($b->whichVals);
     my $abdims = pdl(long,$a->dim(0),$a->dim(1)+$b->dim(1));

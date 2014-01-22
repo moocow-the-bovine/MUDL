@@ -52,7 +52,7 @@ sub compare {
 		->inplace->divide($sigma1,0)
 		->inplace->divide($sigma2,0)
 		->inplace->divide($d,0)
-	       );
+	       )->todense;
   $cmpvec->minus(1,$cmpvec,1);
   #my $cmpvec =  1 - ($dr1/$sigma1r * $dr2/$sigma2r)->sumover / $d;
 
