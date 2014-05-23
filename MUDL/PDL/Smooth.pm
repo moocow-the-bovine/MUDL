@@ -40,6 +40,8 @@ our %EXPORT_TAGS =
 	      ],
    'di' => ['diLambdas2',
 	   ],
+   'ts' => ['filter_exp2'
+	   ],
   );
 $EXPORT_TAGS{all} = [map {@$_} values(%EXPORT_TAGS)];
 our @EXPORT_OK   = @{$EXPORT_TAGS{all}};
@@ -1034,6 +1036,21 @@ sub diLambdas2 {
 
   return wantarray ? $lambdas->dog : $lambdas;
 }
+
+##======================================================================
+## Time-series stuff
+
+BEGIN { *PDL::filter_exp2 = \&filter_exp2; }
+sub filter_exp2 {
+  require PDL::Stats::TS;
+  my ($inpdl,$q) = @_;
+  my $f = filter_exp($inpdl,$q);
+  $f   += filter_exp($inpdl->slice("-1:0"),$q)->slice("-1:0");
+  $f   /= 2;
+  return $f;
+}
+
+
 
 1;
 
