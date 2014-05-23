@@ -103,18 +103,18 @@ sub gplot {
     delete(@go{"${axis}range", "${axis}format", "${axis}tics", "m${axis}tics"});
   }
 
-  ##-- option: hardcopy
+  ##-- option: gnuplot hardcopy: (hardcopy=>"FILE.gp") or (hardcopy=>$filehandle)
   my ($gpfile,$gpfh,$oldout);
-  if ($go{hardcopy} && $go{hardcopy} =~ /\.(?:gp|gnuplot)$/) {
-    $gpfile = $go{hardcopy};
-    delete($go{hardcopy});
+  if ($go{hardcopy} && (ref($go{hardcopy}) || $go{hardcopy} =~ /\.(?:gp|gnuplot)$/)) {
     $go{dump}=1;
-    $gpfh = IO::File->new(">$gpfile")
+    $gpfile = $go{hardcopy};
+    $gpfh = ref($gpfile) ? $gpfile : IO::File->new(">$gpfile")
       or die(__PACKAGE__ . "::gplot(): could not open file '$gpfile': $!");
     open($oldout, ">&STDOUT")
       or die(__PACKAGE__ . "::gplot(): could not save STDOUT: $!");
-    open(STDOUT,">$gpfile")
+    open(STDOUT, ref($gpfile) ? ">&$gpfile" : ">$gpfile")
       or die(__PACKAGE__ . "::gplot(): could not dup STDOUT to '$gpfile': $!");
+    delete($go{hardcopy});
   }
 
   ##-- actual plot
@@ -128,7 +128,7 @@ sub gplot {
   if (defined($oldout)) {
     open(STDOUT, '>&', $oldout)
       or die(__PACKAGE__ . "::gplot(): could not restore STDOUT: $!");
-    $gpfh->close() if (defined($gpfh));
+    $gpfh->close() if (defined($gpfh) && !ref($gpfile));
   }
 
   return (\%go,@curves);
