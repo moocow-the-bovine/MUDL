@@ -1044,8 +1044,8 @@ BEGIN { *PDL::filter_exp2 = \&filter_exp2; }
 sub filter_exp2 {
   require PDL::Stats::TS;
   my ($inpdl,$q) = @_;
-  my $f = filter_exp($inpdl,$q);
-  $f   += filter_exp($inpdl->slice("-1:0"),$q)->slice("-1:0");
+  my $f = $inpdl->filter_exp($q);
+  $f   += $inpdl->slice("-1:0")->filter_exp($q)->slice("-1:0");
   $f   /= 2;
   return $f;
 }

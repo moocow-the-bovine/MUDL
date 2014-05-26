@@ -108,12 +108,13 @@ sub gplot {
   if ($go{hardcopy} && (ref($go{hardcopy}) || $go{hardcopy} =~ /\.(?:gp|gnuplot)$/)) {
     $go{dump}=1;
     $gpfile = $go{hardcopy};
-    $gpfh = ref($gpfile) ? $gpfile : IO::File->new(">$gpfile")
-      or die(__PACKAGE__ . "::gplot(): could not open file '$gpfile': $!");
+
+    $gpfh = ref($gpfile) ? $gpfile : IO::File->new(">$gpfile");
+    die(__PACKAGE__ . "::gplot(): could not open file '$gpfile': $!") if (!$gpfh);
     open($oldout, ">&STDOUT")
       or die(__PACKAGE__ . "::gplot(): could not save STDOUT: $!");
-    open(STDOUT, ref($gpfile) ? ">&$gpfile" : ">$gpfile")
-      or die(__PACKAGE__ . "::gplot(): could not dup STDOUT to '$gpfile': $!");
+    open(STDOUT, ">&", $gpfh)
+      or die(__PACKAGE__ . "::gplot(): could not dup STDOUT to $gpfile: $!");
     delete($go{hardcopy});
   }
 
