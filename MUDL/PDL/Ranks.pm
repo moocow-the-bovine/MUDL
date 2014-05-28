@@ -74,7 +74,7 @@ sub ranks {
 
   my $pdl_ranks = $opts{ranks};
   $pdl_ranks    = $pdl->zeroes() if (!defined($pdl_ranks) || $pdl_ranks->isnull);
-  $pdl_ranks->indexND($pdl_qs_ndi) .= $pdl_ranks->xvals->flat;
+  (my $tmp=$pdl_ranks->indexND($pdl_qs_ndi)) .= $pdl_ranks->xvals->flat;
 
   return $pdl_ranks;
 }
@@ -132,7 +132,7 @@ sub avgranks {
 
   my $pdl_ranks = $opts{ranks};
   $pdl_ranks    = $pdl->zeroes() if (!defined($pdl_ranks) || $pdl_ranks->isnull);
-  $pdl_ranks->indexND($pdl_qs_ndi) .= rld($v_runlen,$v_rankvals)->flat;
+  (my $tmp=$pdl_ranks->indexND($pdl_qs_ndi)) .= rld($v_runlen,$v_rankvals)->flat;
 
   return $pdl_ranks;
 }
