@@ -14,6 +14,7 @@ use Storable;       ##-- for binary I/O
 use Data::Dumper;   ##-- for perl-code I/O
 use PerlIO::gzip;   ##-- for :gzip I/O layer: useful for text-based I/O modes
 use Compress::Zlib; ##-- for zlib compression of binary files (:gzip I/O layer fails for these)
+use JSON;
 
 ## PDL::IO::Storable
 ##  + very tricky: can cause errors "%Config::Config is read-only"
@@ -1086,6 +1087,89 @@ sub loadPerlFh {
 }
 
 ##======================================================================
+## I/O: Json: Save
+##======================================================================
+
+## $thingy = $obj->TO_JSON()
+##   + JSON module wrapper; default just returns anonymous HASH-ref
+sub TO_JSON {
+  return { __CLASS__=>ref($_[0]), %{$_[0]} };
+}
+
+## $str = $obj->saveJsonString(%opts)
+##  + wraps JSON::to_json()
+sub saveJsonString {
+  my $obj = shift;
+  return to_json($obj, {utf8=>1, allow_nonref=>1, allow_unknown=>1, allow_blessed=>1, convert_blessed=>1, pretty=>1, canonical=>1, @_});
+}
+
+## $bool = $obj->saveJsonFile($file,%opts)
+##  + calls saveJsonString()
+sub saveJsonFile {
+  my $obj  = shift;
+  my $file = shift;
+  my $fh = ref($file) ? $file : IO::File->new(">$file");
+  confess(__PACKAGE__, "::saveJsonFile() failed to open file '$file': $!") if (!defined($fh));
+  binmode($fh,':raw');
+  $fh->print($obj->saveJsonString(@_)) or return undef;
+  if (!ref($file)) { $fh->close or return undef; }
+  return 1;
+}
+
+## $bool = $obj->saveJsonFh($fh,%opts)
+##  + wraps saveJsonFile()
+sub saveJsonFh {
+  return $_[0]->saveJsonFile(@_[1..$#_]);
+}
+
+##======================================================================
+## I/O: Json: Load
+##======================================================================
+
+## $obj = $CLASS_OR_OBJECT->loadJsonString( $str,%opts)
+## $obj = $CLASS_OR_OBJECT->loadJsonString(\$str,%opts)
+sub loadJsonString {
+  my $that = shift;
+  my $bufr = ref($_[0]) ? $_[0] : \$_[0];
+  my $data = from_json($$bufr, {utf8=>!utf8::is_utf8($$bufr), relaxed=>1, allow_nonref=>1, @_[1..$#_]});
+  my $class = $data->{__CLASS__} || $data->{class} || ref($that) || $that || __PACKAGE__;
+  $class    = undef if ($class =~ /^(?:HASH|ARRAY|SCALAR)$/);
+  delete $data->{__CLASS__};
+  if (UNIVERSAL::isa($that,'HASH')) {
+    @$that{keys %$data} = values %$data;
+    bless($that, $class) if ($class && UNIVERSAL::isa($class,ref($that)));
+    return $that;
+  }
+  bless($data,$class) if ($class);
+  return $data;
+}
+
+## $obj = $obj->loadJsonFile($file,@args)
+##  + calls loadJsonString()
+sub loadJsonFile {
+  my $that = shift;
+  my $file = shift;
+  my $fh = ref($file) ? $file : IO::File->new("<$file");
+  if (!$fh) {
+    confess( __PACKAGE__ , "::loadJsonFile(): open failed for '$file': $!");
+    return undef;
+  }
+  my $buf;
+  {
+    local $/ = undef;
+    $buf = <$fh>;
+  }
+  $fh->close() if (!ref($file));
+  return $that->loadJsonString(\$buf, @_);
+}
+
+## $obj = $class_or_obj->loadJsonFh($fh,@args)
+##  + wraps loadJsonFile()
+sub loadJsonFh {
+  return $_[0]->loadJsonFile(@_[1..$#_]);
+}
+
+##======================================================================
 ## I/O: Generic: Modes
 ##======================================================================
 
@@ -1101,6 +1185,7 @@ sub ioModes {
 	  'zbin'    => __PACKAGE__->ioModeHash('ZBin'),
 	  'gzbin'   => __PACKAGE__->ioModeHash('GZBin'),
 	  'perl'    => __PACKAGE__->ioModeHash('Perl'),
+	  'json'    => __PACKAGE__->ioModeHash('Json'),
 	  ##--
 	  'DEFAULT' => __PACKAGE__->ioModeHash('Native'),
 	 };
