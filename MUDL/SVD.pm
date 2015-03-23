@@ -394,4 +394,44 @@ sub unapply1 {
   return $a;
 }
 
+##======================================================================
+## I/O: mmap
+##======================================================================
+
+## $thingy = $obj->TO_JSON()
+##   + JSON module wrapper; default just returns anonymous HASH-ref
+sub TO_JSON {
+  my $svd = shift;
+  my $data = { __CLASS__=>ref($svd), map {($_=>$svd->{$_})} grep {!ref($svd->{$_})} keys %$svd };
+  foreach (qw(r rdims maxiters kappa endl endr)) {
+    $data->{$_} = $svd->{$_}->sclr if (UNIVERSAL::isa($svd->{$_},'PDL'));
+  }
+  return $data;
+}
+
+## $bool = $svd->saveRawFiles($basename)
+sub saveRawFiles {
+  my ($svd,$base) = @_;
+  $svd->saveJsonFile("$base.json")
+    or confess(__PACKAGE__, "::saveMMapFile(): failed to save $base.json: $!");
+  foreach (qw(u sigma v)) {
+    $svd->writePdlFile($svd->{$_}, "$base.$_.pdl")
+      or confess(__PACKAGE__, "::saveMMapFile(): failed to save $base.$_.pdl: $!");
+  }
+  return 1;
+}
+
+## $obj = $CLASS_OR_OBJECT->loadRawFiles($basename,$mmap=0)
+sub loadRawFiles {
+  my ($that,$base,$mmap) = @_;
+  my $svd = $that->loadJsonFile("$base.json")
+    or confess(__PACKAGE__, "::loadMMapFile(): failed to load $base.json: $!");
+  foreach (qw(u sigma v)) {
+    defined($svd->{$_} = $svd->readPdlFile("$base.$_.pdl",'PDL',$mmap))
+      or confess(__PACKAGE__, "::loadMMapFile(): failed to ".($mmap ? "mmap" : "read")." $base.$_.pdl: $!");
+  }
+  return $svd;
+}
+
+
 1;

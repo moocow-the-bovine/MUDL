@@ -1170,6 +1170,44 @@ sub loadJsonFh {
 }
 
 ##======================================================================
+## I/O: Pdl: Utils
+##======================================================================
+
+## $bool = $CLASS_OR_OBJECT->writePdlFile($pdl, $filename)
+sub writePdlFile {
+  my ($that,$pdl,$file) = @_;
+  if (defined($pdl)) {
+    local $,='';
+    $pdl->writefraw($file)
+      or confess(__PACKAGE__, "::writePdlFile() failed for '$file': $!");
+  }
+  elsif (-e $file) {
+    unlink($file)
+      or $that->logconfess(__PACKAGE__, "::writePdlFile(): failed to unlink '$file': $!");
+  }
+  return 1;
+}
+
+## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename)
+## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename,$class='PDL',$mmap=0)
+sub readPdlFile {
+  my ($that,$file,$class) = @_;
+  return undef if (!-e $file);
+  $class //= 'PDL';
+  local $, = '';
+  my $pdl = $mmap ? $class->mapfraw($file) : $class->readfraw($file);
+  $that->logconfess("mmapPdlFile(): failed to ".($mmap ? 'mmap' : 'read')." pdl file '$file' via class '$class'") if (!defined($pdl));
+  return $pdl;
+}
+
+## $pdl_or_undef = $CLASS_OR_OBJECT->mmapPdlFile($filename,$class='PDL')
+sub mmapPdlFile {
+  return $_[0]->readPdlFile($_[1],$_[2],1);
+}
+
+
+
+##======================================================================
 ## I/O: Generic: Modes
 ##======================================================================
 
