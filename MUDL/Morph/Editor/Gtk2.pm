@@ -1,7 +1,7 @@
 ##-*- Mode: CPerl -*-
 
 ## File: MUDL::Morph::Editor::Gtk2.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: Gtk morphological editors
 ##======================================================================

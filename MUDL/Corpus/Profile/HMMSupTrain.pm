@@ -1,7 +1,7 @@
 #-*- Mode: Perl -*-
 
 ## File: MUDL::Corpus::Profile::HMMSupTrain.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profile:
 ##    HMM supervised trainer
@@ -260,7 +260,7 @@ perl by Larry Wall.
 
 =head1 AUTHOR
 
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 

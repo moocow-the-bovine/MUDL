@@ -1,7 +1,7 @@
 #-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRhbicond.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus profile: L-R "outer" (bi)conditional code lengths
 ##  + PROFILE(w,b) =       h~(b|w)            +       h~(w|b)

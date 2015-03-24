@@ -1,7 +1,7 @@
 ##-*- Mode: Perl -*-
 ##
 ## File: MUDL::CorpusIO::XML.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpora: I/O:
 ##    XML corpora via libxml
@@ -345,7 +345,7 @@ perl by Larry Wall.
 
 =head1 AUTHOR
 
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 

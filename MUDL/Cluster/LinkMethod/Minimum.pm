@@ -1,6 +1,6 @@
 ##
 ## File: MUDL::Cluster::LinkMethod::Minimum.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL: generic clustering (cluster-row & cluster-cluster) distance linkage, native perl: minimum-link
 ##======================================================================

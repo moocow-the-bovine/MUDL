@@ -1,7 +1,7 @@
 ##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRhff.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL: corpus profile: model size: entropy of (smoothed) freq-freq
 ##    prof(b,w) = h( smear(f_nz( f(b,w))) )

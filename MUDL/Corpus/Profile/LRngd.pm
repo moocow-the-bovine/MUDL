@@ -1,7 +1,7 @@
 #-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRngd.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL: corpus profile: L-R NGD ("normalized google distance")
 ##    prof(b,w) = NGD(b,w) = (max{log(f(b)),log(f(w))} - log(f(b,w))) / (log(N)-min{log(f(b)),log(f(w))})

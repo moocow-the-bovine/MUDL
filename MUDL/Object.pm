@@ -1,7 +1,7 @@
 #-*- Mode: CPerl -*-
 
 ## File: MUDL::Object.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: base class
 ##======================================================================
@@ -1573,11 +1573,11 @@ perl by Larry Wall.
 
 =head1 AUTHOR
 
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
+Copyright (c) 2004-2015, Bryan Jurish.  All rights reserved.
 
 This package is free software.  You may redistribute it
 and/or modify it under the same terms as Perl itself.

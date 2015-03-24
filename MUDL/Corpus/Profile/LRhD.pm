@@ -1,7 +1,7 @@
 #-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRhD.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL: corpus profile: L-R conditional-vs-global pointwise entropy divergence:
 ##    prof(b,w) =    d( p(b|w) || p(b) )

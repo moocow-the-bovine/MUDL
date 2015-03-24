@@ -1,7 +1,7 @@
 #-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Profile::LRzfit.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL: corpus profile: L-R zipf fit
 ##    prof(b,w) = arcsize(b,w) = ?

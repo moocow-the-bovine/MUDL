@@ -1,7 +1,7 @@
 ##-*- Mode: CPerl -*-
 
 ## File: MUDL::Enum.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: enumerations
 ##======================================================================
@@ -256,7 +256,14 @@ sub decodeAll {
 ## ($serialized_string, @other_refs) = STORABLE_freeze($obj,$cloning_flag)
 sub STORABLE_freeze {
   my ($obj,$cloning) = @_;
-  return ('',[map { $_ eq 'sym2id' ? qw() : ($_=>$obj->{$_}) } keys(%$obj)]);
+  return ('', [
+	       map {
+		 ($_ eq 'sym2id' ? qw()
+		  : ($_ eq 'id2sym' && UNIVERSAL::isa(tied(@{$obj->{$_}}), 'DiaColloDB::EnumFile::TiedArray')
+		     ? ($_=>${tied(@{$obj->{$_}})}->toArray) ##-- hack for enums via DiaColloDB::EnumFile
+		     : ($_=>$obj->{$_})))
+		} keys(%$obj)
+	       ]);
 }
 
 ## $obj = STORABLE_thaw($obj, $cloning_flag, $serialized_string, @other_refs)
@@ -442,11 +449,11 @@ perl by Larry Wall.
 
 =head1 AUTHOR
 
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 
-Copyright (c) 2004, Bryan Jurish.  All rights reserved.
+Copyright (c) 2004-2015, Bryan Jurish.  All rights reserved.
 
 This package is free software.  You may redistribute it
 and/or modify it under the same terms as Perl itself.

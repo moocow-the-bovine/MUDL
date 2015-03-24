@@ -1,7 +1,7 @@
 ##-*- Mode: CPerl -*-
 
 ## File: MUDL::Corpus::Filter::PdlFilter::Viterbi.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: corpus filter
 ##    pdl-ized Viterbi filter for MUDL::HMM

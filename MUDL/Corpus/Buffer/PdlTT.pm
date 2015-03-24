@@ -1,7 +1,7 @@
 ##-*- Mode: CPerl -*-
 ##
 ## File: MUDL::Corpus::Buffer::PdlTT.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL: in-memory corpus Pdl buffers
 ##  + enum-indexed fixed-width binary storage as attribute-wise pdls
@@ -775,7 +775,7 @@ perl by Larry Wall.
 
 =head1 AUTHOR
 
-Bryan Jurish E<lt>jurish@ling.uni-potsdam.deE<gt>
+Bryan Jurish E<lt>moocow@cpan.orgE<gt>
 
 =head1 COPYRIGHT
 

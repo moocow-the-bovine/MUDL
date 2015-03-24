@@ -1,5 +1,5 @@
 ## File: MUDL::Limits.pm
-## Author: Bryan Jurish <moocow@ling.uni-potsdam.de>
+## Author: Bryan Jurish <moocow@cpan.org>
 ## Description:
 ##  + MUDL unsupervised dependency learner: sets
 ##======================================================================
