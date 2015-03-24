@@ -369,6 +369,42 @@ sub loadXMLNode {
 }
 
 
+##======================================================================
+## I/O : raw (via DiaColloDB::EnumFile)
+
+## $enum = $enum->saveRawFiles($base)
+##  + saves enum data as DiaColloDB::EnumFile
+sub saveRawFiles {
+  my ($enum,$base) = @_;
+  require DiaColloDB::EnumFile;
+  my $denum = DiaColloDB::EnumFile->new->fromArray($enum->{id2sym})
+    or confess(__PACKAGE__, "::saveRawFiles(): could not create temporary DiaColloDB::EnumFile for '$base.*'");
+  $denum->save($base)
+    or confess(__PACKAGE__, "::saveRawFiles(): failed to save temporary DiaColloDB::EnumFile to '$base.*': $!");
+  return $enum;
+}
+
+## $enum = $CLASS_OR_OBJECT->loadRawFiles($base,%opts)
+##  + %opts:
+##     mmap => $bool,  # mmap files?
+##     ...             # passed to DiaColloDB::EnumFile->tiepair()
+sub loadRawFiles {
+  my ($enum,$base,%opts) = @_;
+
+  require DiaColloDB::EnumFile;
+  require DiaColloDB::EnumFile::MMap;
+  require DiaColloDB::EnumFile::Tied;
+  my $class = $opts{class} // ('DiaColloDB::EnumFile' . ($opts{mmap} ? '::MMap' : ''));
+  delete @opts{qw(class mmap)};
+  my ($id2sym,$sym2id) = $class->tiepair(%opts,base=>$base)
+    or confess(__PACKAGE__, "::loadRawFiles(): $class->tiepair() failed for '$base.*'");
+
+  $enum = $enum->new() if (!ref($enum));
+  @$enum{qw(id2sym sym2id)} = ($id2sym,$sym2id);
+
+  return $enum;
+}
+
 
 1;
 
