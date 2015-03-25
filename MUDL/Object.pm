@@ -1192,7 +1192,7 @@ sub writePdlFile {
 ## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename)
 ## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename,$class='PDL',$mmap=0)
 sub readPdlFile {
-  my ($that,$file,$class) = @_;
+  my ($that,$file,$class,$mmap) = @_;
   return undef if (!-e "$file.hdr");
   $class //= 'PDL';
   local $, = '';
