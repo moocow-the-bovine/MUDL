@@ -284,18 +284,24 @@ sub STORABLE_thaw {
 ##======================================================================
 ## I/O : AT&T / Native
 
-# $e = $e->saveNative($file_or_fh)
+# $e = $e->saveNative($file_or_fh,%opts)
+#  + %opts
+#    invert => $bool,  ##-- save (ID,SYM) lines rather than (SYM,ID); default=0
+#    utf8   => $boo,   ##-- save in utf8 mode
 *saveATT = *saveNative = *saveNativeFh = \&saveNativeFile;
 sub saveNativeFile {
-  my ($e,$file) = @_;
+  my ($e,$file,%opts) = @_;
   my $fh = ref($file) ? $file : IO::File->new(">$file");
   croak( __PACKAGE__ , "::saveATT(): open failed for '$file': $!") if (!$fh);
+  $fh->binmode(':utf8') if ($opts{utf8});
+  $fh->binmode($_) foreach ($fh->can('binmode') && $opts{iolayers} ? @{$opts{iolayers}} : qw());
 
   my ($lab,$sym);
   my $id2sym = $e->{id2sym};
+  my $invert = $opts{invert};
   for ($lab=0; $lab < scalar(@$id2sym); $lab++) {
     next if (!defined($sym=$id2sym->[$lab]));
-    $fh->print($sym, "\t", $lab, "\n");
+    $fh->print(($invert ? ($lab, "\t", $sym) : ($sym, "\t", $lab)), "\n");
   }
 
   $fh->close() if (ref($file));
@@ -303,22 +309,34 @@ sub saveNativeFile {
 }
 
 # $e = $e->loadNative($file_or_fh)
+#  + %opts
+#    invert => $bool,  ##-- save (ID,SYM) lines rather than (SYM,ID); default=0
+#    utf8   => $boo,   ##-- save in utf8 mode (default=1)
 *loadATT = *loadNative = *loadNativeFh = \&loadNativeFile;
 sub loadNativeFile {
   my ($e,$file,%opts) = @_;
+  $e     = $e->new() if (!ref($e));
   my $fh = ref($file) ? $file : IO::File->new("<$file");
   croak( __PACKAGE__ , "::loadNative(): open failed for '$file': $!") if (!$fh);
+  $fh->binmode(':utf8') if ($opts{utf8});
   $fh->binmode($_) foreach ($fh->can('binmode') && $opts{iolayers} ? @{$opts{iolayers}} : qw());
 
+  my $invert = $opts{invert};
   my ($lab,$sym,$line);
   while (defined($line=<$fh>)) {
     chomp $line;
     next if ($line eq '');
-    if ($line !~ /^(.*\S)\s+(\d+)$/) {
+    if (!$invert && $line =~ /^(.*\S)\s+(\d+)$/) {
+      ($sym,$lab) = ($1,$2);
+    }
+    elsif ($invert) {
+      ($lab,$sym) = split(' ',$line,2);
+      $sym //= '';
+    }
+    else {
       warn( __PACKAGE__ , "::loadNativeFile(): parse error in file '$file' at line ", $fh->input_line_number);
       next;
     }
-    ($sym,$lab) = ($1,$2);
     $e->{sym2id}{$sym} = $lab;
     $e->{id2sym}[$lab] = $sym;
   }
