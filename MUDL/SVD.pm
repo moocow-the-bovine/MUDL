@@ -315,10 +315,8 @@ sub apply0 {
     ##-- CCS::Nd matmult() calls inner(), produces huge temporary, so we hack things here
     if ($a->missing==0) {
       $ar = $a->matmult2d_zdd($svd->visigma);                ##-- missing is zero: whew!
-      #$ar = $a->matmult2d_zdd($svd->visigma);               ##-- missing is zero: whew!
     } else {
       $ar = $a->matmult2d_sdd($svd->visigma,undef,$abnil);   ##-- missing is nonzero: whoops!
-      #$ar = $a->matmult2d_sdd($svd->visigma,undef,$abnil);  ##-- missing is nonzero: whoops!
     }
   } else {
     #$ar = $a x $svd->{v}; ##-- OLD
@@ -355,13 +353,13 @@ sub apply1 {
   my ($ar);
   if ($a->isa('PDL::CCS::Nd')) {
     if ($a->missing==0) {
-      $ar = $a->xchg(0,1)->matmult2d_zdd($svd->isigmaUt)->xchg(0,1);
+      $ar = $a->xchg(0,1)->matmult2d_zdd($svd->uisigma)->xchg(0,1);
     } else {
-      $ar = $a->xchg(0,1)->matmult2d_sdd($svd->isigmaUt->xchg(0,1),undef,$abnil)->xchg(0,1);
+      $ar = $a->xchg(0,1)->matmult2d_sdd($svd->uisigma,undef,$abnil)->xchg(0,1);
     }
   } else {
     #$ar = ($svd->isigma x $svd->{u}->xchg(0,1) x $a);
-    $ar = ($svd->isigmaUt x $a);
+    $ar = $svd->isigmaUt->matmult($a);
   }
 
   return $ar;
@@ -386,7 +384,8 @@ sub unapply0 {
 
   ##-- un-apply svd, by dim=0
   #my $a = $ar x $svd->{v}->xchg(0,1); ##-- OLD, WRONG
-  my $a = $ar x $svd->sigma x $svd->{v}->xchg(0,1);
+  #my $a = $ar x $svd->sigma x $svd->{v}->xchg(0,1);
+  my $a = $ar->matmult($svd->sigma)->matmult($svd->{v}->xchg(0,1));
 
   return $a;
 }
@@ -404,7 +403,8 @@ sub unapply1 {
     if ($ar->dim(1) != $svd->{u}->dim(0));
 
   ##-- un-apply svd, by dim=1
-  my $a = $svd->{u} x $svd->sigma x $ar;
+  #my $a = $svd->{u} x $svd->sigma x $ar;
+  my $a = $svd->{u}->matmult($svd->sigma)->matmult($ar);
 
   return $a;
 }
