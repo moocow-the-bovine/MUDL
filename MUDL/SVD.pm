@@ -256,22 +256,34 @@ sub isigma {
   return $svd->{isigma_} = stretcher( $isigma );
 }
 
-## $isigma_x_vt = $svd->isigmaVt()
-##  + cached $svd->{isigmaVt_} = inv(stretcher($svd->{sigma})) x $svd->{v}->xchg(0,1)
-sub isigmaVt {
+## $v_x_isigma = $svd->visigma()
+##  + cached $svd->{visigma_} = $svd->{v} x inv(stretcher($svd->{sigma})) (== $svd->isigmaVt->xchg(0,1))
+sub visigma {
   my $svd = shift;
-  return $svd->{isigmaVt_} if (defined($svd->{isigmaVt_}));
+  return $svd->{visigma_} if (defined($svd->{visigma_}));
   confess("no {v} key defined for SVD!") if (!defined($svd->{v}));
-  return $svd->{isigmaVt_} = $svd->isigma x $svd->{v}->xchg(0,1);
+  return $svd->{visigma_} = $svd->{v}->matmult($svd->isigma);
+}
+
+## $u_x_isigma = $svd->uisigma()
+##  + cached $svd->{uisigma_} = $svd->{u} x inv(stretcher($svd->{sigma})) (== $svd->isigmaUt->xchg(0,1))
+sub uisigma {
+  my $svd = shift;
+  return $svd->{uisigma_} if (defined($svd->{uisigma_}));
+  confess("no {u} key defined for SVD!") if (!defined($svd->{u}));
+  return $svd->{uisigma_} = $svd->{u}->matmult($svd->isigma);
+}
+
+## $isigma_x_vt = $svd->isigmaVt()
+##  + cached $svd->{isigmaVt_} = inv(stretcher($svd->{sigma})) x $svd->{v}->xchg(0,1) (== $svd->visigma->xchg(0,1))
+sub isigmaVt {
+  return $_[0]->visigma->xchg(0,1);
 }
 
 ## $isigma_x_ut = $svd->isigmaUt()
-##  + cached $svd->{isigmaUt_} = inv(stretcher($svd->{sigma})) x $svd->{u}->xchg(0,1)
+##  + cached $svd->{isigmaUt_} = inv(stretcher($svd->{sigma})) x $svd->{u}->xchg(0,1) (== $svd->uisigma->xchg(0,1))
 sub isigmaUt {
-  my $svd = shift;
-  return $svd->{isigmaUt_} if (defined($svd->{isigmaUt_}));
-  confess("no {u} key defined for SVD!") if (!defined($svd->{u}));
-  return $svd->{isigmaUt_} = $svd->isigma x $svd->{u}->xchg(0,1);
+  return $_[0]->uisigma->xchg(0,1);
 }
 
 ## $a_reduced_d2r = $svd->apply0($a)
@@ -302,14 +314,17 @@ sub apply0 {
   if ($a->isa('PDL::CCS::Nd')) {
     ##-- CCS::Nd matmult() calls inner(), produces huge temporary, so we hack things here
     if ($a->missing==0) {
-      $ar = $a->matmult2d_zdd($svd->isigmaVt->xchg(0,1));              ##-- missing is zero: whew!
+      $ar = $a->matmult2d_zdd($svd->visigma);                ##-- missing is zero: whew!
+      #$ar = $a->matmult2d_zdd($svd->visigma);               ##-- missing is zero: whew!
     } else {
-      $ar = $a->matmult2d_sdd($svd->isigmaVt->xchg(0,1),undef,$abnil); ##-- missing is nonzero: whoops!
+      $ar = $a->matmult2d_sdd($svd->visigma,undef,$abnil);   ##-- missing is nonzero: whoops!
+      #$ar = $a->matmult2d_sdd($svd->visigma,undef,$abnil);  ##-- missing is nonzero: whoops!
     }
   } else {
     #$ar = $a x $svd->{v}; ##-- OLD
     #$ar = ($svd->isigma x $svd->{v}->xchg(0,1) x $a->xchg(0,1))->xchg(0,1);
-    $ar = ($svd->isigmaVt x $a->xchg(0,1))->xchg(0,1);
+    #$ar = $a->xchg(0,1)->matmult($svd->isigmaVt->xchg(0,1))->xchg(0,1);
+    $ar = $a->matmult($svd->visigma);
   }
 
   return $ar;
@@ -333,14 +348,14 @@ sub apply1 {
   my ($da,$n) = $a->dims;
   $svd->compute($a)
     if (grep { !defined($_) } @$svd{qw(u sigma v)});
-  confess(ref($svd), "::apply0(): bad input pdl!")
+  confess(ref($svd), "::apply1(): bad input pdl!")
     if ($n != $svd->{u}->dim(1));
 
   ##-- apply svd
   my ($ar);
   if ($a->isa('PDL::CCS::Nd')) {
     if ($a->missing==0) {
-      $ar = $a->xchg(0,1)->matmult2d_zdd($svd->isigmaUt->xchg(0,1))->xchg(0,1);
+      $ar = $a->xchg(0,1)->matmult2d_zdd($svd->isigmaUt)->xchg(0,1);
     } else {
       $ar = $a->xchg(0,1)->matmult2d_sdd($svd->isigmaUt->xchg(0,1),undef,$abnil)->xchg(0,1);
     }
