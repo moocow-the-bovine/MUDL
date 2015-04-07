@@ -275,13 +275,15 @@ sub uisigma {
 }
 
 ## $isigma_x_vt = $svd->isigmaVt()
-##  + cached $svd->{isigmaVt_} = inv(stretcher($svd->{sigma})) x $svd->{v}->xchg(0,1) (== $svd->visigma->xchg(0,1))
+##  + returns $svd->visigma->xchg(0,1) = inv(stretcher($svd->{sigma})) x $svd->{v}->xchg(0,1)
+##  + formerly cahced as $svd->{isigmaVt_}
 sub isigmaVt {
   return $_[0]->visigma->xchg(0,1);
 }
 
 ## $isigma_x_ut = $svd->isigmaUt()
-##  + cached $svd->{isigmaUt_} = inv(stretcher($svd->{sigma})) x $svd->{u}->xchg(0,1) (== $svd->uisigma->xchg(0,1))
+##  + returns $svd->uisigma->xchg(0,1) = inv(stretcher($svd->{sigma})) x $svd->{u}->xchg(0,1)
+##  + formerly cahced as $svd->{isigmaUt_}
 sub isigmaUt {
   return $_[0]->uisigma->xchg(0,1);
 }
