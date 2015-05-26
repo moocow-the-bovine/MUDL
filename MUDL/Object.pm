@@ -1190,14 +1190,19 @@ sub writePdlFile {
 }
 
 ## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename)
-## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename,$class='PDL',$mmap=0)
+## $pdl = $CLASS_OR_OBJECT->readPdlFile($filename,$class='PDL',$mmap=0,\%mmapOpts)
 sub readPdlFile {
-  my ($that,$file,$class,$mmap) = @_;
+  my ($that,$file,$class,$mmap,$mopts) = @_;
   return undef if (!-e "$file.hdr");
   $class //= 'PDL';
   local $, = '';
-  my $pdl = $mmap ? $class->mapfraw($file) : $class->readfraw($file);
-  $that->logconfess("mmapPdlFile(): failed to ".($mmap ? 'mmap' : 'read')." pdl file '$file' via class '$class'") if (!defined($pdl));
+  if ($mmap) {
+    $mopts //= {};
+    $mopts->{ReadOnly} = 1 if (!exists($mopts->{ReadOnly}) && (!-w $file));
+  }
+  my $pdl = $mmap ? $class->mapfraw($file,$mopts) : $class->readfraw($file);
+  $that->logconfess("mmapPdlFile(): failed to ".($mmap ? 'mmap' : 'read')." pdl file '$file' via class '$class' [readonly=".($mopts->{ReadOnly}||'0')."]")
+    if (!defined($pdl));
   return $pdl;
 }
 
