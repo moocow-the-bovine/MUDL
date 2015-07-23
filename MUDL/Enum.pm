@@ -402,7 +402,9 @@ sub loadXMLNode {
 sub saveRawFiles {
   my ($enum,$base) = @_;
   require DiaColloDB::EnumFile;
-  my $denum = DiaColloDB::EnumFile->new->fromArray($enum->{id2sym})
+  my $denum = (UNIVERSAL::isa(tied(@{$enum->{id2sym}}),'DiaColloDB::EnumFile::Tied')
+	       ? ${tied(@{$enum->{id2sym}})}
+	       : DiaColloDB::EnumFile->new->fromArray($enum->{id2sym}))
     or confess(__PACKAGE__, "::saveRawFiles(): could not create temporary DiaColloDB::EnumFile for '$base.*'");
   $denum->save($base)
     or confess(__PACKAGE__, "::saveRawFiles(): failed to save temporary DiaColloDB::EnumFile to '$base.*': $!");
