@@ -136,6 +136,12 @@ sub computeccs {
   my $s  = zeroes(double, $r);
   my $vt = zeroes(double, $d, $r);
 
+  ##-- DEBUG: weird segfaults in DiaCollo models
+  #$ptr->make_physical;
+  #$rowids->make_physical;
+  #$nzvals->make_physical;
+  ##-- /DEBUG
+
   svdlas2($ptr,$rowids,$nzvals,$n,
 	  $maxiters, pdl(double, [@$svd{qw(endl endr)}]), $svd->{kappa},
 	  $ut, $s, $vt);
