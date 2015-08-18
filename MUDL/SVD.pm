@@ -89,9 +89,19 @@ sub computeccs_nd {
   my ($svd,$ccs,$d_dim) = @_;
   $d_dim    = 0 if (!defined($d_dim));
   my $n_dim = abs(1-$d_dim);
+
   my ($ptr,$pi2nzi) = $ccs->ptr($d_dim);
-  my $rowids = $ccs->_whichND->slice("($n_dim),")->index($pi2nzi);
-  my $nzvals = $ccs->_nzvals->index($pi2nzi);
+  my ($rowids,$nzvals);
+  if ($d_dim==0 && $ccs->is_physically_indexed) {
+    ##-- optimize for physically indexed pdl on 0th dim
+    undef $pi2nzi;
+    $rowids = $ccs->_whichND->slice("($n_dim),");
+    $nzvals = $ccs->_nzvals;
+  } else {
+    ##-- generic case: use translation indices
+    $rowids = $ccs->_whichND->slice("($n_dim),")->index($pi2nzi);
+    $nzvals = $ccs->_nzvals->index($pi2nzi);
+  }
   my ($d,$n) = ($ccs->dims)[$d_dim,$n_dim];
   return $svd->computeccs($ptr->slice("0:-2"),$rowids,$nzvals,$n);
 }
