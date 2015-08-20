@@ -83,12 +83,13 @@ sub clear {
 ##======================================================================
 
 ## $svd = $svd->computeccs_nd($ccs_nd)
-## $svd = $svd->computeccs_nd($ccs_nd, $d_dimnum=0)
+## $svd = $svd->computeccs_nd($ccs_nd, $d_dimnum=0, $clearptr=0)
 ##  + $ccs_nd is a PDL::CCS::Nd object
 sub computeccs_nd {
-  my ($svd,$ccs,$d_dim) = @_;
-  $d_dim    = 0 if (!defined($d_dim));
-  my $n_dim = abs(1-$d_dim);
+  my ($svd,$ccs,$d_dim,$clearptr) = @_;
+  $d_dim      = 0 if (!defined($d_dim));
+  $clearptr &&= !defined($ccs->[$PDL::CCS::Nd::PTRS][0]);
+  my $n_dim   = abs(1-$d_dim);
 
   my ($ptr,$pi2nzi) = $ccs->ptr($d_dim);
   my ($rowids,$nzvals);
@@ -97,6 +98,7 @@ sub computeccs_nd {
     undef $pi2nzi;
     $rowids = $ccs->_whichND->slice("($n_dim),");
     $nzvals = $ccs->_nzvals;
+    $ccs->[$PDL::CCS::Nd::PTRS][0]=undef if ($clearptr);
   } else {
     ##-- generic case: use translation indices
     $rowids = $ccs->_whichND->slice("($n_dim),")->index($pi2nzi);
