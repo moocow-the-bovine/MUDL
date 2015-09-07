@@ -161,10 +161,7 @@ sub cut {
     $tc->{clusterids} = zeroes(long, $tc->{ctree}->dim(1));
   }
 
-  print STDERR
-      ("<<<DEBUG>>>: ", ref($tc),
-       "::cut(): cutting tree into $tc->{nclusters} clusters\n"
-      );
+  #print STDERR ("<<<DEBUG>>>: ", ref($tc), "::cut(): cutting tree into $tc->{nclusters} clusters\n");
   PDL::Cluster::cuttree($tc->{ctree},
 			$tc->{nclusters},
 			$tc->{clusterids});
