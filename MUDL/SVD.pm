@@ -448,22 +448,22 @@ sub TO_JSON {
 sub saveRawFiles {
   my ($svd,$base) = @_;
   $svd->saveJsonFile("$base.json")
-    or confess(__PACKAGE__, "::saveMMapFile(): failed to save $base.json: $!");
+    or confess(__PACKAGE__, "::saveRawFiles(): failed to save $base.json: $!");
   foreach (qw(u sigma v)) {
     $svd->writePdlFile($svd->{$_}, "$base.$_.pdl")
-      or confess(__PACKAGE__, "::saveMMapFile(): failed to save $base.$_.pdl: $!");
+      or confess(__PACKAGE__, "::saveRawFiles(): failed to save $base.$_.pdl: $!");
   }
   return 1;
 }
 
-## $obj = $CLASS_OR_OBJECT->loadRawFiles($basename,$mmap=0)
+## $obj = $CLASS_OR_OBJECT->loadRawFiles($basename,$mmap=0,\%mmapOpts={})
 sub loadRawFiles {
-  my ($that,$base,$mmap) = @_;
+  my ($that,$base,$mmap,$mopts) = @_;
   my $svd = $that->loadJsonFile("$base.json")
-    or confess(__PACKAGE__, "::loadMMapFile(): failed to load $base.json: $!");
+    or confess(__PACKAGE__, "::loadRawFiles(): failed to load $base.json: $!");
   foreach (qw(u sigma v)) {
-    defined($svd->{$_} = $svd->readPdlFile("$base.$_.pdl",'PDL',$mmap))
-      or confess(__PACKAGE__, "::loadMMapFile(): failed to ".($mmap ? "mmap" : "read")." $base.$_.pdl: $!");
+    defined($svd->{$_} = $svd->readPdlFile("$base.$_.pdl",'PDL',$mmap,$mopts))
+      or confess(__PACKAGE__, "::loadRawFiles(): failed to ".($mmap ? "mmap" : "read")." $base.$_.pdl: $!");
   }
   return $svd;
 }
