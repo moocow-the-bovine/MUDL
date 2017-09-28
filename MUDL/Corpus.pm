@@ -13,7 +13,7 @@ use MUDL::Object;
 use IO::File;
 use Carp;
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 our @ISA = qw(MUDL::Corpus::Buffer);
 

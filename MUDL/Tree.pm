@@ -19,7 +19,7 @@ our @EXPORT_OK = qw();
 ###############################################################
 # Globals
 ###############################################################
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 sub VERSION {
   my ($self) = shift;
   return $self->{VERSION} ? $self->{VERSION} : $VERSION;

@@ -10,7 +10,7 @@ package MUDL::Utils;
 use Exporter;
 use Carp;
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 our @ISA = qw(Exporter Carp);
 
 our @EXPORT = qw();

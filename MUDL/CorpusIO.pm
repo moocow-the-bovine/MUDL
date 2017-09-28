@@ -14,7 +14,7 @@ use IO::File;
 use Carp;
 use Encode qw(encode decode);
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 our @ISA = qw(MUDL::Object);
 
 ########################################################################

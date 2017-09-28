@@ -7,7 +7,7 @@
 ##======================================================================
 
 package MUDL;
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 
 ##-- just load all sub-modules
 use MUDL::Utils;    ##-- very old, needs work
