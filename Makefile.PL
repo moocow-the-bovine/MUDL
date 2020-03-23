@@ -5,7 +5,7 @@ WriteMakefile
   (
    NAME         => 'MUDL',
    VERSION_FROM => 'MUDL.pm', # finds $VERSION
-   AUTHOR       => 'Bryan Jurish <moocow@ling.uni-potsdam.de>',
+   AUTHOR       => 'Bryan Jurish <moocow@cpan.org>',
    ABSTRACT     => 'MUDL Unsupervised Dependency Learner',
    PREREQ_PM    => {
 		    XML::LibXML => undef,   # for XML I/O
@@ -22,8 +22,9 @@ WriteMakefile
 
 sub MY::postamble {
   # how to format the README file
-  "README.txt : README.pod\n"
-  ."\tpod2text README.pod README.txt\n\n";
+  ".SUFFIXES: .rpod\n\n"
+  ."README.txt : README.rpod\n"
+  ."\tpod2text README.rpod README.txt\n\n";
 }
 
 sub MY::dist_core {
