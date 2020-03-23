@@ -20,6 +20,21 @@ WriteMakefile
 # Extensions
 #---------------------------------------------------------------
 
+sub MY::constants {
+  package MY;
+  my $self = shift;
+  delete @{$self->{PM}}{
+    grep {
+      $_ !~ /\.pm$/i || $_ =~ /graveyard/
+    } keys %{$self->{PM}}
+  };
+  return $self->SUPER::constants(@_);
+  ##--
+  #my $inherited = shift->SUPER::constants(@_);
+  #$inherited =~ s{^\s+MUDL/\S+ \\\n}{}mg;
+  #return $inherited;
+}
+
 sub MY::postamble {
   # how to format the README file
   ".SUFFIXES: .rpod\n\n"
