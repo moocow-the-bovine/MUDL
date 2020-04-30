@@ -1,3 +1,4 @@
 #svntags=svn+ssh://moocow@odo.dwds.de/home/moocow/svn/private/diss/tags
-svntags=svn+ssh://odo.dwds.de/home/moocow/svn/public/diss-perl/tags
+#svntags=svn+ssh://odo.dwds.de/home/moocow/svn/public/diss-perl/tags
+svntags=$(svnroot.sh . | perl -pe 's{\btrunk.*$}{tags};')
 tagprefix=MUDL
