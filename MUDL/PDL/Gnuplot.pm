@@ -336,7 +336,7 @@ sub gqqplotx {
   ##--points
   my %gp = (%{$gopts||{}},%{$popts||{}});
   $gp{lc} = $gp{pc} if ($gp{pc});
-  my @plot = ({with=>gp_with('p',%gp), %popts}, $xdata,$ydata);
+  my @plot = ({with=>gp_with('points',%gp), %popts}, $xdata,$ydata);
 
   ##-- line() plot (fit $xdata->$ydata)
   if (!$noline) {
@@ -348,7 +348,7 @@ sub gqqplotx {
       ($xfit,$yfit,$coeffs) = $xdata->qqfit($ydata,{%lopts,nosort=>1});
     }
     my %gl = (%{$gopts||{}},%{$lopts||{}});
-    push(@plot, {with=>gp_with('l',%gl),%lopts}, $xfit,$yfit);
+    push(@plot, {with=>gp_with('lines',%gl),%lopts}, $xfit,$yfit);
   }
 
   ##-- actual plot
